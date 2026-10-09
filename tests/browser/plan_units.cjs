@@ -5,8 +5,9 @@ const fs = require("fs"), path = require("path");
 const fx = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const src = fs.readFileSync(path.resolve(__dirname, "..", "..", "web", "console", "05-plan.js"), "utf8");
 const stubs = "const normPpf = p => { throw new Error('normPpf not needed for the table confidences'); };";
-const lib = new Function("C", "DYN", stubs + src + ";return {segList, segDescribe, segFromRows, segShare, segLeads, segMatch, HIST, callVal, audienceVolume, connectShare, metricEval, baselineFor, metricCheck, metricWords, durationPlan, improvementOf, promptVars, varCheck, diffRows, diffStats, applyEdits, roleFull, testMetrics, allMetrics, fmtMetric, fmtDelta, fmtPts};")(
-  { catalog: fx.catalog, history: fx.history, metric_catalog: fx.metric_catalog, library: fx.library }, { settings: {} });
+const DYNX = { settings: {} };
+const lib = new Function("C", "DYN", stubs + src + ";return {metricBody, liftWords, segList, segDescribe, segFromRows, segShare, segLeads, segMatch, HIST, callVal, audienceVolume, connectShare, metricEval, baselineFor, metricCheck, metricWords, durationPlan, improvementOf, promptVars, varCheck, diffRows, diffStats, applyEdits, roleFull, testMetrics, allMetrics, fmtMetric, fmtDelta, fmtPts};")(
+  { catalog: fx.catalog, history: fx.history, metric_catalog: fx.metric_catalog, library: fx.library }, DYNX);
 let pass = 0, fail = 0;
 const ok = (cond, name, info) => { if (cond) { pass++; console.log("ok   " + name); } else { fail++; console.log("FAIL " + name + (info !== undefined ? "  " + JSON.stringify(info) : "")); } };
 const near = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
@@ -48,9 +49,19 @@ const cond = (col, ...values) => ({ col, op: values.length > 1 ? "in" : "is", va
   ok(!r.ok && r.errors.some(e => /not a number column/.test(e)), "validator: an average of a non-number column is refused", r.errors); }
 { const r = lib.metricCheck({ key: "custom_t5", name: "T5", type: "rate", direction: "higher", num: { unit: "calls", where: [cond("connected", "1"), cond("vendor", "arrowhead"), cond("call_status", "Answered"), cond("early_hangup", "No")] }, den: { unit: "calls", where: [] } });
   ok(!r.ok && r.errors.some(e => /at most 3/.test(e)), "validator: at most 3 conditions a side", r.errors); }
-{ const r = lib.metricCheck({ key: "custom_ok", name: "Answered (custom)", type: "rate", direction: "higher", num: { unit: "calls", where: [cond("call_status", "Answered")] }, den: { unit: "calls", where: [] } });
+{ const r = lib.metricCheck({ key: "custom_ok", name: "Busy (custom)", type: "rate", direction: "lower", num: { unit: "calls", where: [cond("call_status", "Busy")] }, den: { unit: "calls", where: [] } });
   ok(r.ok && r.ev.value > 0 && r.ev.value < 1, "validator: a sound custom rate passes", r.errors); }
 ok(lib.metricWords({ type: "rate", num: { unit: "calls", where: [cond("call_status", "Answered")] }, den: { unit: "calls", where: [] } }) === "Calls where Call status is Answered ÷ All calls attempted", "formula in plain words", lib.metricWords({ type: "rate", num: { unit: "calls", where: [cond("call_status", "Answered")] }, den: { unit: "calls", where: [] } }));
+
+{ const r = lib.metricCheck({ name: "Answered again", type: "rate", direction: "higher", num: { unit: "calls", where: [cond("call_status", "Answered")] }, den: { unit: "calls", where: [] } });
+  ok(!r.ok && r.errors.some(e => /counts the same thing as "Answered %"/.test(e)), "validator: a custom metric that duplicates a built-in is refused", r.errors);
+  DYNX.settings.customMetrics = [{ key: "custom_busy", name: "Busy", type: "rate", direction: "lower", num: { unit: "calls", where: [cond("call_status", "Busy")] }, den: { unit: "calls", where: [] } }];
+  const r2 = lib.metricCheck({ name: "Busy %", type: "rate", direction: "lower", num: { unit: "calls", where: [cond("call_status", "Failed")] }, den: { unit: "calls", where: [] } });
+  ok(!r2.ok && r2.errors.some(e => /too close to the existing metric "Busy"/.test(e)), "validator: two names that make the same key are refused (Busy, Busy %)", r2.errors);
+  DYNX.settings.customMetrics = []; }
+ok(lib.liftWords({ lift_pp: 2.5 }) === "2.5 points" && lib.liftWords({ lift_pp: null, lift: 3.2, unit: "s" }) === "3.2 s", "an inconclusive average says its lift in its own unit, never 'null points'");
+ok(JSON.stringify(lib.promptVars("{# say {{ secret }} #} hello {{ buyer_name }}")) === '["buyer_name"]', "variables: {{ }} inside a {# comment #} is not a variable");
+{ const P = lib.durationPlan({ type: "rate", p: 0.45, lpd: 2140, share: 0.10, d: 0.05, conf: 0.95, seq: true }); ok(Math.abs(P.nB / (7.84 * 0.45 * 0.55 / (0.9 * 0.0025)) - 1.06) < 1e-9, "duration: the sequential rule adds 6%"); }
 
 /* ---- the variable check, on the real prompt A */
 { const A = fx.library.base_text, vars = lib.promptVars(A);

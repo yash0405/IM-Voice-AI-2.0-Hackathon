@@ -46,7 +46,7 @@ await shot('live1');
 if (await p.$('#a-end')) { await p.click('#a-end'); await sleep(1200); }
 t = await body(); ok(/Promoted|Inconclusive|Held|Stopped|Keep A/.test(t), 'Live: the engine decides on the last day', t.slice(0, 200)); await shot('live1_end');
 await p.evaluate(id => { location.hash = '#/report/' + id; }, r1.id); await sleep(1000); t = await body();
-ok(t.includes('Metrics') && t.includes('Meeting or callback') && t.includes('must not get worse by more than 10%') && t.includes('Secondary (for insight only, not used for the decision)') && /Prompt B[\s\S]*added/.test(t) && /100% of counted leads matched this rule/.test(t) && !/patch/i.test(t), 'Report: metrics with limits, the Secondary section, prompt B with its diff, the audience line; no "patch" wording');
+ok(t.includes('Metrics') && t.includes('Meeting or callback') && t.includes('must not rise by more than 10%') && t.includes('Secondary (for insight only, not used for the decision)') && /Prompt B[\s\S]*added/.test(t) && /100% of counted leads matched this rule/.test(t) && !/patch/i.test(t), 'Report: metrics with limits, the Secondary section, prompt B with its diff, the audience line; no "patch" wording');
 ok(!!(await p.$('.report .diff2')), 'Report: the A-vs-B diff is drawn'); await shot('report1');
 await p.evaluate(() => { location.hash = '#/history'; }); await sleep(800); t = await body();
 ok(t.includes('Custom rate primary (live check)') && t.includes('HL Type: UA, PNSM'), 'History: the test is listed with its audience'); await shot('history');

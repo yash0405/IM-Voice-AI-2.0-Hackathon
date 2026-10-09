@@ -1,0 +1,142 @@
+9c9
+< Make the ask limits agree with each other — Watch: B looks worse
+---
+> Make the ask limits agree with each other — On track
+32c32
+< Running, day 2 of 7 · Config v1 735ca8d10719 (locked) · started 9 Oct 2026 · one winner call at the end, strict daily harm check
+---
+> Running, day 2 of 7 · Config v1 f7791bd2fc93 (locked) · started 9 Oct 2026 · one winner call at the end, strict daily harm check
+36c36
+< Audience: NOB: Proprietor NOB = Proprietor · 45% of traffic, about 450 leads a day
+---
+> Audience: Legal Status: Proprietorship Leads where Legal Status is Proprietorship · 45% of traffic, about 450 leads a day · 100% of counted leads matched this rule (3,150 of 3,150, re-read from the record)
+45c45
+< A 629 · B 271
+---
+> A 631 · B 269
+47,48c47,48
+< 43.7%
+< 95% range 39.9% to 47.6%
+---
+> 45.5%
+> 95% range 41.6% to 49.4%
+50,51c50,51
+< 50.6%
+< 95% range 44.6% to 56.5%
+---
+> 54.3%
+> 95% range 48.3% to 60.1%
+53,54c53,54
+< ▲ +6.8 pp
+< 95% range −0.3 pp to +13.9 pp
+---
+> ▲ +8.8 pp
+> 95% range +1.7 pp to +15.9 pp
+57,58c57,58
+< 0%
+< B's calls vs A's; 95% range −11% to +11%; limit +10%
+---
+> +10%
+> B's calls vs A's; 95% range −2% to +21%; limit +10%
+69a70
+> 60%
+78,79c79,80
+< A 44%
+< B 51%
+---
+> A 45%
+> B 54%
+90,91c91,92
+< Day 1	−0.7 pp	✓ No	-0.13 / −3.09
+< Day 2	+6.8 pp	✓ No	1.89 / −3.09
+---
+> Day 1	+0.2 pp	✓ No	0.04 / −3.09
+> Day 2	+8.8 pp	✓ No	2.42 / −3.09
+107c108
+< achieved 30.1%
+---
+> achieved 29.9%
+110,111c111,112
+< 1,027
+< achieved 29.8%
+---
+> 1,017
+> achieved 29.7%
+118c119,120
+< stratified blocks of 10 (3 B per block); any group is at most 1.2 leads off its share
+---
+> stratified blocks of 10 (3 B per block); any group is at most 1.4 leads off its share
+> Small groups merged into "Other" before splitting: Manufacturer x NUR, Manufacturer x NVGT, Manufacturer x OLP, Manufacturer x OLPR, Manufacturer x PANF, Manufacturer x PNCHF, Manufacturer x PUT, Manufacturer x TF, Manufacturer x UATF, NA x NUR, NA x NVGT, NA x OLP, NA x OLPR, NA x PAM, NA x PANF, NA x PNCHF, NA x PUT, NA x SCHD, NA x TF, NA x UATF, Retailer x NVGT, Retailer x OLPR, Retailer x PNCHF, Retailer x PUT, Retailer x TF, Retailer x UATF, Service Provider x NUR, Service Provider x NVGT, Service Provider x OLP, Service Provider x OLPR, Service Provider x PAM, Service Provider x PANF, Service Provider x PNCHF, Service Provider x PUT, Service Provider x SCHD, Service Provider x TF, Service Provider x UATF, Wholesaler x NUR, Wholesaler x NVGT, Wholesaler x OLP, Wholesaler x OLPR, Wholesaler x PANF, Wholesaler x PNCHF, Wholesaler x PUT, Wholesaler x TF, Wholesaler x UATF.
+121,122c123,124
+< Day 1	316	134	29.78%	−0.22 pp
+< Day 2	629	271	30.11%	+0.11 pp
+---
+> Day 1	315	135	30.00%	0.00 pp
+> Day 2	631	269	29.89%	−0.11 pp
+124c126
+< Segment check: 100% of counted leads match the rule (3,150 of 3,150, re-read from the whole record). NOB = Proprietor
+---
+> Segment check: 100% of counted leads matched this rule (3,150 of 3,150, re-read from the record). Leads where Legal Status is Proprietorship
+126,127c128,129
+< Out of segment: 1,081 leads so far kept today's prompt and were not counted.
+< Balance: A against B by lead type, firm type and city
+---
+> Out of segment: 1,142 leads so far kept today's prompt and were not counted.
+> Balance: A against B by GST Nature of Business, HL Type, Legal Status, Vertical
+129,141c131,160
+< Hot Lead type balanced by design same-mix check p = 1.00
+< UA	204 (32.4%)	88 (32.5%)	0.0 pp	
+< PUA	124 (19.7%)	54 (19.9%)	+0.2 pp	
+< ENQR	119 (18.9%)	51 (18.8%)	−0.1 pp	
+< PNS	182 (28.9%)	78 (28.8%)	−0.2 pp	
+< Nature of Business Proprietor: every counted lead is the same, so there is nothing to balance.
+< City left to chance same-mix check p = 0.94
+< Mumbai	92 (14.6%)	41 (15.1%)	+0.5 pp	
+< Delhi	87 (13.8%)	37 (13.7%)	−0.2 pp	
+< Bengaluru	65 (10.3%)	28 (10.3%)	0.0 pp	
+< Pune	50 (7.9%)	27 (10.0%)	+2.0 pp	
+< Chennai	35 (5.6%)	16 (5.9%)	+0.3 pp	
+< Other	300 (47.7%)	122 (45.0%)	−2.7 pp	
+---
+> GST Nature of Business balanced by design same-mix check p = 0.93
+> Retailer	207 (32.8%)	90 (33.5%)	+0.7 pp	
+> Service Provider	92 (14.6%)	34 (12.6%)	−1.9 pp	
+> Wholesaler	111 (17.6%)	48 (17.8%)	+0.3 pp	
+> Manufacturer	141 (22.3%)	59 (21.9%)	−0.4 pp	
+> NA	80 (12.7%)	38 (14.1%)	+1.4 pp	
+> HL Type balanced by design same-mix check p = 0.98
+> UA	120 (19.0%)	54 (20.1%)	+1.1 pp	
+> PNSM	67 (10.6%)	28 (10.4%)	−0.2 pp	
+> PNSR	59 (9.4%)	26 (9.7%)	+0.3 pp	
+> PIM	54 (8.6%)	20 (7.4%)	−1.1 pp	
+> PUA	53 (8.4%)	24 (8.9%)	+0.5 pp	
+> PAM	49 (7.8%)	18 (6.7%)	−1.1 pp	
+> SCHD	32 (5.1%)	14 (5.2%)	+0.1 pp	
+> ENQR	43 (6.8%)	19 (7.1%)	+0.2 pp	
+> NUR	25 (4.0%)	11 (4.1%)	+0.1 pp	
+> PANF	29 (4.6%)	13 (4.8%)	+0.2 pp	
+> OLP	20 (3.2%)	7 (2.6%)	−0.6 pp	
+> PNCHF	25 (4.0%)	8 (3.0%)	−1.0 pp	
+> OLPR	10 (1.6%)	9 (3.3%)	+1.8 pp	
+> PUT	14 (2.2%)	4 (1.5%)	−0.7 pp	
+> NVGT	12 (1.9%)	5 (1.9%)	0.0 pp	
+> TF	10 (1.6%)	7 (2.6%)	+1.0 pp	
+> UATF	9 (1.4%)	2 (0.7%)	−0.7 pp	
+> Legal Status Proprietorship: every counted lead is the same, so there is nothing to balance.
+> Vertical left to chance same-mix check p = 0.73
+> Top Cities - Inhouse	219 (34.7%)	93 (34.6%)	−0.1 pp	
+> Top Cities - Channel	154 (24.4%)	73 (27.1%)	+2.7 pp	
+> Emerging Market - Channel	201 (31.9%)	77 (28.6%)	−3.2 pp	
+> NA	57 (9.0%)	26 (9.7%)	+0.6 pp	
+143c162
+< Hot Lead type × Nature of Business is dealt in blocks, so those two match almost exactly. City is not blocked: its gaps are the luck of the draw, shrinking as leads grow. The lead mix is synthetic.
+---
+> GST Nature of Business × HL Type is dealt in blocks, so those two match almost exactly. Legal Status and Vertical are not blocked: their gaps are the luck of the draw, shrinking as leads grow. The lead mix is synthetic.
+149,150c168,169
+< Started 9344f39c07
+< Launched (one winner call on the last day); config version 1 (735ca8d10719); locked. Audience: NOB = Proprietor (45% of traffic, about 450 leads a day); split dealt in blocks of 10.
+\ No newline at end of file
+---
+> Started 8635cc05c0
+> Launched (one winner call on the last day); config version 1 (f7791bd2fc93); locked. Audience: Leads where Legal Status is Proprietorship (45% of traffic, about 450 leads a day); split dealt in blocks of 10.
+\ No newline at end of file

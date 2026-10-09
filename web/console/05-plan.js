@@ -108,7 +108,7 @@ const customMetrics = () => ((typeof DYN !== "undefined" && DYN.settings && DYN.
 /** Every metric a test can use: the built-ins, the custom ones saved in Settings > Metrics, and `extra` (kept for one test only). */
 function allMetrics(extra) { const seen = new Set(), out = []; for (const m of [...METRIC_CAT().builtin, ...customMetrics().map(m => ({ ...m, group: "Custom", custom: true })), ...(extra || []).map(m => ({ ...m, group: "Custom", custom: true, local: true }))]) { if (!seen.has(m.key)) { seen.add(m.key); out.push(m); } } return out; }
 const metricByKey = (k, extra) => allMetrics(extra).find(m => m.key === k) || null;
-const colLabel = c => (HIST().col[c] || catCol(c) || { label: c }).label;
+const colLabel = c => (HIST().col[c] || catCol(c) || { label: String(c).replace(/_/g, " ").replace(/^./, x => x.toUpperCase()) }).label;
 const condWords = c => c.op === "is_not" ? `${colLabel(c.col)} is not ${c.values.length > 1 ? "any of " + c.values.join(", ") : c.values[0]}` : `${colLabel(c.col)} is ${orWords(c.values)}`;
 const sideWords = (side, all) => side.where && side.where.length ? `${side.unit === "calls" ? "Calls" : "Leads"} where ${side.where.map(condWords).join(" and ")}` : (all || `All ${side.unit === "calls" ? "calls" : "leads"} attempted`);
 /** The formula in plain words: "Calls where Call status is Answered ÷ All calls attempted". */
@@ -154,6 +154,7 @@ function baselineFor(m, seg) {
 function metricCheck(m) {
   const errs = [], mc = METRIC_CAT(), H = HIST(), max = mc.max_conditions || 3;
   if (!m || !String(m.name || "").trim()) errs.push("Give the metric a name.");
+  else if (allMetrics().some(x => x.key === (m.key || metricKey(m.name)) && x.name.trim().toLowerCase() !== String(m.name).trim().toLowerCase())) errs.push(`This name is too close to the existing metric "${allMetrics().find(x => x.key === (m.key || metricKey(m.name))).name}": choose another name.`);
   else if (String(m.name).length > 60) errs.push("The name is too long (60 characters at most).");
   else if (allMetrics().some(x => x.key !== m.key && x.name.trim().toLowerCase() === String(m.name).trim().toLowerCase())) errs.push("A metric with this name already exists.");
   const conds = (list, label, needOne) => {
@@ -171,10 +172,19 @@ function metricCheck(m) {
   else if (m.type === "rate") { conds(m.num && m.num.where, "Numerator", true); conds(m.den && m.den.where, "Denominator", false); if (!m.num || !["calls", "leads"].includes(m.num.unit) || !m.den || !["calls", "leads"].includes(m.den.unit)) errs.push("Count calls or leads on both sides."); }
   else { const col = H.col[m.col]; if (!col) errs.push("Choose a number column to average."); else if (col.type !== "number") errs.push(`${col.label} is not a number column.`); if (!["calls", "leads"].includes(m.unit)) errs.push("Average over calls or leads."); conds(m.where, "Condition", false); }
   if (m && !["higher", "lower"].includes(m.direction)) errs.push("Choose whether higher or lower is better.");
+  const twin = !errs.length && allMetrics().find(x => x.key !== m.key && x.available !== false && metricBody(x) === metricBody(m));
+  if (twin) errs.push(`This counts the same thing as "${twin.name}": use that metric instead.`);
   let ev = null;
   if (!errs.length) { ev = metricEval(m, null); if (!(ev.den > 0)) errs.push("The denominator is 0 on the last 30 days: nothing would be counted."); else if (m.type === "rate" && (ev.value < 0 || ev.value > 1)) errs.push(`This rate comes to ${(ev.value * 100).toFixed(0)}%: a rate must lie between 0 and 100%. Make the numerator count a part of the denominator.`); }
   return { ok: !errs.length, errors: [...new Set(errs)], ev };
 }
+/** What a metric counts, without its name or direction: two metrics with the same body count the same thing. */
+function metricBody(m) {
+  const cond = c => ({ col: c.col, op: c.op === "is_not" ? "is_not" : "in", values: [...(c.values || [])].sort() }), side = x => x ? { unit: x.unit, where: (x.where || []).map(cond).sort((p, q) => JSON.stringify(p) < JSON.stringify(q) ? -1 : 1) } : null;
+  return JSON.stringify(m.type === "rate" ? { type: "rate", num: side(m.num), den: side(m.den) } : { type: "average", col: m.col, unit: m.unit, where: side({ unit: m.unit, where: m.where }).where });
+}
+/** How big a lift an inconclusive test could settle, in the metric's own unit (an average has no points). */
+const liftWords = o => o.lift_pp != null ? `${o.lift_pp} points` : `${o.lift} ${o.unit || ""}`.trim();
 /** A metric key from its name: custom_answered_pct. */
 const metricKey = name => "custom_" + String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50);
 
@@ -188,7 +198,7 @@ function testMetrics(w) {
 }
 /** Roles have limits: 3 guardrails and 5 secondary metrics (the pre-added guardrail counts). */
 const roleFull = (w, role) => role === "guardrail" ? (w.guards || []).length >= METRIC_CAT().limits.guardrails : (w.secondary || []).length >= METRIC_CAT().limits.secondary;
-const limitWords = (l, m) => !l ? "" : `must not get worse by more than ${l.value}${l.kind === "rel" ? "%" : m && m.type === "average" ? " " + (metricUnit(m) || "units") : " points"}`;
+const limitWords = (l, m, dir) => !l ? "" : `must not ${(dir || (m && m.direction)) === "higher" ? "fall" : "rise"} by more than ${l.value}${l.kind === "rel" ? "%" : m && m.type === "average" ? " " + (metricUnit(m) || "units") : " points"}`;
 
 /* ------------------------------------------------------------------ the duration plan: ONE function for Step 5 and the "At a glance" panel */
 const Z_CONF = { 0.9: 1.645, 0.95: 1.96, 0.99: 2.576 }, Z_POWER = 0.84;     // 95% two-sided and 80% power give (1.96 + 0.84)^2 = 7.84
@@ -199,12 +209,12 @@ const zConf = conf => Z_CONF[conf] || normPpf(1 - (1 - conf) / 2);
 function durationPlan(x) {
   const conf = x.conf || 0.95, z = zConf(conf), k = (z + Z_POWER) ** 2, s = x.share, lpd = x.lpd, d = Math.abs(x.d);
   const spread2 = x.type === "average" ? (x.sd || 0) ** 2 : x.p * (1 - x.p);
-  const nB = k * spread2 / ((1 - s) * d * d), bPerDay = lpd * s, rawDays = nB / bPerDay;
+  const infl = x.seq ? 1.06 : 1, nB = k * spread2 / ((1 - s) * d * d) * infl, bPerDay = lpd * s, rawDays = nB / bPerDay;       // the early promote/stop rule looks every day: about 6% more data
   const weeks = Math.max(7, Math.ceil(rawDays / 7 - 1e-9) * 7), tooBig = !(weeks <= 28), rec = tooBig ? 28 : weeks;
   const days = x.days ? +x.days : rec;
-  const nBd = lpd * s * days, nAd = lpd * (1 - s) * days, smallest = (z + Z_POWER) * Math.sqrt(spread2 * (1 / nAd + 1 / nBd));
+  const nBd = lpd * s * days, nAd = lpd * (1 - s) * days, smallest = (z + Z_POWER) * Math.sqrt(infl * spread2 * (1 / nAd + 1 / nBd));
   const minLeads = x.minLeads || 0, minDay = minLeads ? Math.ceil(minLeads / Math.max(1e-9, Math.min(bPerDay, lpd * (1 - s)))) : 0;
-  return { z, k, s, lpd, d, spread2, nB, bPerDay, rawDays, weeks, rec, tooBig, days, custom: !!x.days, shorter: !!x.days && x.days < rec, nBd, nAd, smallest, minDay, minLate: minLeads > 0 && minDay > days,
+  return { z, k, s, lpd, d, spread2, seq: !!x.seq, nB, bPerDay, rawDays, weeks, rec, tooBig, days, custom: !!x.days, shorter: !!x.days && x.days < rec, nBd, nAd, smallest, minDay, minLate: minLeads > 0 && minDay > days,
     tooBigMsg: "This audience is too small for this test. Widen the audience, raise B's share, or aim for a bigger improvement." };
 }
 /** Improvement presets: points for a rate, a share of today's value for an average. */
@@ -214,7 +224,7 @@ function improvementOf(size, m, base) { const pts = { small: 2, medium: 5, large
 const JINJA_WORDS = new Set(["if", "elif", "else", "endif", "for", "endfor", "in", "not", "and", "or", "is", "set", "endset", "true", "false", "none", "True", "False", "None", "loop", "range", "macro", "endmacro", "block", "endblock", "with", "endwith", "defined", "raw", "endraw", "include", "import", "from", "as", "recursive", "filter", "endfilter", "call", "endcall"]);
 /** Names of the template variables a prompt uses, inside {{ ... }} and {% ... %} tags (strings, filters, attributes and loop variables left out). */
 function promptVars(text) {
-  const out = new Set(), local = new Set(), tags = String(text || "").match(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g) || [];
+  const out = new Set(), local = new Set(), tags = String(text || "").replace(/\{#[\s\S]*?#\}/g, " ").match(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g) || [];
   for (const t of tags) {
     const body = t.slice(2, -2).replace(/(["'])(?:\\.|(?!\1).)*\1/g, " ");
     const decl = body.match(/^\s*(?:for\s+([\w\s,]+?)\s+in\b|set\s+(\w+))/); if (decl) (decl[1] || decl[2]).split(",").forEach(x => local.add(x.trim()));

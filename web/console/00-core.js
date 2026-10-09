@@ -71,8 +71,13 @@ const segOf = e => e.audience || (e.record && e.record.config && e.record.config
 
 /* ------------------------------------------------------------------ experiments and their demo state */
 const SK = "canary_console_v1";
-const DYN = store.get(SK, { dyn: {}, launched: [], settings: {}, libLog: [], ui: {} });
-const saveDyn = () => store.set(SK, DYN);
+/* Demo state in this browser. A prompt (about 170 KB) is kept once however many drafts and tests use it, and a full storage is reported. */
+const BIG_TEXT = 20000, fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36) + "_" + s.length.toString(36); };
+function loadDyn() { try { const raw = localStorage.getItem(SK); if (!raw) return null; const o = JSON.parse(raw); return o && o.packed === 2 ? JSON.parse(o.body, (k, v) => typeof v === "string" && v[0] === "\u0001" ? o.texts[v.slice(1)] : v) : o; } catch { return null; } }
+const DYN = loadDyn() || { dyn: {}, launched: [], settings: {}, libLog: [], ui: {} };
+let saveWarned = false;
+const saveDyn = () => { try { const texts = {}, body = JSON.stringify(DYN, (k, v) => { if (typeof v === "string" && v.length > BIG_TEXT) { const h = fnv(v); texts[h] = v; return "\u0001" + h; } return v; }); localStorage.setItem(SK, JSON.stringify({ packed: 2, texts, body })); }
+  catch (e) { if (!saveWarned) { saveWarned = true; toast("This browser could not save the demo state (its storage is full). Delete old drafts, or reset the demo in Settings.", 6000); } } };
 const SET = () => ({ ...C.defaults, ...DYN.settings });
 const EXPS = () => [...C.demo, ...DYN.launched, ...C.past];
 const byId = id => EXPS().find(e => e.id === id);
@@ -153,7 +158,7 @@ function secondaryHtml(v) {
 /** The locked metric list in plain words (Review, the final report). */
 function metricsSummaryHtml(c) {
   if (!c.metrics) return `<div><b>${esc(goalName(c))}</b> (primary, ${c.primary_direction === "lower" ? "lower" : "higher"} is better)</div>${c.secondary_role === "guardrail" ? `<div><b>Call duration</b> (guardrail): must not rise by more than ${(c.guardrail_margin * 100).toFixed(0)}%</div>` : ""}${c.guard_rate ? `<div><b>${esc(c.guard_rate.replace(/_/g, " "))}</b> (guardrail): must not rise by more than ${(c.guard_rate_margin * 100).toFixed(0)} points</div>` : ""}`;
-  return c.metrics.map(x => `<div><span class="tag">${x.role === "primary" ? "Primary" : x.role === "guardrail" ? "Guardrail" : "Secondary"}</span> <b>${esc(x.def.name)}</b> ${x.def.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.def))}</span>${x.role === "guardrail" && x.limit ? ` · <b>${esc(limitWords(x.limit, x.def))}</b>` : ""}${x.role === "secondary" ? ` <span class="note">(for insight only)</span>` : ""}</div>`).join("");
+  return c.metrics.map(x => `<div><span class="tag">${x.role === "primary" ? "Primary" : x.role === "guardrail" ? "Guardrail" : "Secondary"}</span> <b>${esc(x.def.name)}</b> ${x.def.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.def))}</span>${x.role === "guardrail" && x.limit ? ` · <b>${esc(limitWords(x.limit, x.def, x.def.direction))}</b>` : ""}${x.role === "secondary" ? ` <span class="note">(for insight only)</span>` : ""}</div>`).join("");
 }
 /** "100% of counted leads matched this rule", from the engine's re-check of every counted lead. */
 function segMatchLine(rec) { const s = rec.result && rec.result.segment_check; if (!s) return ""; return `${pct(s.matching / Math.max(1, s.counted_leads), 0)} of counted leads matched this rule (${nf(s.matching)} of ${nf(s.counted_leads)}, re-read from the record)`; }

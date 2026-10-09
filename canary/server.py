@@ -110,6 +110,8 @@ def _resolve_metrics(items) -> list:
             if m.get("available") is False:
                 raise ValueError(f"{m['name']}: Not in data yet")
             d = metriclib.definition(m)
+            if it.get("direction") in ("higher", "lower"):
+                d = {**d, "direction": it["direction"]}           # the page lets a test say which way is better for its own use of a metric
         elif isinstance(it.get("def"), dict):
             d = metriclib.validate(it["def"])                    # columns from the data only; denominator above 0; a rate between 0 and 100%
             if d["key"] in metriclib.BY_KEY:

@@ -45,6 +45,11 @@ def sql_cases(db: Path) -> list:
     return out
 
 
+class Catalog(unittest.TestCase):
+    def test_the_disposition_list_matches_the_history(self):
+        self.assertEqual(catalog.VARS["disposition"]["values"], history.DISP_VALUES)
+
+
 class PlanUnits(unittest.TestCase):
     def test_pure_functions_in_node(self):
         node = shutil.which("node")

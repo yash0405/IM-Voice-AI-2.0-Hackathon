@@ -73,7 +73,7 @@ Technical judges: **Settings** > Tools opens the proof lab; `python -m canary ex
 
 **Where do the lead factors (HL Type, Legal Status, Vertical...) and the 30-day history come from?** The recordings carry none, so the catalog uses the New Experiment spec's factors and values with a placeholder mix, and the 30-day history is a labelled synthetic placeholder (call lengths resampled from the 713 real recordings); every screen that shows them says so. It affects only who is eligible and how the split is checked, never an outcome. With real lead data the catalog is replaced and nothing else changes.
 
-**Does a language model read the segment?** No: a rule-based reader finds the catalog's values in the sentence, shows the exact rule and lets you correct it with lists. A model could be plugged in at the same place (it must return the same structured rule); we did not spend credits on it.
+**Does a language model read the segment?** No: the audience is built from lists (a factor, then its values), never typed, and the rule is shown in plain words as you build it. An earlier plain-English reader was replaced by this builder in the New Experiment overhaul.
 
 **The BRD says false winners about 5%. You show 2.5%?** The BRD's 5% is the two-sided 95% test: about 5% of identical-prompt tests look different, half in B's favour. We report both: 2.5% wrongly promoted and about 2.2% logged as a loss (nothing ships). Counting only wrong shipments, 2.5% is the right target.
 

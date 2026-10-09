@@ -312,7 +312,7 @@ Primary goal is any disposition (`primary_goal`, direction `higher`/`lower`); th
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests   # tests: Ran 212 tests in 50.122s - OK
+python -m unittest discover -s tests   # tests: Ran 215 tests in 54.451s - OK
 python -m canary proof                  # ~10 s, writes out/proof.json
 python -m canary build                  # dist/canary_demo.html (offline)
 python -m canary qa                     # this report

@@ -391,3 +391,17 @@ class WizardMetrics(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QaFixes(unittest.TestCase):
+    """Findings of the independent QA pass, kept fixed."""
+
+    def test_a_built_in_metric_keeps_the_direction_the_page_sends(self):
+        from canary import server
+        items = server._resolve_metrics([{"role": "primary", "key": "buylead_created"}, {"role": "secondary", "key": "answered_pct", "direction": "lower"}])
+        self.assertEqual([m["def"]["direction"] for m in items], ["higher", "lower"])
+
+    def test_history_shows_each_scenario_as_titled(self):
+        from canary import console
+        kinds = {e["id"]: e["record"]["result"]["kind"] for e in console.past_tests() if e["id"] in ("past_fix_flat", "past_guardrail_hold")}
+        self.assertEqual(kinds, {"past_fix_flat": "INCONCLUSIVE", "past_guardrail_hold": "HOLD_FOR_APPROVAL"})

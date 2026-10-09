@@ -45,7 +45,9 @@ CATALOG = [
      "type": "pick-list", "values": ["Top Cities - Inhouse", "Top Cities - Channel", "Emerging Market - Channel", "NA"], "mix": [0.35, 0.25, 0.30, 0.10], "pre_call": True, "balance": True, "strata": False},
     # decided during the call: listed so the catalog is complete, refused by the segment builder
     {"name": "disposition", "column": "disposition", "label": "Call disposition", "short": "Disposition", "meaning": "How the call ended", "type": "pick-list",
-     "values": [], "mix": None, "pre_call": False, "balance": False, "strata": False},
+     "values": ["BuyLead created", "Meeting Fixed", "Callback Fixed", "Buyer Enriched", "Requirement not confirmed", "Wanted the original seller only",
+                "No product requirement", "Other / unclear", "Nobody spoke"],                  # the same list as history.DISP_VALUES (a test checks it)
+     "mix": None, "pre_call": False, "balance": False, "strata": False},
     {"name": "call_duration", "column": "call_duration", "label": "Call duration", "short": "Duration", "meaning": "Talk time of the call", "type": "number",
      "values": [], "mix": None, "pre_call": False, "balance": False, "strata": False},
 ]

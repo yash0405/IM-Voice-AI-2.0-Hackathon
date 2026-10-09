@@ -155,6 +155,9 @@ class HistorySim:
       * hang_extra (absolute): with that probability a B answered call is replaced by a short one (under the early hang-up cut-off,
         resampled from the history's short answered calls).
     `sc.true_a` / `sc.true_b` are the analytic expectations of the primary in A and B.
+    Side effect, stated plainly: a call ends in ONE disposition, so a B with more goal leads has proportionally fewer of every other
+    disposition among the leads it counts (for example "B wins +15%" on BuyLead created lowers Callback Fixed by about 12% relative).
+    A guardrail or secondary metric built on another disposition will therefore move in B even though only the primary was targeted.
     Limitation: a metric condition on a lead FACTOR is classed on the history lead's own factors, so an effect on such a metric is approximate.
     """
 

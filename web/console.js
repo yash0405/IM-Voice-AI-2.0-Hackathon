@@ -72,8 +72,13 @@ const segOf = e => e.audience || (e.record && e.record.config && e.record.config
 
 /* ------------------------------------------------------------------ experiments and their demo state */
 const SK = "canary_console_v1";
-const DYN = store.get(SK, { dyn: {}, launched: [], settings: {}, libLog: [], ui: {} });
-const saveDyn = () => store.set(SK, DYN);
+/* Demo state in this browser. A prompt (about 170 KB) is kept once however many drafts and tests use it, and a full storage is reported. */
+const BIG_TEXT = 20000, fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36) + "_" + s.length.toString(36); };
+function loadDyn() { try { const raw = localStorage.getItem(SK); if (!raw) return null; const o = JSON.parse(raw); return o && o.packed === 2 ? JSON.parse(o.body, (k, v) => typeof v === "string" && v[0] === "\u0001" ? o.texts[v.slice(1)] : v) : o; } catch { return null; } }
+const DYN = loadDyn() || { dyn: {}, launched: [], settings: {}, libLog: [], ui: {} };
+let saveWarned = false;
+const saveDyn = () => { try { const texts = {}, body = JSON.stringify(DYN, (k, v) => { if (typeof v === "string" && v.length > BIG_TEXT) { const h = fnv(v); texts[h] = v; return "\u0001" + h; } return v; }); localStorage.setItem(SK, JSON.stringify({ packed: 2, texts, body })); }
+  catch (e) { if (!saveWarned) { saveWarned = true; toast("This browser could not save the demo state (its storage is full). Delete old drafts, or reset the demo in Settings.", 6000); } } };
 const SET = () => ({ ...C.defaults, ...DYN.settings });
 const EXPS = () => [...C.demo, ...DYN.launched, ...C.past];
 const byId = id => EXPS().find(e => e.id === id);
@@ -154,7 +159,7 @@ function secondaryHtml(v) {
 /** The locked metric list in plain words (Review, the final report). */
 function metricsSummaryHtml(c) {
   if (!c.metrics) return `<div><b>${esc(goalName(c))}</b> (primary, ${c.primary_direction === "lower" ? "lower" : "higher"} is better)</div>${c.secondary_role === "guardrail" ? `<div><b>Call duration</b> (guardrail): must not rise by more than ${(c.guardrail_margin * 100).toFixed(0)}%</div>` : ""}${c.guard_rate ? `<div><b>${esc(c.guard_rate.replace(/_/g, " "))}</b> (guardrail): must not rise by more than ${(c.guard_rate_margin * 100).toFixed(0)} points</div>` : ""}`;
-  return c.metrics.map(x => `<div><span class="tag">${x.role === "primary" ? "Primary" : x.role === "guardrail" ? "Guardrail" : "Secondary"}</span> <b>${esc(x.def.name)}</b> ${x.def.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.def))}</span>${x.role === "guardrail" && x.limit ? ` · <b>${esc(limitWords(x.limit, x.def))}</b>` : ""}${x.role === "secondary" ? ` <span class="note">(for insight only)</span>` : ""}</div>`).join("");
+  return c.metrics.map(x => `<div><span class="tag">${x.role === "primary" ? "Primary" : x.role === "guardrail" ? "Guardrail" : "Secondary"}</span> <b>${esc(x.def.name)}</b> ${x.def.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.def))}</span>${x.role === "guardrail" && x.limit ? ` · <b>${esc(limitWords(x.limit, x.def, x.def.direction))}</b>` : ""}${x.role === "secondary" ? ` <span class="note">(for insight only)</span>` : ""}</div>`).join("");
 }
 /** "100% of counted leads matched this rule", from the engine's re-check of every counted lead. */
 function segMatchLine(rec) { const s = rec.result && rec.result.segment_check; if (!s) return ""; return `${pct(s.matching / Math.max(1, s.counted_leads), 0)} of counted leads matched this rule (${nf(s.matching)} of ${nf(s.counted_leads)}, re-read from the record)`; }
@@ -359,7 +364,7 @@ const customMetrics = () => ((typeof DYN !== "undefined" && DYN.settings && DYN.
 /** Every metric a test can use: the built-ins, the custom ones saved in Settings > Metrics, and `extra` (kept for one test only). */
 function allMetrics(extra) { const seen = new Set(), out = []; for (const m of [...METRIC_CAT().builtin, ...customMetrics().map(m => ({ ...m, group: "Custom", custom: true })), ...(extra || []).map(m => ({ ...m, group: "Custom", custom: true, local: true }))]) { if (!seen.has(m.key)) { seen.add(m.key); out.push(m); } } return out; }
 const metricByKey = (k, extra) => allMetrics(extra).find(m => m.key === k) || null;
-const colLabel = c => (HIST().col[c] || catCol(c) || { label: c }).label;
+const colLabel = c => (HIST().col[c] || catCol(c) || { label: String(c).replace(/_/g, " ").replace(/^./, x => x.toUpperCase()) }).label;
 const condWords = c => c.op === "is_not" ? `${colLabel(c.col)} is not ${c.values.length > 1 ? "any of " + c.values.join(", ") : c.values[0]}` : `${colLabel(c.col)} is ${orWords(c.values)}`;
 const sideWords = (side, all) => side.where && side.where.length ? `${side.unit === "calls" ? "Calls" : "Leads"} where ${side.where.map(condWords).join(" and ")}` : (all || `All ${side.unit === "calls" ? "calls" : "leads"} attempted`);
 /** The formula in plain words: "Calls where Call status is Answered ÷ All calls attempted". */
@@ -405,6 +410,7 @@ function baselineFor(m, seg) {
 function metricCheck(m) {
   const errs = [], mc = METRIC_CAT(), H = HIST(), max = mc.max_conditions || 3;
   if (!m || !String(m.name || "").trim()) errs.push("Give the metric a name.");
+  else if (allMetrics().some(x => x.key === (m.key || metricKey(m.name)) && x.name.trim().toLowerCase() !== String(m.name).trim().toLowerCase())) errs.push(`This name is too close to the existing metric "${allMetrics().find(x => x.key === (m.key || metricKey(m.name))).name}": choose another name.`);
   else if (String(m.name).length > 60) errs.push("The name is too long (60 characters at most).");
   else if (allMetrics().some(x => x.key !== m.key && x.name.trim().toLowerCase() === String(m.name).trim().toLowerCase())) errs.push("A metric with this name already exists.");
   const conds = (list, label, needOne) => {
@@ -422,10 +428,19 @@ function metricCheck(m) {
   else if (m.type === "rate") { conds(m.num && m.num.where, "Numerator", true); conds(m.den && m.den.where, "Denominator", false); if (!m.num || !["calls", "leads"].includes(m.num.unit) || !m.den || !["calls", "leads"].includes(m.den.unit)) errs.push("Count calls or leads on both sides."); }
   else { const col = H.col[m.col]; if (!col) errs.push("Choose a number column to average."); else if (col.type !== "number") errs.push(`${col.label} is not a number column.`); if (!["calls", "leads"].includes(m.unit)) errs.push("Average over calls or leads."); conds(m.where, "Condition", false); }
   if (m && !["higher", "lower"].includes(m.direction)) errs.push("Choose whether higher or lower is better.");
+  const twin = !errs.length && allMetrics().find(x => x.key !== m.key && x.available !== false && metricBody(x) === metricBody(m));
+  if (twin) errs.push(`This counts the same thing as "${twin.name}": use that metric instead.`);
   let ev = null;
   if (!errs.length) { ev = metricEval(m, null); if (!(ev.den > 0)) errs.push("The denominator is 0 on the last 30 days: nothing would be counted."); else if (m.type === "rate" && (ev.value < 0 || ev.value > 1)) errs.push(`This rate comes to ${(ev.value * 100).toFixed(0)}%: a rate must lie between 0 and 100%. Make the numerator count a part of the denominator.`); }
   return { ok: !errs.length, errors: [...new Set(errs)], ev };
 }
+/** What a metric counts, without its name or direction: two metrics with the same body count the same thing. */
+function metricBody(m) {
+  const cond = c => ({ col: c.col, op: c.op === "is_not" ? "is_not" : "in", values: [...(c.values || [])].sort() }), side = x => x ? { unit: x.unit, where: (x.where || []).map(cond).sort((p, q) => JSON.stringify(p) < JSON.stringify(q) ? -1 : 1) } : null;
+  return JSON.stringify(m.type === "rate" ? { type: "rate", num: side(m.num), den: side(m.den) } : { type: "average", col: m.col, unit: m.unit, where: side({ unit: m.unit, where: m.where }).where });
+}
+/** How big a lift an inconclusive test could settle, in the metric's own unit (an average has no points). */
+const liftWords = o => o.lift_pp != null ? `${o.lift_pp} points` : `${o.lift} ${o.unit || ""}`.trim();
 /** A metric key from its name: custom_answered_pct. */
 const metricKey = name => "custom_" + String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50);
 
@@ -439,7 +454,7 @@ function testMetrics(w) {
 }
 /** Roles have limits: 3 guardrails and 5 secondary metrics (the pre-added guardrail counts). */
 const roleFull = (w, role) => role === "guardrail" ? (w.guards || []).length >= METRIC_CAT().limits.guardrails : (w.secondary || []).length >= METRIC_CAT().limits.secondary;
-const limitWords = (l, m) => !l ? "" : `must not get worse by more than ${l.value}${l.kind === "rel" ? "%" : m && m.type === "average" ? " " + (metricUnit(m) || "units") : " points"}`;
+const limitWords = (l, m, dir) => !l ? "" : `must not ${(dir || (m && m.direction)) === "higher" ? "fall" : "rise"} by more than ${l.value}${l.kind === "rel" ? "%" : m && m.type === "average" ? " " + (metricUnit(m) || "units") : " points"}`;
 
 /* ------------------------------------------------------------------ the duration plan: ONE function for Step 5 and the "At a glance" panel */
 const Z_CONF = { 0.9: 1.645, 0.95: 1.96, 0.99: 2.576 }, Z_POWER = 0.84;     // 95% two-sided and 80% power give (1.96 + 0.84)^2 = 7.84
@@ -450,12 +465,12 @@ const zConf = conf => Z_CONF[conf] || normPpf(1 - (1 - conf) / 2);
 function durationPlan(x) {
   const conf = x.conf || 0.95, z = zConf(conf), k = (z + Z_POWER) ** 2, s = x.share, lpd = x.lpd, d = Math.abs(x.d);
   const spread2 = x.type === "average" ? (x.sd || 0) ** 2 : x.p * (1 - x.p);
-  const nB = k * spread2 / ((1 - s) * d * d), bPerDay = lpd * s, rawDays = nB / bPerDay;
+  const infl = x.seq ? 1.06 : 1, nB = k * spread2 / ((1 - s) * d * d) * infl, bPerDay = lpd * s, rawDays = nB / bPerDay;       // the early promote/stop rule looks every day: about 6% more data
   const weeks = Math.max(7, Math.ceil(rawDays / 7 - 1e-9) * 7), tooBig = !(weeks <= 28), rec = tooBig ? 28 : weeks;
   const days = x.days ? +x.days : rec;
-  const nBd = lpd * s * days, nAd = lpd * (1 - s) * days, smallest = (z + Z_POWER) * Math.sqrt(spread2 * (1 / nAd + 1 / nBd));
+  const nBd = lpd * s * days, nAd = lpd * (1 - s) * days, smallest = (z + Z_POWER) * Math.sqrt(infl * spread2 * (1 / nAd + 1 / nBd));
   const minLeads = x.minLeads || 0, minDay = minLeads ? Math.ceil(minLeads / Math.max(1e-9, Math.min(bPerDay, lpd * (1 - s)))) : 0;
-  return { z, k, s, lpd, d, spread2, nB, bPerDay, rawDays, weeks, rec, tooBig, days, custom: !!x.days, shorter: !!x.days && x.days < rec, nBd, nAd, smallest, minDay, minLate: minLeads > 0 && minDay > days,
+  return { z, k, s, lpd, d, spread2, seq: !!x.seq, nB, bPerDay, rawDays, weeks, rec, tooBig, days, custom: !!x.days, shorter: !!x.days && x.days < rec, nBd, nAd, smallest, minDay, minLate: minLeads > 0 && minDay > days,
     tooBigMsg: "This audience is too small for this test. Widen the audience, raise B's share, or aim for a bigger improvement." };
 }
 /** Improvement presets: points for a rate, a share of today's value for an average. */
@@ -465,7 +480,7 @@ function improvementOf(size, m, base) { const pts = { small: 2, medium: 5, large
 const JINJA_WORDS = new Set(["if", "elif", "else", "endif", "for", "endfor", "in", "not", "and", "or", "is", "set", "endset", "true", "false", "none", "True", "False", "None", "loop", "range", "macro", "endmacro", "block", "endblock", "with", "endwith", "defined", "raw", "endraw", "include", "import", "from", "as", "recursive", "filter", "endfilter", "call", "endcall"]);
 /** Names of the template variables a prompt uses, inside {{ ... }} and {% ... %} tags (strings, filters, attributes and loop variables left out). */
 function promptVars(text) {
-  const out = new Set(), local = new Set(), tags = String(text || "").match(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g) || [];
+  const out = new Set(), local = new Set(), tags = String(text || "").replace(/\{#[\s\S]*?#\}/g, " ").match(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g) || [];
   for (const t of tags) {
     const body = t.slice(2, -2).replace(/(["'])(?:\\.|(?!\1).)*\1/g, " ");
     const decl = body.match(/^\s*(?:for\s+([\w\s,]+?)\s+in\b|set\s+(\w+))/); if (decl) (decl[1] || decl[2]).split(",").forEach(x => local.add(x.trim()));
@@ -570,7 +585,7 @@ function plainSummary(e) {
   const verdict = { PROMOTE: "Decision: promote B to all traffic. The evidence is strong enough that luck is an unlikely explanation and the guardrail holds.", STOP_HARM: "Decision: stop B early and send its leads back to A. B is clearly worse.", LOSS: "Decision: keep A. At the final call B is significantly worse than A, so it is logged as a loss and nothing ships.", STOP_GUARDRAIL: "Decision: stop B. It breaks a guardrail even if the goal improved.",
     HOLD_FOR_APPROVAL: "Decision: hold for a person. B wins on the goal but a guardrail is not proven. Nothing has changed for callers.", INCONCLUSIVE: "Decision: inconclusive, keep A. The test found no evidence of a difference; that is not proof of none.", HALT_SRM: "Decision: halted. The test itself is broken (the split or the log), so nothing can be trusted.",
     REJECTED: "Decision: a person rejected the held change. A stays live.", ROLLED_BACK: "Decision: B was promoted and then rolled back by a person.", STOPPED_MANUAL: "Decision: a person stopped the test early." }[k] || "No decision yet.";
-  const more = k === "INCONCLUSIVE" && r.more_leads && r.more_leads.options ? " " + r.more_leads.options.map(o => o.enough_already ? `There was already enough data to detect ${o.lift_pp} points, so any real lift is smaller.` : `Detecting ${o.lift_pp} points would take about ${nf(o.more_leads)} more leads (about ${o.more_days} days).`).slice(0, 2).join(" ") : "";
+  const more = k === "INCONCLUSIVE" && r.more_leads && r.more_leads.options ? " " + r.more_leads.options.map(o => o.enough_already ? `There was already enough data to detect ${liftWords(o)}, so any real lift is smaller.` : `Detecting ${liftWords(o)} would take about ${nf(o.more_leads)} more leads (about ${o.more_days} days).`).slice(0, 2).join(" ") : "";
   return `${verdict} ${nums}${g}${more}${src}`;
 }
 
@@ -801,9 +816,9 @@ ROUTES.live = (el, arg) => {
   const sel = `<select id="live-pick" aria-label="Choose an experiment">${groups.map(([g, list]) => list.length ? `<optgroup label="${g}">${list.map(([e, x]) => `<option value="${esc(e.id)}" ${e.id === pick.id ? "selected" : ""}>${esc(e.record.config.name)} — ${esc(x.status[0])}</option>`).join("")}</optgroup>` : "").join("")}</select>`;
   const canApprove = v.kind === "HOLD_FOR_APPROVAL" && !d.approval, canRoll = v.kind === "PROMOTE" && !d.rolledBack && v.decided;
   const stat = v.scheduled ? `Scheduled for ${fdate(pick.sched_date || c.start)}` : v.ended ? `${KIND_LABEL[v.kind] || v.kind} on day ${v.ld} of ${v.win}` : d.paused ? `Paused, day ${v.day} of ${v.win}` : `Running, day ${v.day} of ${v.win}`;
-  const segHead = `<p class="note" style="margin-top:4px"><b>Audience:</b> ${segChips(c.segment)} ${esc(segDescribe(c.segment))}${rec.result.segment_check ? ` · ${pct(rec.result.segment_check.share_of_traffic, 0)} of traffic, about ${nf(rec.result.segment_check.eligible_per_day)} leads a day · ${esc(segMatchLine(rec))}` : ""}</p>`;
+  const segHead = `<p class="note" style="margin-top:4px"><b>Audience:</b> ${segChips(c.segment)} ${esc(segDescribe(c.segment))}${rec.result.segment_check ? ` · ${pct(rec.result.segment_check.share_of_traffic, 0)} of traffic, about ${c.metrics ? nf(rec.result.segment_check.eligible_per_day * connectShare()) + " connected" : nf(rec.result.segment_check.eligible_per_day)} leads a day · ${esc(segMatchLine(rec))}` : ""}</p>`;
   const sub = `Config <b>v${c.version || 1}</b> <span class="mono">${esc(rec.config_hash)}</span> (locked) · started ${fdate(c.start)} · ${esc(c.rule_set === "final_look" ? "one winner call at the end, strict daily harm check" : "early promote and early stop")}`;
-  const replayNote = pick.replay_of ? `<div class="banner warn"><div><b>Offline replay.</b> A new test normally runs the engine, which needs the live version (<span class="mono">./start.sh</span>). Here the pre-computed ${esc(pick.preset)} run is replayed under your name; your plan fields (days, share, rules) were not applied.</div></div>` : "";
+  const replayNote = pick.replay_of ? `<div class="banner warn"><div><b>Offline replay.</b> A new test normally runs the engine, which needs the live version (<span class="mono">./start.sh</span>). Here the pre-computed ${esc(pick.preset)} run is replayed under your name; your plan fields (days, share, rules), audience, prompt B and metrics were not applied: the header and numbers below are that run's.</div></div>` : "";
   const hdr = `<div class="exp-head"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2 style="font-size:20px;font-weight:600;color:var(--navy)">${esc(c.name)}</h2>${statusPill(v)}</div><p class="sub" style="color:var(--ink-2)">${esc(stat)} \u00b7 ${sub}</p>${pick.hypothesis ? `<p class="note" style="margin-top:4px">${esc(pick.hypothesis)}</p>` : ""}${segHead}
     <div class="actions" style="margin:12px 0 16px">${v.scheduled ? `<button class="btn primary" id="a-start">Start now (demo)</button>` : ""}${v.running || d.paused && !v.ended ? `<button class="btn" id="a-pause">${d.paused ? "Resume" : "Pause"}</button>` : ""}${!v.ended && !v.scheduled ? `<button class="btn danger" id="a-stop">Stop</button>` : ""}
       <button class="btn primary" id="a-approve" ${canApprove ? "" : "disabled"} title="Needs a test that is held for approval">Approve</button>${canApprove ? `<button class="btn" id="a-reject">Reject</button>` : ""}<button class="btn danger" id="a-roll" ${canRoll ? "" : "disabled"} title="Needs a promoted test">Rollback</button></div></div>`;
@@ -864,7 +879,8 @@ function wireLive(el, e) {
   a("#a-approve", () => { d.approval = "approved"; saveDyn(); toast("Approved. The click is added to the record."); route(); });
   a("#a-reject", () => { d.approval = "rejected"; saveDyn(); toast("Rejected. A stays live."); route(); });
   a("#a-roll", () => { d.rolledBack = true; saveDyn(); toast("Rolled back. The click is added to the record."); route(); });
-  a("#a-csv", () => download(`${e.id}_daily.csv`, toCsv(["day", "leads_A", "goal_A", "leads_B", "goal_B", "rate_A", "rate_B", "lift_pp", "z", "stop_line"], v.rows.map(({ day, row }) => [day, row.nA, row.xA, row.nB, row.xB, row.rateA.toFixed(4), row.rateB.toFixed(4), (row.diff * 100).toFixed(2), row.z.toFixed(3), (-row.harm).toFixed(3)]))));
+  a("#a-csv", () => download(`${e.id}_daily.csv`, primaryDef(v.config).type === "average" ? toCsv(["day", "leads_A", "counted_A", "leads_B", "counted_B", "mean_A", "mean_B", "lift_" + (metricUnit(primaryDef(v.config)) || "units"), "z", "stop_line"], v.rows.map(({ day, row }) => [day, row.nA, row.dA, row.nB, row.dB, row.rateA.toFixed(3), row.rateB.toFixed(3), row.diff.toFixed(3), row.z.toFixed(3), (-row.harm).toFixed(3)]))
+    : toCsv(["day", "leads_A", "goal_A", "leads_B", "goal_B", "rate_A", "rate_B", "lift_pp", "z", "stop_line"], v.rows.map(({ day, row }) => [day, row.nA, row.xA, row.nB, row.xB, row.rateA.toFixed(4), row.rateB.toFixed(4), (row.diff * 100).toFixed(2), row.z.toFixed(3), (-row.harm).toFixed(3)]))));
   a("#a-verify", () => { const tailK = d.approval === "approved" ? "approve" : d.approval === "rejected" ? "reject" : d.rolledBack ? "rollback" : null, ents = e.record.ledger.concat(tailK && e.record.tails ? e.record.tails[tailK] || [] : []); const ok = chainOk(ents); $1("#verify-out").innerHTML = ok ? `<span style="color:#167a70;font-weight:600">✓ Chain intact</span>: ${ents.length} entries re-hashed just now, head <span class="mono">${esc(ents[ents.length - 1].hash.slice(0, 12))}</span>.` : `<span style="color:#b23b3b;font-weight:600">✕ Record BROKEN</span>: an entry was changed.`; });
 }
 
@@ -901,10 +917,10 @@ const wzRef = w => wzPrimary(w) || metricByKey(REF_METRIC);
 /* ---- the plan: one call of durationPlan with this test's state (Step 5 and "At a glance" both read this) */
 function wzPlan(w) {
   const seg = wzSeg(w), m = wzRef(w), base = baselineFor(m, seg), vol = audienceVolume(seg);
-  const lpd = w.lenMode === "custom" && w.customLpd > 0 ? +w.customLpd : vol.perDay;
-  const dDefault = improvementOf(w.size, m, base.value), d = w.lenMode === "custom" && w.customD > 0 ? (m.type === "average" ? +w.customD : w.customD / 100) : dDefault;
-  const plan = durationPlan({ type: m.type, p: base.value, sd: base.sd, lpd, share: w.share, d, conf: w.confidence, days: w.lenMode === "custom" ? (+w.customDays || null) : null, minLeads: w.minLeads });
-  const dir = (w.primary ? (testMetrics(w)[0] || {}).direction : null) || m.direction || "higher";
+  const cust = w.lenMode === "custom", lpd = cust && w.customLpdTouched && w.customLpd > 0 ? +w.customLpd : vol.perDay;           // edited by the person, or from the data
+  const dDefault = improvementOf(w.size, m, base.value), d = cust && w.customDTouched && w.customD > 0 && w.customDType === m.type ? (m.type === "average" ? +w.customD : w.customD / 100) : dDefault;
+  const plan = durationPlan({ type: m.type, p: base.value, sd: base.sd, lpd, share: w.share, d, conf: w.confidence, days: cust ? (+w.customDays || null) : null, minLeads: w.minLeads, seq: w.rule === "sequential" });
+  const dir = m.direction || "higher";
   const light = plan.tooBig ? "red" : (plan.shorter || plan.minLate) ? "amber" : "green";
   return { ...plan, seg, m, base, vol, dDefault, dir, light, target: base.value == null ? null : base.value + (dir === "lower" ? -d : d) };
 }
@@ -915,7 +931,7 @@ function planWords(w, P) {
   const m = P.m, avg = m.type === "average", unitW = avg ? fmtPts(P.d, m).replace(/^[+−]/, "") : `${(P.d * 100).toFixed(P.d * 100 % 1 ? 1 : 0)} points`;
   return `Your audience gets about <b>${nf(P.lpd)}</b> leads a day. Prompt B gets ${pct(P.s, 0)} of them, about <b>${nf(P.bPerDay)}</b> a day. ${avg ? `Today's average ${esc(m.name.toLowerCase())}` : `Today's ${esc(m.name)} rate`} for this audience is <b>${fmtMetric(P.base.value, m)}</b>.
     To reliably spot an improvement of ${unitW} (${fmtMetric(P.base.value, m)} → ${fmtMetric(P.target, m)}), B needs about <b>${nf(P.nB)}</b> leads.
-    ${nf(P.nB)} ÷ ${nf(P.bPerDay)} = ${P.rawDays > 999 ? "999+" : P.rawDays.toFixed(1)} days, rounded up to whole weeks = <b>${P.tooBig ? "more than 28" : P.weeks} days</b>.`;
+    ${nf(P.nB)} ÷ ${nf(P.bPerDay)} = ${P.rawDays > 999 ? "999+" : P.rawDays.toFixed(1)} days, rounded up to whole weeks = <b>${P.tooBig ? "more than 28" : P.weeks} days</b>.${P.seq ? " (B's leads include about 6% extra: the early promote and stop rule looks every day.)" : ""}`;
 }
 
 /* ---- At a glance: the same numbers as Step 5, from the same function */
@@ -928,7 +944,7 @@ function glance(w) {
       <dt>Audience leads a day</dt><dd class="num" data-g="lpd">${nf(P.lpd)}</dd><dt>Prompt B gets</dt><dd class="num" data-g="bpd">${pct(P.s, 0)} · ${nf(P.bPerDay)} a day</dd>
       <dt>Today's ${esc(P.m.name)}${w.primary ? "" : " *"}</dt><dd class="num" data-g="base">${fmtMetric(P.base.value, P.m)}</dd><dt>Improvement to catch</dt><dd class="num" data-g="d">${fmtPts(P.dir === "lower" ? -P.d : P.d, P.m)}</dd>
       <dt>B needs</dt><dd class="num" data-g="nb">${nf(P.nB)} leads</dd><dt>Days needed</dt><dd class="num" data-g="days"><b>${P.rawDays > 999 ? "999+" : P.rawDays.toFixed(1)}</b> → ${P.tooBig ? "over 28" : P.weeks + " (whole weeks)"}</dd>
-      <dt>Test length</dt><dd class="num" data-g="len">${P.days} days${P.custom ? " (custom)" : ""}</dd><dt>Smallest improvement it can spot</dt><dd class="num" data-g="small">${fmtPts(P.smallest, P.m)}</dd>
+      <dt>Test length</dt><dd class="num" data-g="len">${P.days} days${P.custom ? " (custom)" : ""}</dd><dt>Smallest improvement it can spot</dt><dd class="num" data-g="small">${fmtPts(P.dir === "lower" ? -P.smallest : P.smallest, P.m)}</dd>
       <dt>Decisions can start</dt><dd class="num" data-g="minday">day ${P.minDay > 60 ? "60+" : P.minDay}</dd></dl>
     ${w.primary ? "" : `<p class="note" style="margin-top:4px">* until you choose a primary goal</p>`}${P.base.fallback ? `<p class="note">${esc(P.base.note)}</p>` : ""}
     <div class="banner ${P.light === "green" ? "pos" : P.light === "amber" ? "warn" : "neg"}" style="margin:12px 0 0;padding:8px 12px"><div style="font-size:13px">${esc(msg)}</div></div></div>`;
@@ -969,7 +985,7 @@ function metricCard(w, role, i) {
   return `<div class="goal-card mcard" data-mcard="${role}:${i}" tabindex="0" role="button" aria-label="Edit ${esc(m.name)}"><span class="role ${role === "guardrail" ? "g" : "s"}">${roleName(role)}</span>
     <div class="mcard-tools"><details class="kebab"><summary aria-label="More actions for ${esc(m.name)}" title="More">⋯</summary><div class="menu"><button data-mmove="${role}:${i}" ${full ? "disabled" : ""} title="${full ? "Max reached — more metrics mean more false alarms." : ""}">Move to ${other}</button></div></details><button class="x" data-mdel="${role}:${i}" aria-label="Remove ${esc(m.name)}" title="Remove">×</button></div>
     <div class="mcard-name"><b>${esc(m.name)}</b> <span class="arrow" title="${item.direction === "lower" ? "lower is better" : "higher is better"}">${item.direction === "lower" ? "↓" : "↑"}</span></div>
-    <div class="def">${esc(metricWords(m))}</div><div class="meta">${role === "guardrail" ? esc(limitWords(item.limit, m)) + " · " : ""}today ${fmtMetric(b.value, m)} for this audience</div></div>`;
+    <div class="def">${esc(metricWords(m))}</div><div class="meta">${role === "guardrail" ? esc(limitWords(item.limit, m, item.direction)) + " · " : ""}today ${fmtMetric(b.value, m)} for this audience</div></div>`;
 }
 function condRows(cm, side, list) {
   const cols = HIST().cols.filter(c => c.type === "category"), max = METRIC_CAT().max_conditions || 3;
@@ -1020,10 +1036,11 @@ function metricPanel(w) {
 function goalsStep(w) {
   const seg = wzSeg(w), prim = wzPrimary(w), used = usedKeys(w), outcomes = allMetrics(w.localMetrics).filter(m => m.group === "Outcome"), customs = allMetrics(w.localMetrics).filter(m => m.custom);
   const opt = m => `<option value="${esc(m.key)}" ${w.primary === m.key ? "selected" : ""} ${used.includes(m.key) && w.primary !== m.key ? "disabled" : ""}>${esc(m.name)}${used.includes(m.key) && w.primary !== m.key ? " (already added)" : ""}</option>`;
-  const pb = prim ? baselineFor(prim, seg) : null;
+  const pb = prim ? baselineFor(prim, seg) : null, lost = w.primary && !prim;
   return `<h2>4. Goals</h2><p class="sub">One primary goal decides the test. Guardrails can stop or hold it. Secondary metrics are reported only.</p>
     <section class="goal-sec"><h3>Primary goal</h3><p class="note">Exactly one: the result the test is judged on.</p>
-      <select id="w-primary" aria-label="Primary goal" style="max-width:420px"><option value="" ${w.primary ? "" : "selected"} disabled>Choose the main goal</option>${outcomes.map(opt).join("")}${customs.length ? `<optgroup label="Custom metrics">${customs.map(opt).join("")}</optgroup>` : ""}<option value="__custom" ${w.ui.primCustom ? "selected" : ""}>+ Custom metric</option></select>
+      <select id="w-primary" aria-label="Primary goal" style="max-width:420px"><option value="" ${prim ? "" : "selected"} disabled>Choose the main goal</option>${outcomes.map(opt).join("")}${customs.length ? `<optgroup label="Custom metrics">${customs.map(opt).join("")}</optgroup>` : ""}<option value="__custom" ${w.ui.primCustom ? "selected" : ""}>+ Custom metric</option></select>
+      ${lost ? `<p class="note" style="color:#b23b3b;margin-top:8px">The primary goal chosen earlier was removed from Settings > Metrics. Choose another.</p>` : ""}
       ${w.ui.primCustom ? `<div class="card" style="background:var(--bg-2);margin-top:12px">${cmBuilder(w, w.cm || (w.cm = newCm()), true)}<div class="actions" style="margin-top:12px"><button class="btn primary" id="w-cmsavep">Save metric</button><button class="btn" id="w-cmcancel">Cancel</button></div></div>`
         : prim ? `<div class="goal-card primary" style="margin-top:12px;max-width:520px"><span class="role">Primary</span><div class="mcard-name"><b>${esc(prim.name)}</b> <span class="arrow">${prim.direction === "lower" ? "↓" : "↑"}</span></div><div class="def">${esc(metricWords(prim))}</div><div class="meta">${prim.direction === "lower" ? "lower" : "higher"} is better · today ${fmtMetric(pb.value, prim)} for this audience (last 30 days)</div></div>` : ""}</section>
     <section class="goal-sec"><h3>Guardrails</h3><p class="note">Metrics that must not get worse; they can stop or hold a test.</p><div class="goal-row">${w.guards.map((g, i) => metricCard(w, "guardrail", i)).join("") || `<div class="note">No guardrails.</div>`}</div></section>
@@ -1033,7 +1050,7 @@ function goalsStep(w) {
 }
 
 /* ---- overlap and the pre-launch checklist */
-const segsOverlap = (a, b) => CAT().variables.filter(v => v.pre_call).every(v => { const x = segAllowed(a, v.column), y = segAllowed(b, v.column); return x.some(t => y.includes(t)); });
+const segsOverlap = (a, b) => CAT().variables.filter(v => v.pre_call && !v.derived_from).every(v => { const x = segAllowedEff(a, v.column), y = segAllowedEff(b, v.column); return x.some(t => y.includes(t)); });     // a derived factor (HL Bucket) narrows its base (HL Type)
 function runningMain() { return DYN.launched.filter(e => e.world === "main").filter(e => { const v = view(e); return v.running || v.scheduled || (v.d.paused && !v.ended); }); }
 function promptState(w) { const A = liveA(), B = wzB(w), vc = varCheck(A.text, B); return { A, B, same: A.text === B, vc }; }
 function checklist(w) {
@@ -1102,18 +1119,18 @@ function wzBody(w) {
   if (s === 4) return goalsStep(w);
   if (s === 5) {
     const P = wzPlan(w), m = P.m, cust = w.lenMode === "custom", avg = m.type === "average";
-    const dIn = cust ? (w.customD > 0 ? w.customD : avg ? +P.dDefault.toFixed(1) : +(P.dDefault * 100).toFixed(1)) : null;
+    const dIn = cust ? (avg ? +P.d.toFixed(1) : +(P.d * 100).toFixed(1)) : null;
     return `<h2>5. Duration</h2><p class="sub">How long the test runs. It is calculated from the last 30 days of data for your audience, and recalculates whenever the audience, B's share, the primary goal or the improvement changes. Nothing needs typing.</p>
       <div class="form-grid" style="margin-top:16px">${F("Test length", `<select id="w-len"><option value="rec" ${cust ? "" : "selected"}>Recommended: ${P.tooBig ? "over 28" : P.rec} days</option><option value="custom" ${cust ? "selected" : ""}>Custom length</option></select>`)}
-        ${cust ? "" : F("Share of traffic to B", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">`, "whole percent, 5 to 50%")}</div>
+        ${cust ? "" : F("Share of traffic to B", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">${w.shareAuto && w.shareWhy ? `<div class="note" style="margin-top:4px">Set to ${pct(w.share, 0)} for you: ${esc(w.shareWhy)}. Change it if you like.</div>` : ""}`, "whole percent, 5 to 50%")}</div>
       <div class="banner ${P.tooBig ? "neg" : ""}" style="margin-top:12px" id="w-planwords"><div>${planWords(w, P)}${P.tooBig ? `<div style="margin-top:6px"><b>${esc(P.tooBigMsg)}</b></div>` : ""}${P.base.fallback ? `<div class="note" style="margin-top:6px">${esc(P.base.note)}</div>` : ""}${w.primary ? "" : `<div class="note" style="margin-top:6px">No primary goal yet: using ${esc(m.name)} until you choose one in step 4.</div>`}</div></div>
       ${cust ? "" : `<div class="field" style="margin-top:16px"><label>Improvement worth catching</label><div class="seg" role="group" aria-label="Improvement worth catching">${["small", "medium", "large"].map(z => `<button data-size="${z}" aria-pressed="${w.size === z}">${z[0].toUpperCase() + z.slice(1)} (${esc(sizeLabel(z, { ...m, direction: P.dir }))})</button>`).join("")}</div></div>`}
       ${cust ? `<div class="card" style="background:var(--bg-2);margin-top:16px"><h3>Custom length</h3><div class="form-grid" style="margin-top:8px">
-          ${F("Leads per day", `<input type="number" id="w-clpd" min="1" step="1" value="${Math.round(w.customLpd > 0 ? w.customLpd : P.vol.perDay)}">`, "from data; edit for planned changes")}
+          ${F("Leads per day", `<input type="number" id="w-clpd" min="1" step="1" value="${Math.round(P.lpd)}">`, w.customLpdTouched ? "edited by you" : "from data; edit for planned changes")}
           ${F("B share (%)", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">`, "whole percent, 5 to 50%")}
           ${F("Test days", `<select id="w-cdays">${[7, 14, 21, 28].map(d => `<option value="${d}" ${P.days === d ? "selected" : ""}>${d} days${d === P.rec && !P.tooBig ? " (recommended)" : ""}</option>`).join("")}</select>`, "whole weeks")}
           ${F(`Improvement worth catching (${avg ? metricUnit(m) || "units" : "pts"})`, `<input type="number" id="w-cd" min="0.1" step="${avg ? 0.5 : 0.5}" value="${dIn}">`)}</div>
-        <p style="margin-top:12px" id="w-reverse">With ${P.days} days you can spot an improvement of <b>${fmtPts(P.smallest, m).replace(/^\+/, "")}</b> or more.</p>
+        <p style="margin-top:12px" id="w-reverse">With ${P.days} days you can spot an improvement of <b>${fmtPts(P.smallest, m).replace(/^[+−]/, "")}</b> or more.</p>
         ${P.shorter ? `<div class="banner warn" style="margin:8px 0 0"><div>Shorter than recommended — the result may be inconclusive.</div></div>` : ""}</div>` : ""}
       ${P.minLate ? `<div class="banner warn" style="margin-top:12px"><div>B would have fewer than ${nf(w.minLeads)} leads by day ${P.days}, so no decision could be made (decisions start on day ${P.minDay > 60 ? "60+" : P.minDay}). Raise B's share or lengthen the test.</div></div>` : ""}
       <details style="margin-top:16px" ${w.ui.advOpen ? "open" : ""} id="w-adv"><summary style="cursor:pointer;font-weight:500">Advanced settings</summary><div class="form-grid" style="margin-top:12px">
@@ -1127,11 +1144,11 @@ function wzBody(w) {
           <label class="radio"><input type="radio" name="w-rule" value="sequential" ${w.rule === "sequential" ? "checked" : ""}><div><b>Early promote and early stop (sequential)</b><span>May promote or stop on any day using boundaries built for repeated looks. ${RULE_FACTS()} Needs about 6% more data.</span></div></label></div></details>`;
   }
   const P = wzPlan(w), ps = promptState(w), chk = checklist(w), prim = wzPrimary(w), tm = testMetrics(w), st = diffStats(diffRows(ps.A.text, ps.B)), usesHang = tm.some(x => x.key === "early_hangup");
-  const mLine = x => x.m ? `<div><b>${esc(x.m.name)}</b> ${x.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.m))}</span>${x.role === "guardrail" ? ` · <b>${esc(limitWords(x.limit, x.m))}</b>` : ""}</div>` : "";
+  const mLine = x => x.m ? `<div><b>${esc(x.m.name)}</b> ${x.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.m))}</span>${x.role === "guardrail" ? ` · <b>${esc(limitWords(x.limit, x.m, x.direction))}</b>` : ""}</div>` : "";
   return `<h2>6. Review and launch</h2><p class="sub">Save Test keeps an editable draft. Launch Test locks the setup (audience, prompt B, metrics and limits) and gives it a version ID: any later change creates a new version. Launch stays disabled until every check passes.</p>
     <dl class="kv" style="margin-top:16px"><dt>Name</dt><dd><b>${esc(w.name || "-")}</b></dd>
       <dt>Prompt B</dt><dd>A full prompt: ${st.added} line${st.added === 1 ? "" : "s"} added, ${st.removed} removed against ${esc(ps.A.id)} (the live prompt). ${ps.vc.ok ? "All template variables kept." : "Template variables need fixing."}</dd>
-      <dt>Audience</dt><dd>${esc(segDescribe(P.seg))}<div class="note">Only leads that match this rule are counted: the router checks every lead before the call, so 100% of counted leads match this rule. About ${nf(P.vol.perDay)} leads a day.</div></dd>
+      <dt>Audience</dt><dd>${esc(segDescribe(P.seg))}<div class="note">The router checks every lead before the call and counts only those that match: 100% of counted leads matched this rule. About ${nf(P.vol.perDay)} leads a day.</div></dd>
       <dt>Primary goal</dt><dd>${prim ? mLine(tm[0]) + `<div class="note">today ${fmtMetric(P.base.value, prim)} · improvement to catch ${fmtPts(P.dir === "lower" ? -P.d : P.d, prim)}</div>` : "Not chosen"}</dd>
       <dt>Guardrails</dt><dd>${tm.filter(x => x.role === "guardrail").map(mLine).join("") || "None"}</dd>
       <dt>Secondary</dt><dd>${tm.filter(x => x.role === "secondary").map(mLine).join("") || "None"}<div class="note">For insight only: never used for the decision.</div></dd>
@@ -1140,7 +1157,7 @@ function wzBody(w) {
     <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:500">Show the full prompt B</summary><textarea readonly class="prompt-box" rows="14" style="margin-top:8px" aria-label="Prompt B (read-only)">${esc(ps.B)}</textarea></details>
     <h3 style="margin:24px 0 8px">Pre-launch checklist</h3><div style="display:grid;gap:8px" id="w-checks">${chk.map(x => `<div class="check ${x.ok ? "ok" : "bad"}"><span class="ico">${x.ok ? "✓" : "✕"}</span><span><b>${esc(x.label)}</b>: ${esc(x.why)}${x.ok ? "" : ` <button class="link" data-goto="${x.step}">Fix in step ${x.step}</button>`}</span></div>`).join("")}</div>
     <div class="form-grid" style="margin-top:16px">${F("Start date", `<input type="date" id="w-start" value="${esc(w.startDate)}" min="${TODAY}">`, w.startDate > TODAY ? "a later date makes it Scheduled" : "optional; today starts it now")}</div>
-    <h3 style="margin:24px 0 8px">Where do the results come from?</h3><div style="display:grid;gap:8px"><label class="radio"><input type="radio" name="w-src" value="sim" ${w.source === "sim" ? "checked" : ""}><div><b>Simulator (demo only)</b><span>Leads are replayed from the 30-day history with a known effect you set on the primary goal, so you can check the engine decides correctly. The effect is put into B's input, never into the result.</span></div></label>
+    <h3 style="margin:24px 0 8px">Where do the results come from?</h3><div style="display:grid;gap:8px"><label class="radio"><input type="radio" name="w-src" value="sim" ${w.source === "sim" ? "checked" : ""}><div><b>Simulator (demo only)</b><span>Leads are replayed from the 30-day history with a known effect you set on the primary goal, so you can check the engine decides correctly. The effect is put into B's input, never into the result. A call ends in one outcome, so when B gets more goal outcomes its other outcomes shrink in proportion: a guardrail on another disposition moves a little too.</span></div></label>
       <label class="radio"><input type="radio" name="w-src" value="files" ${w.source === "files" ? "checked" : ""}><div><b>Results files from the voice platform</b><span>The test runs elsewhere; you give Canary the A and B results and it decides with the plan above.</span></div></label></div>
     ${w.source === "sim" ? `<div class="form-grid" style="margin-top:16px"><div class="field wide"><label>Simulation settings (demo only)</label><div class="seg" role="group" aria-label="Preset">${(P.dir === "lower" ? [["win", "B wins (−15%)"], ["worse", "B worse (+15%)"], ["flat", "Flat (0%)"], ["custom", "Custom"]] : [["win", "B wins (+15%)"], ["worse", "B worse (−15%)"], ["flat", "Flat (0%)"], ["custom", "Custom"]]).map(([k, n]) => `<button data-preset="${k}" aria-pressed="${w.preset === k}">${n}</button>`).join("")}</div></div>
       ${F("B's true effect on the primary goal (relative)", `<input type="number" id="w-eff" step="1" value="${w.effectRel}" ${w.preset === "custom" ? "" : "disabled"}>`, "% of A's value")}${F("Random seed", `<input type="number" id="w-seed" value="${w.seed}">`, "same seed, same run")}${F("B's calls are longer by (%)", `<input type="number" id="w-dx" step="1" value="${w.durExtra || 0}">`, "to test a call-length guardrail")}${usesHang ? F("B's early hang-ups are higher by (points)", `<input type="number" id="w-hx" step="0.5" min="0" value="${w.hangExtra || 0}">`, `today ${fmtMetric(baselineFor(metricByKey("early_hangup"), P.seg).value, metricByKey("early_hangup"))} of answered calls`) : ""}</div>`
@@ -1191,7 +1208,7 @@ function bindWizard(el, w) {
     save();
   };
   const redraw = () => { sync(); wzRedraw(); };
-  const goStep = t => { sync(); for (let s = w.step; s < t; s++) { const m = wzValid(w, s); if (m) { toast(m); return; } if (s === 3) w.audienceSet = true; if (s === 4 && !w.shareTouched) w.share = suggestShare(w).share; } w.step = t; w.panel = null; save(); route(); };
+  const goStep = t => { sync(); for (let s = w.step; s < t; s++) { const m = wzValid(w, s); if (m) { toast(m); return; } if (s === 3) w.audienceSet = true; if (s === 4 && !w.shareTouched) { const sg = suggestShare(w); w.share = sg.share; w.shareWhy = sg.why; w.shareAuto = true; } } w.step = t; w.panel = null; save(); route(); };
   $$("[data-step]", el).forEach(b => b.onclick = () => { const t = +b.dataset.step; if (t <= w.step) { sync(); w.step = t; w.panel = null; save(); route(); } else goStep(t); });
   $$("[data-goto]", el).forEach(b => b.onclick = () => { sync(); w.step = +b.dataset.goto; save(); route(); });
   const nx = $1("#w-next"); if (nx) nx.onclick = () => goStep(w.step + 1);
@@ -1223,16 +1240,16 @@ function bindWizard(el, w) {
   const pr = $1("#w-primary"); if (pr) pr.onchange = () => { sync(); if (pr.value === "__custom") { w.ui.primCustom = true; w.cm = newCm(); } else { w.ui.primCustom = false; w.primary = pr.value || null; } redraw(); };
   const cms = $1("#w-cmsavep"); if (cms) cms.onclick = () => { sync(); const def = cmDef(w.cm), chk = metricCheck(def); if (!chk.ok) { toast(chk.errors[0]); return; } const keep = { ...def, group: "Custom" }; DYN.settings.customMetrics = [...customMetrics().filter(x => x.key !== keep.key), keep]; w.primary = keep.key; w.ui.primCustom = false; w.cm = null; toast(`Saved "${keep.name}" to the metric list and set it as the primary goal.`); redraw(); };
   const cmc = $1("#w-cmcancel"); if (cmc) cmc.onclick = () => { w.ui.primCustom = false; w.cm = null; redraw(); };
-  const openPanel = (role, edit, idx) => { const list = role === "guardrail" ? w.guards : w.secondary, item = edit ? list[idx] : null, m = item && metricByKey(item.key, w.localMetrics);
-    w.panel = { role: edit ? role : (roleFull(w, "guardrail") ? "secondary" : "guardrail"), origRole: role, idx, edit: !!edit, tab: "list", key: item ? item.key : null, direction: item ? item.direction : "lower", limit: item && item.limit ? item.limit.value : 10, kind: item && item.limit ? item.limit.kind : "rel", q: "" }; w.cm = null; if (m && !m.direction) w.panel.direction = "higher"; redraw(); setTimeout(() => { const p = $("#w-panel"); if (p) p.scrollIntoView({ block: "nearest" }); }, 0); };
+  const openPanel = (role, edit, idx) => { sync(); const list = role === "guardrail" ? w.guards : w.secondary, item = edit ? list[idx] : null, m = item && metricByKey(item.key, w.localMetrics);
+    w.panel = { role: edit ? role : (roleFull(w, "guardrail") ? "secondary" : "guardrail"), origRole: role, idx, edit: !!edit, tab: "list", key: item ? item.key : null, direction: item ? item.direction : "lower", limit: item && item.limit ? item.limit.value : 10, kind: item && item.limit ? item.limit.kind : "rel", q: "" }; w.cm = null; if (m && !m.direction) w.panel.direction = "higher"; save(); wzRedraw(); setTimeout(() => { const p = $("#w-panel"); if (p) p.scrollIntoView({ block: "nearest" }); }, 0); };
   const am = $1("#w-addm"); if (am) am.onclick = () => openPanel("guardrail", false);
   $$("[data-mcard]", el).forEach(c => { const go2 = ev => { if (ev.target.closest("button,details,summary")) return; const [role, i] = c.dataset.mcard.split(":"); openPanel(role, true, +i); }; c.onclick = go2; c.onkeydown = ev => { if (ev.key === "Enter" && ev.target === c) go2(ev); }; });
   $$("[data-mdel]", el).forEach(b => b.onclick = ev => { ev.stopPropagation(); const [role, i] = b.dataset.mdel.split(":"); (role === "guardrail" ? w.guards : w.secondary).splice(+i, 1); w.panel = null; redraw(); });
   $$("[data-mmove]", el).forEach(b => b.onclick = ev => { ev.stopPropagation(); const [role, i] = b.dataset.mmove.split(":"), from = role === "guardrail" ? w.guards : w.secondary, to = role === "guardrail" ? "secondary" : "guardrail"; if (roleFull(w, to)) { toast("Max reached — more metrics mean more false alarms."); return; }
-    const [it] = from.splice(+i, 1); if (to === "guardrail") w.guards.push({ key: it.key, direction: it.direction, limit: it.limit || { value: 10, kind: "rel" } }); else w.secondary.push({ key: it.key, direction: it.direction }); w.panel = null; redraw(); });
+    const [it] = from.splice(+i, 1); if (to === "guardrail") w.guards.push({ key: it.key, direction: it.direction, limit: it.limit || { value: 10, kind: "rel" } }); else w.secondary.push({ key: it.key, direction: it.direction, limit: it.limit }); w.panel = null; redraw(); });
   $$("[data-prole]", el).forEach(b => b.onclick = () => { sync(); w.panel.role = b.dataset.prole; redraw(); });
   $$("[data-ptab]", el).forEach(b => b.onclick = () => { sync(); w.panel.tab = b.dataset.ptab; if (w.panel.tab === "custom" && !w.cm) w.cm = newCm(); redraw(); });
-  $$("input[name=w-pick]", el).forEach(r => r.onchange = () => { sync(); const m = metricByKey(r.value, w.localMetrics); if (m) w.panel.direction = m.direction || "higher"; redraw(); });
+  $$("input[name=w-pick]", el).forEach(r => r.onchange = () => { sync(); const m = metricByKey(r.value, w.localMetrics); w.panel.key = r.value; if (m) w.panel.direction = m.direction || "higher"; save(); wzRedraw(); });
   const ps = $1("#w-psearch"); if (ps) ps.oninput = () => { w.panel.q = ps.value; clearTimeout(window.__pq); window.__pq = setTimeout(wzRedraw, 200); };
   const pc = () => { w.panel = null; w.cm = null; redraw(); }; const px = $1("#w-pclose"); if (px) px.onclick = pc; const pcc = $1("#w-pcancel"); if (pcc) pcc.onclick = pc;
   const pa = $1("#w-padd"); if (pa) pa.onclick = () => { sync(); const p = w.panel; let key = p.key;
@@ -1259,9 +1276,15 @@ function bindWizard(el, w) {
   const cn = $1("#w-cmname"); if (cn) { let t; cn.oninput = () => { w.cm.name = cn.value; clearTimeout(t); t = setTimeout(() => { const prev = $1("#w-cmprev"); if (prev) { const chk = metricCheck(cmDef(w.cm)); prev.className = "cm-prev " + (chk.ok ? "" : "bad"); if (!chk.ok) prev.innerHTML = chk.errors.map(esc).join("<br>"); else wzRedraw(); } }, 300); }; }
 
   /* step 5: duration */
-  const ln = $1("#w-len"); if (ln) ln.onchange = () => { sync(); w.lenMode = ln.value; if (w.lenMode === "custom") { const P = wzPlan({ ...w, lenMode: "rec" }); w.customLpd = Math.round(P.vol.perDay); w.customDays = P.rec; w.customD = P.m.type === "average" ? +P.d.toFixed(1) : +(P.d * 100).toFixed(1); } redraw(); };
+  const ln = $1("#w-len"); if (ln) ln.onchange = () => { sync(); w.lenMode = ln.value; if (w.lenMode === "custom") { const P = wzPlan({ ...w, lenMode: "rec" }); w.customDays = P.rec; w.customLpdTouched = false; w.customDTouched = false; } redraw(); };
   $$("[data-size]", el).forEach(b => b.onclick = () => { sync(); w.size = b.dataset.size; redraw(); });
-  ["#w-share", "#w-clpd", "#w-cdays", "#w-cd", "#w-conf", "#w-min", "#w-harm", "#w-appr", "#w-assign", "#w-start", "#w-eff", "#w-seed", "#w-dx", "#w-hx"].forEach(id => { const e = $1(id); if (e) e.onchange = () => { if (id === "#w-share") w.shareTouched = true; redraw(); }; });
+  ["#w-share", "#w-clpd", "#w-cdays", "#w-cd", "#w-conf", "#w-min", "#w-harm", "#w-appr", "#w-assign", "#w-start", "#w-eff", "#w-seed", "#w-dx", "#w-hx"].forEach(id => { const e = $1(id); if (e) e.onchange = () => {
+    const v = +e.value;
+    if (id === "#w-share") { w.shareTouched = true; w.shareAuto = false; if (!(e.value !== "" && v >= 5 && v <= 50 && Number.isInteger(v))) toast(`B's share must be a whole percent from 5 to 50; it is set to ${Math.min(50, Math.max(5, Math.round(v) || 5))}%.`, 4500); }
+    if (id === "#w-clpd") { if (v > 0) w.customLpdTouched = true; else { toast("Leads per day must be above 0; it is back to the value from the data.", 4500); w.customLpdTouched = false; } }
+    if (id === "#w-cd") { const m = wzRef(w); if (v > 0) { w.customDTouched = true; w.customDType = m.type; } else { toast("The improvement to catch must be above 0; it is back to the preset.", 4500); w.customDTouched = false; } }
+    if (id === "#w-min" && !(v >= 20)) toast("The minimum leads per arm must be at least 20.", 4500);
+    redraw(); }; });
   $$("input[name=w-rule],input[name=w-src]", el).forEach(r => r.onchange = redraw);
   const adv = $1("#w-adv"); if (adv) adv.ontoggle = () => { w.ui.advOpen = adv.open; };
   $$("[data-preset]", el).forEach(b => b.onclick = () => { sync(); w.preset = b.dataset.preset; if (w.preset !== "custom") w.effectRel = { win: 15, worse: -15, flat: 0 }[w.preset]; redraw(); });
@@ -1327,7 +1350,7 @@ function cloneOf(e) {
     primary: prim ? prim.def.key : (C.metrics.some(m => m.key === c.primary_goal) ? c.primary_goal : null),
     guards: ms.length ? ms.filter(x => x.role === "guardrail").map(x => ({ key: x.def.key, direction: x.def.direction, limit: { ...x.limit } })) : (c.secondary_role === "guardrail" ? [{ key: "duration_s", direction: "lower", limit: { value: Math.round(c.guardrail_margin * 100), kind: "rel" } }] : []).concat(c.guard_rate === "early_hangup" ? [{ key: "early_hangup", direction: "lower", limit: { value: Math.round(c.guard_rate_margin * 100), kind: "pts" } }] : []),
     secondary: ms.filter(x => x.role === "secondary").map(x => ({ key: x.def.key, direction: x.def.direction })), localMetrics: ms.flatMap(x => keep(x.def)),
-    share: Math.min(0.5, c.share_b), lenMode: [7, 14, 21, 28].includes(c.window_days) ? "custom" : "rec", customDays: [7, 14, 21, 28].includes(c.window_days) ? c.window_days : null, rule: c.rule_set, confidence: 1 - 2 * c.alpha,
+    share: Math.min(0.5, c.share_b), shareTouched: true, lenMode: [7, 14, 21, 28].includes(c.window_days) ? "custom" : "rec", customDays: [7, 14, 21, 28].includes(c.window_days) ? c.window_days : null, rule: c.rule_set, confidence: 1 - 2 * c.alpha,
     approval: c.approval, harm: Math.round((1 - c.alpha_harm_daily) * 1000) / 1000, minLeads: c.min_per_arm, assignment: c.assignment || "stratified", step: 1,
     preset: e.truth && e.truth.effect_rel != null ? (e.truth.effect_rel > 0 ? "win" : e.truth.effect_rel < 0 ? "worse" : "flat") : "win" });
 }
@@ -1358,7 +1381,8 @@ ROUTES.history = (el) => {
   $$("[data-clone]", el).forEach(b => b.onclick = ev => { ev.stopPropagation(); cloneOf(byId(b.dataset.clone)); });
   $$("tr[data-rep]", el).forEach(r => r.onclick = ev => { if (!ev.target.closest("a,button")) go("report", r.dataset.rep); });
   const pv = $("#h-prev"), nx = $("#h-next"); if (pv) pv.onclick = () => { HFILT.page--; save(); route(); }; if (nx) nx.onclick = () => { HFILT.page++; save(); route(); };
-  $("#h-csv").onclick = () => download("canary_history.csv", toCsv(["name", "segment", "start", "days", "source", "change", "lift_pp", "range_low_pp", "range_high_pp", "decision", "guardrail", "learning"], all.map(({ e, v }) => [v.config.name, segDescribe(v.config.segment), v.config.start.slice(0, 10), v.ld, e.kind, (e.record.variants.B || {}).name, v.cur ? (v.cur.diff * 100).toFixed(2) : "", v.cur ? (liftRange(v.cur).lo * 100).toFixed(2) : "", v.cur ? (liftRange(v.cur).hi * 100).toFixed(2) : "", KIND_LABEL[v.kind] || v.kind, guardWord(v)[0], dyn(e).learning || ""])));
+  const isAvg = v => primaryDef(v.config).type === "average";          // an average's lift is in its own unit, in the last two columns
+  $("#h-csv").onclick = () => download("canary_history.csv", toCsv(["name", "segment", "start", "days", "source", "change", "lift_pp", "range_low_pp", "range_high_pp", "decision", "guardrail", "learning", "lift_average", "average_unit"], all.map(({ e, v }) => [v.config.name, segDescribe(v.config.segment), v.config.start.slice(0, 10), v.ld, e.kind, (e.record.variants.B || {}).name, v.cur && !isAvg(v) ? (v.cur.diff * 100).toFixed(2) : "", v.cur && !isAvg(v) ? (liftRange(v.cur, v.config).lo * 100).toFixed(2) : "", v.cur && !isAvg(v) ? (liftRange(v.cur, v.config).hi * 100).toFixed(2) : "", KIND_LABEL[v.kind] || v.kind, guardWord(v)[0], dyn(e).learning || "", v.cur && isAvg(v) ? v.cur.diff.toFixed(3) : "", isAvg(v) ? metricUnit(primaryDef(v.config)) : ""])));
 };
 
 ROUTES.report = (el, id) => {
@@ -1380,20 +1404,21 @@ ROUTES.report = (el, id) => {
         <tr><td><b>Lift of B over A</b></td><td></td>${cur.dA != null ? "<td></td>" : ""}${avg ? "" : "<td></td>"}<td class="num"><b>${fmtD(cur.diff, c)}</b></td><td class="num">${rangeD(lr.lo, lr.hi, c)}${lr.interim ? "<div class=\"note\">interim: the test stopped before its final call</div>" : ""}</td></tr></tbody></table></div>
       <h2>Metrics</h2><div style="display:grid;gap:4px">${metricsSummaryHtml(c)}</div>
       ${sec.length ? `<h2>Secondary (for insight only, not used for the decision)</h2>${secondaryHtml(v)}` : ""}
-      <h2>Audience</h2><p>${esc(segDescribe(c.segment))}${rec.result.segment_check ? ` · ${pct(rec.result.segment_check.share_of_traffic, 0)} of traffic, about ${nf(rec.result.segment_check.eligible_per_day)} leads a day · <b>${esc(segMatchLine(rec))}</b>; ${nf(rec.result.segment_check.out_of_segment_leads)} out-of-segment leads kept today's prompt and were not counted` : ""}</p>
+      <h2>Audience</h2><p>${esc(segDescribe(c.segment))}${rec.result.segment_check ? ` · ${pct(rec.result.segment_check.share_of_traffic, 0)} of traffic, about ${c.metrics ? nf(rec.result.segment_check.eligible_per_day * connectShare()) + " connected" : nf(rec.result.segment_check.eligible_per_day)} leads a day · <b>${esc(segMatchLine(rec))}</b>; ${nf(rec.result.segment_check.out_of_segment_leads)} out-of-segment leads kept today's prompt and were not counted` : ""}</p>
       <h2>Prompt B</h2>${pr ? `<p class="note">${esc((e.record.variants.B || {}).name || "")} against ${esc(pr.aId)} · fingerprint <span class="mono">${esc((e.record.variants.B || {}).hash || "")}</span></p>${diffBlock(pr.a, pr.b)}<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:500">Show the full prompt B</summary><textarea readonly class="prompt-box" rows="14" style="margin-top:8px" aria-label="Prompt B (read-only)">${esc(pr.b)}</textarea></details>` : `<p class="note">${e.kind === "files" ? "The prompts are not part of a results file." : "The full text of this prompt B is not in this browser."}</p>`}
       ${cur.mix ? `<h2>Achieved lead mix</h2><div class="note" style="margin-bottom:8px">A and B should carry the same mix of lead types. Per-group results are for insight only, never for the decision.</div>${balanceHtml(cur)}` : ""}
       <h2>Safety checks</h2><div style="display:grid;gap:8px">${gl.map(x => `<div class="check ${x.st.cls === "pos" ? "ok" : x.st.cls === "neg" ? "bad" : "wait"}"><span class="ico">${x.st.cls === "pos" ? "\u2713" : x.st.cls === "neg" ? "\u2715" : "\u2026"}</span><span><b>${esc(x.name)}${x.def ? " (guardrail)" : ""}:</b> ${x.g ? esc(x.st.value) + " (limit " + esc(x.st.lim) + "; " + x.conf + "% range " + esc(x.st.range) + ")" : "not enough data"}: ${esc(x.st.label.replace(/^[\u2713\u2715\u2026]\s*/, ""))}</span></div>`).join("")}
         <div class="check ${cur.p_srm < 0.001 ? "bad" : "ok"}"><span class="ico">${cur.p_srm < 0.001 ? "\u2715" : "\u2713"}</span><span><b>Split:</b> B received ${pct(cur.nB / cur.n, 1)} of leads (configured ${pct(c.share_b, 0)}); sample-ratio p = ${cur.p_srm < 0.001 ? cur.p_srm.toExponential(1) : cur.p_srm.toFixed(2)}</span></div>
         <div class="check ${(rec.result.stickiness || {}).arm_changes ? "bad" : "ok"}"><span class="ico">${(rec.result.stickiness || {}).arm_changes ? "\u2715" : "\u2713"}</span><span><b>Sticky assignment:</b> ${(rec.result.stickiness || {}).checkable === false ? "not checkable from this source" : nf((rec.result.stickiness || {}).arm_changes) + " leads saw both prompts"}</span></div></div>
       <h2>Over time</h2><div class="legend"><span><i style="border-color:var(--a)"></i>A</span><span><i style="border-color:var(--b)"></i>B</span><span><i class="band" style="background:var(--ink-2)"></i>95% range</span></div><div id="trend"></div>
-      ${v.kind === "INCONCLUSIVE" && v.res.more_leads ? `<h2>What would settle it</h2><ul>${v.res.more_leads.options.map(o => `<li>${o.enough_already ? `Already enough data to detect ${o.lift_pp} points (${esc(o.label)}): any real lift is smaller than that.` : `${nf(o.more_leads)} more leads (about ${o.more_days} days) to detect ${o.lift_pp} points (${esc(o.label)}).${o.impractical ? " Over a year of traffic: not practical." : ""}`}</li>`).join("")}</ul>` : ""}
+      ${v.kind === "INCONCLUSIVE" && v.res.more_leads ? `<h2>What would settle it</h2><ul>${v.res.more_leads.options.map(o => `<li>${o.enough_already ? `Already enough data to detect ${esc(liftWords(o))} (${esc(o.label)}): any real lift is smaller than that.` : `${nf(o.more_leads)} more leads (about ${o.more_days} days) to detect ${esc(liftWords(o))} (${esc(o.label)}).${o.impractical ? " Over a year of traffic: not practical." : ""}`}</li>`).join("")}</ul>` : ""}
       <h2>Learning</h2><div class="field"><label for="r-learn">One line that feeds the next suggestions</label><input type="text" id="r-learn" list="r-sugg" value="${esc(dyn(e).learning || "")}" placeholder="for example: slot options work"><datalist id="r-sugg">${sugg.map(s => `<option value="${esc(s)}">`).join("")}</datalist></div>
       <h2>Record</h2><p class="note">${ents.length} entries, head <span class="mono">${esc(ents[ents.length - 1].hash.slice(0, 16))}</span> <button class="link" id="r-ver">Re-check in this browser</button> <span id="r-vo"></span></p>
       <p class="note">${e.kind === "files" ? "These results were supplied as files; Canary advises and does not control live traffic." : "The outcomes are simulated with a known injected effect: this report shows the engine decides correctly, not that a real prompt is better."}</p></div>`;
   trendChart($("#trend"), dayRows(rec), v.win, { finalDay: c.rule_set === "final_look" ? v.win : null, c });
   $("#r-clone").onclick = () => cloneOf(e);
-  $("#r-csv").onclick = () => download(`${e.id}_report.csv`, toCsv(["day", "leads_A", "goal_A", "leads_B", "goal_B", "rate_A", "rate_B", "lift_pp"], dayRows(rec).map(({ day, row }) => [day, row.nA, row.xA, row.nB, row.xB, row.rateA.toFixed(4), row.rateB.toFixed(4), (row.diff * 100).toFixed(2)])));
+  $("#r-csv").onclick = () => download(`${e.id}_report.csv`, avg ? toCsv(["day", "leads_A", "counted_A", "leads_B", "counted_B", "mean_A", "mean_B", "lift_" + (metricUnit(primaryDef(c)) || "units")], dayRows(rec).map(({ day, row }) => [day, row.nA, row.dA, row.nB, row.dB, row.rateA.toFixed(3), row.rateB.toFixed(3), row.diff.toFixed(3)]))
+    : toCsv(["day", "leads_A", "goal_A", "leads_B", "goal_B", "rate_A", "rate_B", "lift_pp"], dayRows(rec).map(({ day, row }) => [day, row.nA, row.xA, row.nB, row.xB, row.rateA.toFixed(4), row.rateB.toFixed(4), (row.diff * 100).toFixed(2)])));
   $("#r-learn").onchange = ev => { dyn(e).learning = ev.target.value.trim(); saveDyn(); toast("Learning saved."); };
   $("#r-ver").onclick = () => { $("#r-vo").innerHTML = chainOk(ents) ? `<b style="color:#167a70">✓ intact</b>` : `<b style="color:#b23b3b">✕ broken</b>`; };
 };
@@ -1488,7 +1513,7 @@ function priority(c) {
 const v_ok = e => !!e.record && e.record.config.variant_b !== "external";
 function historyIdeas() {
   const out = [];
-  EXPS().filter(e => ["past_fix_flat", "past_inconclusive"].includes(e.id) || !e.id.startsWith("past_") && !e.id.startsWith("files_")).forEach(e => { const v = view(e); if (v.ended && v.kind === "INCONCLUSIVE" && v.res.more_leads && e.kind !== "files") { const opt = (v.res.more_leads.options || []).find(o => !o.enough_already && !o.impractical); if (opt) out.push({ id: "past_" + e.id, source: "Past tests", title: `Re-run "${e.record.config.name}" for longer`, hypothesis: `It ended inconclusive on day ${v.ld}. Detecting ${opt.lift_pp} points would take about ${nf(opt.more_leads)} more leads (about ${opt.more_days} days). Worth it only if a lift that small matters.`, change: e.record.variants.B.name, change_name: e.record.variants.B.name, change_note: "The same edit as the original test.", metric: e.record.config.primary_goal, expected: `settles whether ${opt.lift_pp} points is real`, expected_pp: 0, days: Math.round(v.ld + opt.more_days), ease: 3, caveat: "", variant: e.record.config.variant_b, e }); } });
+  EXPS().filter(e => ["past_fix_flat", "past_inconclusive"].includes(e.id) || !e.id.startsWith("past_") && !e.id.startsWith("files_")).forEach(e => { const v = view(e); if (v.ended && v.kind === "INCONCLUSIVE" && v.res.more_leads && e.kind !== "files") { const opt = (v.res.more_leads.options || []).find(o => !o.enough_already && !o.impractical); if (opt) out.push({ id: "past_" + e.id, source: "Past tests", title: `Re-run "${e.record.config.name}" for longer`, hypothesis: `It ended inconclusive on day ${v.ld}. Detecting ${liftWords(opt)} would take about ${nf(opt.more_leads)} more leads (about ${opt.more_days} days). Worth it only if a lift that small matters.`, change: e.record.variants.B.name, change_name: e.record.variants.B.name, change_note: "The same edit as the original test.", metric: e.record.config.primary_goal, expected: `settles whether ${liftWords(opt)} is real`, expected_pp: 0, days: Math.round(v.ld + opt.more_days), ease: 3, caveat: "", variant: e.record.config.variant_b, e }); } });
   EXPS().forEach(e => { const l = dyn(e).learning; if (l && v_ok(e)) out.push({ id: "learn_" + e.id, source: "Past tests", title: `Follow up on "${l}"`, hypothesis: `You tagged "${e.record.config.name}" with: "${l}". Try a follow-up edit on the same idea.`, change: e.record.variants.B.name, change_name: e.record.variants.B.name, change_note: "The same edit as the original test.", metric: e.record.config.primary_goal, expected: "a follow-up to what you learned", expected_pp: 0, days: null, ease: 2, caveat: "", variant: e.record.config.variant_b, e }); });
   return out.slice(0, 6);
 }

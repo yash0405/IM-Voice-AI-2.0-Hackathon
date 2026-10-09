@@ -78,7 +78,7 @@ Status words: **Built** (as the BRD says), **Adapted** (same job, different mean
 | Streamlit | Not adopted | our dashboard is plain HTML and JavaScript: no installation, runs offline as one file |
 | Python, pandas, scipy | Adapted | Python, numpy, scipy (pandas not needed) |
 | SQLite | Adapted | `python -m canary export-db` writes all eleven tables of the BRD's data model; the live store is JSON plus a hash-chained ledger |
-| LLM agent (segments, goal cards, suggestions, write-ups) | Not adopted | a rule-based reader shows the exact rule; templates write the summaries; no credits are spent and no number is invented |
+| LLM agent (segments, goal cards, suggestions, write-ups) | Not adopted | the segment is built from lists and shown in plain words; templates write the summaries; no credits are spent and no number is invented |
 
 ## Deliverables and demo
 Scenarios 1 to 4, the A vs A proof, the split evidence, the working dashboard including a segmented test, and the one slide are all in place: `DEMO_SCRIPT.md` follows the BRD's demo run; the slide is `dist/one_slide.html`.

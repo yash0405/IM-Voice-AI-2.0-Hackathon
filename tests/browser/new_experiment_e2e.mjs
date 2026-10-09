@@ -47,7 +47,8 @@ await p.evaluate(() => { const t = document.querySelector('#w-b'); t.value = t.v
 const v2 = await p.evaluate(() => ({ t: document.querySelector('#w-vc').innerText, next: document.querySelector('#w-next').disabled, amber: document.querySelectorAll('#w-vc .warnc').length }));
 ok(v2.t.includes('Missing: {{buyer_city}}') && v2.t.includes('New variable not supplied by the bot: {{buyer_town}}') && v2.next && v2.amber === 2, 'Step 2: missing and new variables are amber and block Next', v2);
 await shot('04_step2_variables');
-await click('#w-save'); const drafts = await p.evaluate(() => JSON.parse(localStorage.getItem('canary_console_v1')).drafts);
+await click('#w-save'); const drafts = await p.evaluate(() => DYN.drafts);
+ok(await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('canary_console_v1')); return o.packed === 2 && Object.keys(o.texts).length >= 1; }), 'Storage: the big prompt text is stored once, by reference');
 ok(drafts.length === 1 && drafts[0].w.promptB.includes('buyer_town'), 'Step 2: Save Test saves B as typed even when the checks fail');
 ok((await p.$$eval('a[href="#/suggest"][target=_blank]', a => a.length)) === 1 && !(await p.$('#w-main [data-create]')), 'Step 2: "Need ideas?" link opens Suggest in a new view; no suggestion cards here');
 await p.evaluate(() => { const t = document.querySelector('#w-b'); t.value = t.value.split('buyer_town').join('buyer_city'); t.dispatchEvent(new Event('input')); }); await sleep(600);
@@ -85,24 +86,27 @@ ok(!(await txt('#w-glance')).includes('Set audience'), 'At a glance: shows estim
 /* Step 4: goals */
 const s4 = await p.evaluate(() => ({ prim: document.querySelector('#w-primary').value, ph: document.querySelector('#w-primary option[value=""]').textContent, guards: [...document.querySelectorAll('[data-mcard^="guardrail"]')].map(c => c.innerText), banner: /Suggested from your hypothesis|Use the suggestion/.test(document.querySelector('#w-main').innerText), secs: [...document.querySelectorAll('.goal-sec h3')].map(h => h.textContent) }));
 ok(s4.prim === '' && s4.ph === 'Choose the main goal', 'Step 4: primary goal starts empty with the placeholder', s4);
-ok(s4.guards.length === 1 && /Call duration/.test(s4.guards[0]) && /must not get worse by more than 10%/.test(s4.guards[0]), 'Step 4: one pre-added guardrail, call duration +10%', s4.guards);
+ok(s4.guards.length === 1 && /Call duration/.test(s4.guards[0]) && /must not rise by more than 10%/.test(s4.guards[0]), 'Step 4: one pre-added guardrail, call duration +10%', s4.guards);
 ok(!s4.banner, 'Step 4: the "Suggested from your hypothesis" banner is gone');
 ok(JSON.stringify(s4.secs) === JSON.stringify(['Primary goal', 'Guardrails', 'Secondary metrics']), 'Step 4: three sections in order', s4.secs);
 await shot('06_step4_defaults');
 await click('#w-next'); ok((await txt('#w-main h2')) === '4. Goals', 'Step 4: Next is refused without a primary goal');
 // custom primary: Busy share of unanswered calls (rate) -> saved to the metric list
 await p.select('#w-primary', '__custom'); await sleep(300);
-await p.type('#w-cmname', 'Answered on first try'); await sleep(400);
-await p.select('select[data-ccol="num:0"]', 'call_status'); await sleep(250); await p.select('select[data-cval="num:0"]', 'Answered'); await sleep(250);
+await p.type('#w-cmname', 'Answered again'); await sleep(400);
+await p.select('select[data-ccol="num:0"]', 'call_status'); await sleep(250); await p.select('select[data-cval="num:0"]', 'Answered'); await sleep(400);
+ok((await txt('#w-cmprev')).includes('This counts the same thing as "Answered %"'), 'Step 4: a custom metric that duplicates a built-in is refused', await txt('#w-cmprev'));
+await p.evaluate(() => { const n = document.querySelector('#w-cmname'); n.value = 'Busy share of all calls'; n.dispatchEvent(new Event('input')); }); await sleep(500);
+await p.select('select[data-cval="num:0"]', 'Busy'); await sleep(300); await click('[data-cmdir="lower"]');
 await click('[data-cadd="num"]'); await p.select('select[data-ccol="num:1"]', 'call_status'); await sleep(200);
 const prevTxt = await txt('#w-cmprev');
 await click('[data-cdel="num:1"]');
 await shot('07_step4_custom_primary_form');
 const prev = await txt('#w-cmprev');
-ok(/Formula: Calls where Call status is Answered ÷ All calls attempted · Last 30 days: [\d,]+ ÷ [\d,]+ = [\d.]+%/.test(prev), 'Step 4: custom metric live preview with the formula and last-30-day numbers', prev);
+ok(/Formula: Calls where Call status is Busy ÷ All calls attempted · Last 30 days: [\d,]+ ÷ [\d,]+ = [\d.]+%/.test(prev), 'Step 4: custom metric live preview with the formula and last-30-day numbers', prev);
 await click('#w-cmsavep');
-ok((await p.$eval('#w-primary', e => e.selectedOptions[0].textContent)) === 'Answered on first try', 'Step 4: "Save metric" sets the custom metric as the primary goal');
-ok((await p.evaluate(() => JSON.parse(localStorage.getItem('canary_console_v1')).settings.customMetrics.map(m => m.name))).includes('Answered on first try'), 'Step 4: the custom metric is saved to Settings > Metrics');
+ok((await p.$eval('#w-primary', e => e.selectedOptions[0].textContent)) === 'Busy share of all calls', 'Step 4: "Save metric" sets the custom metric as the primary goal');
+ok((await p.evaluate(() => DYN.settings.customMetrics.map(m => m.name))).includes('Busy share of all calls'), 'Step 4: the custom metric is saved to Settings > Metrics');
 // built-in primary instead
 await p.select('#w-primary', 'buylead_created'); await sleep(300);
 // add a guardrail from the list
@@ -113,7 +117,8 @@ const used = await p.$$eval('.mrow', r => r.filter(x => x.querySelector('input')
 ok(used.some(t => /Call duration/.test(t) && /Already added/.test(t)) && used.some(t => /BuyLead created/.test(t) && /Already added/.test(t)), 'Panel: metrics already used are disabled with "Already added"', used);
 ok(used.some(t => /Fatal calls/.test(t) && /Not in data yet/.test(t)), 'Panel: a metric with no data column is disabled');
 await p.type('#w-psearch', 'hang'); await sleep(500); ok((await p.$$eval('.mrow', r => r.length)) === 1, 'Panel: the list is searchable');
-await click('input[name=w-pick][value="early_hangup"]'); await p.evaluate(() => { document.querySelector('#w-plim').value = 2; document.querySelector('#w-plimk').value = 'pts'; }); await shot('08_panel_list');
+await click('input[name=w-pick][value="early_hangup"]'); ok((await p.$eval('#w-pdir', e => e.value)) === 'lower', 'Panel: picking a metric keeps its own direction (early hang-ups: lower is better)');
+await p.evaluate(() => { document.querySelector('#w-plim').value = 2; document.querySelector('#w-plimk').value = 'pts'; }); await shot('08_panel_list');
 await click('#w-padd');
 ok((await p.$$('[data-mcard^="guardrail"]')).length === 2, 'Panel: "Add" adds a guardrail card');
 // add a secondary: custom metric with "save" ticked
@@ -127,13 +132,15 @@ ok(await p.$eval('#w-cmsave', e => e.checked), 'Panel: "Save to metric list for 
 await shot('09_panel_custom'); await click('#w-padd');
 ok((await p.$$('[data-mcard^="secondary"]')).length === 1, 'Panel: custom secondary metric added');
 // a secondary from the list, then an average custom guardrail
-await click('#w-addm'); await click('[data-prole="secondary"]'); await click('input[name=w-pick][value="answered_pct"]'); await click('#w-padd');
-await click('#w-addm'); await click('[data-ptab="custom"]'); await p.type('#w-cmname', 'Talk time per lead'); await sleep(300); await click('[data-cmtype="average"]'); await click('[data-cadd="where"]'); await p.select('select[data-ccol="where:0"]', 'connected'); await sleep(250); await p.select('select[data-cval="where:0"]', '1'); await sleep(300);
-ok(/Formula: Average call duration over calls where Connected is 1 · Last 30 days: [\d.]+ s/.test(await txt('#w-cmprev')), 'Panel: an Average custom metric previews in seconds', await txt('#w-cmprev'));
+await click('#w-addm'); await click('[data-prole="secondary"]'); await click('input[name=w-pick][value="answered_pct"]');
+ok((await p.$eval('#w-pdir', e => e.value)) === 'higher', 'Panel: Answered % keeps higher is better (the QA finding)'); await click('#w-padd');
+ok(await p.evaluate(() => WZ.secondary.find(s => s.key === 'answered_pct').direction === 'higher'), 'Panel: the saved direction is the metric\'s own');
+await click('#w-addm'); await click('[data-ptab="custom"]'); await p.type('#w-cmname', 'Talk time per lead'); await sleep(300); await click('[data-cmtype="average"]'); await p.select('select[data-cmunit="avg"]', 'leads'); await sleep(300); await click('[data-cadd="where"]'); await p.select('select[data-ccol="where:0"]', 'connected'); await sleep(250); await p.select('select[data-cval="where:0"]', '1'); await sleep(300);
+ok(/Formula: Average call duration over leads \(first matching call\) where Connected is 1 · Last 30 days: [\d.]+ s/.test(await txt('#w-cmprev')), 'Panel: an Average custom metric previews in seconds', await txt('#w-cmprev'));
 await p.evaluate(() => { document.querySelector('#w-plim').value = 8; }); await click('#w-padd');
 const cards = await p.$$eval('[data-mcard]', c => c.map(x => x.dataset.mcard + ' ' + x.innerText.replace(/\s+/g, ' ')));
 ok(cards.filter(c => c.startsWith('guardrail')).length === 3 && cards.filter(c => c.startsWith('secondary')).length === 2, 'Cards: 3 guardrails and 2 secondary metrics', cards);
-ok(cards.some(c => /Early hang-ups/.test(c) && /must not get worse by more than 2 points/.test(c)) && cards.some(c => /Talk time per lead/.test(c) && /8%/.test(c)), 'Cards: show limit, formula and today\'s value', cards);
+ok(cards.some(c => /Early hang-ups/.test(c) && /must not rise by more than 2 points/.test(c)) && cards.some(c => /Talk time per lead/.test(c) && /8%/.test(c)), 'Cards: show limit, formula and today\'s value', cards);
 // limits: guardrails are full
 await click('#w-addm'); const gdis = await p.$eval('[data-prole="guardrail"]', e => ({ d: e.disabled, t: e.title }));
 ok(gdis.d && gdis.t === 'Max reached — more metrics mean more false alarms.', 'Limits: guardrail role disabled at 3, with the tooltip', gdis); await click('#w-pclose');
@@ -191,8 +198,8 @@ await click('#w-next');
 
 /* Step 6: review */
 const r6 = await p.evaluate(() => document.querySelector('#w-main').innerText);
-ok(/Leads where HL Type is UA or PNSM AND Legal Status is Proprietorship/.test(r6) && r6.includes('100% of counted leads match this rule'), 'Review: the audience in words with the 100% line');
-ok(r6.includes('BuyLead created') && r6.includes('Early hang-ups') && /must not get worse by more than 3 points/.test(r6) && r6.includes('Busy share of unanswered calls') && r6.includes('For insight only'), 'Review: primary, guardrails with formula and limit, secondary');
+ok(/Leads where HL Type is UA or PNSM AND Legal Status is Proprietorship/.test(r6) && r6.includes('100% of counted leads matched this rule'), 'Review: the audience in words with the 100% line');
+ok(r6.includes('BuyLead created') && r6.includes('Early hang-ups') && /must not rise by more than 3 points/.test(r6) && r6.includes('Busy share of unanswered calls') && r6.includes('For insight only'), 'Review: primary, guardrails with formula and limit, secondary');
 ok(!/patch/i.test(r6) && r6.includes('What changed in prompt B') && !!(await p.$('#w-main .diff2')), 'Review: prompt B diff shown, no "patch" wording');
 const chk = await p.$$eval('#w-checks .check', c => c.map(x => x.className + ' ' + x.innerText));
 ok(chk.length === 6 && chk.every(c => c.includes(' ok')), 'Review: every pre-launch check passes', chk);

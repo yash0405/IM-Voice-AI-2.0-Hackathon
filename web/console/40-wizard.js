@@ -31,10 +31,10 @@ const wzRef = w => wzPrimary(w) || metricByKey(REF_METRIC);
 /* ---- the plan: one call of durationPlan with this test's state (Step 5 and "At a glance" both read this) */
 function wzPlan(w) {
   const seg = wzSeg(w), m = wzRef(w), base = baselineFor(m, seg), vol = audienceVolume(seg);
-  const lpd = w.lenMode === "custom" && w.customLpd > 0 ? +w.customLpd : vol.perDay;
-  const dDefault = improvementOf(w.size, m, base.value), d = w.lenMode === "custom" && w.customD > 0 ? (m.type === "average" ? +w.customD : w.customD / 100) : dDefault;
-  const plan = durationPlan({ type: m.type, p: base.value, sd: base.sd, lpd, share: w.share, d, conf: w.confidence, days: w.lenMode === "custom" ? (+w.customDays || null) : null, minLeads: w.minLeads });
-  const dir = (w.primary ? (testMetrics(w)[0] || {}).direction : null) || m.direction || "higher";
+  const cust = w.lenMode === "custom", lpd = cust && w.customLpdTouched && w.customLpd > 0 ? +w.customLpd : vol.perDay;           // edited by the person, or from the data
+  const dDefault = improvementOf(w.size, m, base.value), d = cust && w.customDTouched && w.customD > 0 && w.customDType === m.type ? (m.type === "average" ? +w.customD : w.customD / 100) : dDefault;
+  const plan = durationPlan({ type: m.type, p: base.value, sd: base.sd, lpd, share: w.share, d, conf: w.confidence, days: cust ? (+w.customDays || null) : null, minLeads: w.minLeads, seq: w.rule === "sequential" });
+  const dir = m.direction || "higher";
   const light = plan.tooBig ? "red" : (plan.shorter || plan.minLate) ? "amber" : "green";
   return { ...plan, seg, m, base, vol, dDefault, dir, light, target: base.value == null ? null : base.value + (dir === "lower" ? -d : d) };
 }
@@ -45,7 +45,7 @@ function planWords(w, P) {
   const m = P.m, avg = m.type === "average", unitW = avg ? fmtPts(P.d, m).replace(/^[+−]/, "") : `${(P.d * 100).toFixed(P.d * 100 % 1 ? 1 : 0)} points`;
   return `Your audience gets about <b>${nf(P.lpd)}</b> leads a day. Prompt B gets ${pct(P.s, 0)} of them, about <b>${nf(P.bPerDay)}</b> a day. ${avg ? `Today's average ${esc(m.name.toLowerCase())}` : `Today's ${esc(m.name)} rate`} for this audience is <b>${fmtMetric(P.base.value, m)}</b>.
     To reliably spot an improvement of ${unitW} (${fmtMetric(P.base.value, m)} → ${fmtMetric(P.target, m)}), B needs about <b>${nf(P.nB)}</b> leads.
-    ${nf(P.nB)} ÷ ${nf(P.bPerDay)} = ${P.rawDays > 999 ? "999+" : P.rawDays.toFixed(1)} days, rounded up to whole weeks = <b>${P.tooBig ? "more than 28" : P.weeks} days</b>.`;
+    ${nf(P.nB)} ÷ ${nf(P.bPerDay)} = ${P.rawDays > 999 ? "999+" : P.rawDays.toFixed(1)} days, rounded up to whole weeks = <b>${P.tooBig ? "more than 28" : P.weeks} days</b>.${P.seq ? " (B's leads include about 6% extra: the early promote and stop rule looks every day.)" : ""}`;
 }
 
 /* ---- At a glance: the same numbers as Step 5, from the same function */
@@ -58,7 +58,7 @@ function glance(w) {
       <dt>Audience leads a day</dt><dd class="num" data-g="lpd">${nf(P.lpd)}</dd><dt>Prompt B gets</dt><dd class="num" data-g="bpd">${pct(P.s, 0)} · ${nf(P.bPerDay)} a day</dd>
       <dt>Today's ${esc(P.m.name)}${w.primary ? "" : " *"}</dt><dd class="num" data-g="base">${fmtMetric(P.base.value, P.m)}</dd><dt>Improvement to catch</dt><dd class="num" data-g="d">${fmtPts(P.dir === "lower" ? -P.d : P.d, P.m)}</dd>
       <dt>B needs</dt><dd class="num" data-g="nb">${nf(P.nB)} leads</dd><dt>Days needed</dt><dd class="num" data-g="days"><b>${P.rawDays > 999 ? "999+" : P.rawDays.toFixed(1)}</b> → ${P.tooBig ? "over 28" : P.weeks + " (whole weeks)"}</dd>
-      <dt>Test length</dt><dd class="num" data-g="len">${P.days} days${P.custom ? " (custom)" : ""}</dd><dt>Smallest improvement it can spot</dt><dd class="num" data-g="small">${fmtPts(P.smallest, P.m)}</dd>
+      <dt>Test length</dt><dd class="num" data-g="len">${P.days} days${P.custom ? " (custom)" : ""}</dd><dt>Smallest improvement it can spot</dt><dd class="num" data-g="small">${fmtPts(P.dir === "lower" ? -P.smallest : P.smallest, P.m)}</dd>
       <dt>Decisions can start</dt><dd class="num" data-g="minday">day ${P.minDay > 60 ? "60+" : P.minDay}</dd></dl>
     ${w.primary ? "" : `<p class="note" style="margin-top:4px">* until you choose a primary goal</p>`}${P.base.fallback ? `<p class="note">${esc(P.base.note)}</p>` : ""}
     <div class="banner ${P.light === "green" ? "pos" : P.light === "amber" ? "warn" : "neg"}" style="margin:12px 0 0;padding:8px 12px"><div style="font-size:13px">${esc(msg)}</div></div></div>`;
@@ -99,7 +99,7 @@ function metricCard(w, role, i) {
   return `<div class="goal-card mcard" data-mcard="${role}:${i}" tabindex="0" role="button" aria-label="Edit ${esc(m.name)}"><span class="role ${role === "guardrail" ? "g" : "s"}">${roleName(role)}</span>
     <div class="mcard-tools"><details class="kebab"><summary aria-label="More actions for ${esc(m.name)}" title="More">⋯</summary><div class="menu"><button data-mmove="${role}:${i}" ${full ? "disabled" : ""} title="${full ? "Max reached — more metrics mean more false alarms." : ""}">Move to ${other}</button></div></details><button class="x" data-mdel="${role}:${i}" aria-label="Remove ${esc(m.name)}" title="Remove">×</button></div>
     <div class="mcard-name"><b>${esc(m.name)}</b> <span class="arrow" title="${item.direction === "lower" ? "lower is better" : "higher is better"}">${item.direction === "lower" ? "↓" : "↑"}</span></div>
-    <div class="def">${esc(metricWords(m))}</div><div class="meta">${role === "guardrail" ? esc(limitWords(item.limit, m)) + " · " : ""}today ${fmtMetric(b.value, m)} for this audience</div></div>`;
+    <div class="def">${esc(metricWords(m))}</div><div class="meta">${role === "guardrail" ? esc(limitWords(item.limit, m, item.direction)) + " · " : ""}today ${fmtMetric(b.value, m)} for this audience</div></div>`;
 }
 function condRows(cm, side, list) {
   const cols = HIST().cols.filter(c => c.type === "category"), max = METRIC_CAT().max_conditions || 3;
@@ -150,10 +150,11 @@ function metricPanel(w) {
 function goalsStep(w) {
   const seg = wzSeg(w), prim = wzPrimary(w), used = usedKeys(w), outcomes = allMetrics(w.localMetrics).filter(m => m.group === "Outcome"), customs = allMetrics(w.localMetrics).filter(m => m.custom);
   const opt = m => `<option value="${esc(m.key)}" ${w.primary === m.key ? "selected" : ""} ${used.includes(m.key) && w.primary !== m.key ? "disabled" : ""}>${esc(m.name)}${used.includes(m.key) && w.primary !== m.key ? " (already added)" : ""}</option>`;
-  const pb = prim ? baselineFor(prim, seg) : null;
+  const pb = prim ? baselineFor(prim, seg) : null, lost = w.primary && !prim;
   return `<h2>4. Goals</h2><p class="sub">One primary goal decides the test. Guardrails can stop or hold it. Secondary metrics are reported only.</p>
     <section class="goal-sec"><h3>Primary goal</h3><p class="note">Exactly one: the result the test is judged on.</p>
-      <select id="w-primary" aria-label="Primary goal" style="max-width:420px"><option value="" ${w.primary ? "" : "selected"} disabled>Choose the main goal</option>${outcomes.map(opt).join("")}${customs.length ? `<optgroup label="Custom metrics">${customs.map(opt).join("")}</optgroup>` : ""}<option value="__custom" ${w.ui.primCustom ? "selected" : ""}>+ Custom metric</option></select>
+      <select id="w-primary" aria-label="Primary goal" style="max-width:420px"><option value="" ${prim ? "" : "selected"} disabled>Choose the main goal</option>${outcomes.map(opt).join("")}${customs.length ? `<optgroup label="Custom metrics">${customs.map(opt).join("")}</optgroup>` : ""}<option value="__custom" ${w.ui.primCustom ? "selected" : ""}>+ Custom metric</option></select>
+      ${lost ? `<p class="note" style="color:#b23b3b;margin-top:8px">The primary goal chosen earlier was removed from Settings > Metrics. Choose another.</p>` : ""}
       ${w.ui.primCustom ? `<div class="card" style="background:var(--bg-2);margin-top:12px">${cmBuilder(w, w.cm || (w.cm = newCm()), true)}<div class="actions" style="margin-top:12px"><button class="btn primary" id="w-cmsavep">Save metric</button><button class="btn" id="w-cmcancel">Cancel</button></div></div>`
         : prim ? `<div class="goal-card primary" style="margin-top:12px;max-width:520px"><span class="role">Primary</span><div class="mcard-name"><b>${esc(prim.name)}</b> <span class="arrow">${prim.direction === "lower" ? "↓" : "↑"}</span></div><div class="def">${esc(metricWords(prim))}</div><div class="meta">${prim.direction === "lower" ? "lower" : "higher"} is better · today ${fmtMetric(pb.value, prim)} for this audience (last 30 days)</div></div>` : ""}</section>
     <section class="goal-sec"><h3>Guardrails</h3><p class="note">Metrics that must not get worse; they can stop or hold a test.</p><div class="goal-row">${w.guards.map((g, i) => metricCard(w, "guardrail", i)).join("") || `<div class="note">No guardrails.</div>`}</div></section>
@@ -163,7 +164,7 @@ function goalsStep(w) {
 }
 
 /* ---- overlap and the pre-launch checklist */
-const segsOverlap = (a, b) => CAT().variables.filter(v => v.pre_call).every(v => { const x = segAllowed(a, v.column), y = segAllowed(b, v.column); return x.some(t => y.includes(t)); });
+const segsOverlap = (a, b) => CAT().variables.filter(v => v.pre_call && !v.derived_from).every(v => { const x = segAllowedEff(a, v.column), y = segAllowedEff(b, v.column); return x.some(t => y.includes(t)); });     // a derived factor (HL Bucket) narrows its base (HL Type)
 function runningMain() { return DYN.launched.filter(e => e.world === "main").filter(e => { const v = view(e); return v.running || v.scheduled || (v.d.paused && !v.ended); }); }
 function promptState(w) { const A = liveA(), B = wzB(w), vc = varCheck(A.text, B); return { A, B, same: A.text === B, vc }; }
 function checklist(w) {
@@ -232,18 +233,18 @@ function wzBody(w) {
   if (s === 4) return goalsStep(w);
   if (s === 5) {
     const P = wzPlan(w), m = P.m, cust = w.lenMode === "custom", avg = m.type === "average";
-    const dIn = cust ? (w.customD > 0 ? w.customD : avg ? +P.dDefault.toFixed(1) : +(P.dDefault * 100).toFixed(1)) : null;
+    const dIn = cust ? (avg ? +P.d.toFixed(1) : +(P.d * 100).toFixed(1)) : null;
     return `<h2>5. Duration</h2><p class="sub">How long the test runs. It is calculated from the last 30 days of data for your audience, and recalculates whenever the audience, B's share, the primary goal or the improvement changes. Nothing needs typing.</p>
       <div class="form-grid" style="margin-top:16px">${F("Test length", `<select id="w-len"><option value="rec" ${cust ? "" : "selected"}>Recommended: ${P.tooBig ? "over 28" : P.rec} days</option><option value="custom" ${cust ? "selected" : ""}>Custom length</option></select>`)}
-        ${cust ? "" : F("Share of traffic to B", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">`, "whole percent, 5 to 50%")}</div>
+        ${cust ? "" : F("Share of traffic to B", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">${w.shareAuto && w.shareWhy ? `<div class="note" style="margin-top:4px">Set to ${pct(w.share, 0)} for you: ${esc(w.shareWhy)}. Change it if you like.</div>` : ""}`, "whole percent, 5 to 50%")}</div>
       <div class="banner ${P.tooBig ? "neg" : ""}" style="margin-top:12px" id="w-planwords"><div>${planWords(w, P)}${P.tooBig ? `<div style="margin-top:6px"><b>${esc(P.tooBigMsg)}</b></div>` : ""}${P.base.fallback ? `<div class="note" style="margin-top:6px">${esc(P.base.note)}</div>` : ""}${w.primary ? "" : `<div class="note" style="margin-top:6px">No primary goal yet: using ${esc(m.name)} until you choose one in step 4.</div>`}</div></div>
       ${cust ? "" : `<div class="field" style="margin-top:16px"><label>Improvement worth catching</label><div class="seg" role="group" aria-label="Improvement worth catching">${["small", "medium", "large"].map(z => `<button data-size="${z}" aria-pressed="${w.size === z}">${z[0].toUpperCase() + z.slice(1)} (${esc(sizeLabel(z, { ...m, direction: P.dir }))})</button>`).join("")}</div></div>`}
       ${cust ? `<div class="card" style="background:var(--bg-2);margin-top:16px"><h3>Custom length</h3><div class="form-grid" style="margin-top:8px">
-          ${F("Leads per day", `<input type="number" id="w-clpd" min="1" step="1" value="${Math.round(w.customLpd > 0 ? w.customLpd : P.vol.perDay)}">`, "from data; edit for planned changes")}
+          ${F("Leads per day", `<input type="number" id="w-clpd" min="1" step="1" value="${Math.round(P.lpd)}">`, w.customLpdTouched ? "edited by you" : "from data; edit for planned changes")}
           ${F("B share (%)", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">`, "whole percent, 5 to 50%")}
           ${F("Test days", `<select id="w-cdays">${[7, 14, 21, 28].map(d => `<option value="${d}" ${P.days === d ? "selected" : ""}>${d} days${d === P.rec && !P.tooBig ? " (recommended)" : ""}</option>`).join("")}</select>`, "whole weeks")}
           ${F(`Improvement worth catching (${avg ? metricUnit(m) || "units" : "pts"})`, `<input type="number" id="w-cd" min="0.1" step="${avg ? 0.5 : 0.5}" value="${dIn}">`)}</div>
-        <p style="margin-top:12px" id="w-reverse">With ${P.days} days you can spot an improvement of <b>${fmtPts(P.smallest, m).replace(/^\+/, "")}</b> or more.</p>
+        <p style="margin-top:12px" id="w-reverse">With ${P.days} days you can spot an improvement of <b>${fmtPts(P.smallest, m).replace(/^[+−]/, "")}</b> or more.</p>
         ${P.shorter ? `<div class="banner warn" style="margin:8px 0 0"><div>Shorter than recommended — the result may be inconclusive.</div></div>` : ""}</div>` : ""}
       ${P.minLate ? `<div class="banner warn" style="margin-top:12px"><div>B would have fewer than ${nf(w.minLeads)} leads by day ${P.days}, so no decision could be made (decisions start on day ${P.minDay > 60 ? "60+" : P.minDay}). Raise B's share or lengthen the test.</div></div>` : ""}
       <details style="margin-top:16px" ${w.ui.advOpen ? "open" : ""} id="w-adv"><summary style="cursor:pointer;font-weight:500">Advanced settings</summary><div class="form-grid" style="margin-top:12px">
@@ -257,11 +258,11 @@ function wzBody(w) {
           <label class="radio"><input type="radio" name="w-rule" value="sequential" ${w.rule === "sequential" ? "checked" : ""}><div><b>Early promote and early stop (sequential)</b><span>May promote or stop on any day using boundaries built for repeated looks. ${RULE_FACTS()} Needs about 6% more data.</span></div></label></div></details>`;
   }
   const P = wzPlan(w), ps = promptState(w), chk = checklist(w), prim = wzPrimary(w), tm = testMetrics(w), st = diffStats(diffRows(ps.A.text, ps.B)), usesHang = tm.some(x => x.key === "early_hangup");
-  const mLine = x => x.m ? `<div><b>${esc(x.m.name)}</b> ${x.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.m))}</span>${x.role === "guardrail" ? ` · <b>${esc(limitWords(x.limit, x.m))}</b>` : ""}</div>` : "";
+  const mLine = x => x.m ? `<div><b>${esc(x.m.name)}</b> ${x.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.m))}</span>${x.role === "guardrail" ? ` · <b>${esc(limitWords(x.limit, x.m, x.direction))}</b>` : ""}</div>` : "";
   return `<h2>6. Review and launch</h2><p class="sub">Save Test keeps an editable draft. Launch Test locks the setup (audience, prompt B, metrics and limits) and gives it a version ID: any later change creates a new version. Launch stays disabled until every check passes.</p>
     <dl class="kv" style="margin-top:16px"><dt>Name</dt><dd><b>${esc(w.name || "-")}</b></dd>
       <dt>Prompt B</dt><dd>A full prompt: ${st.added} line${st.added === 1 ? "" : "s"} added, ${st.removed} removed against ${esc(ps.A.id)} (the live prompt). ${ps.vc.ok ? "All template variables kept." : "Template variables need fixing."}</dd>
-      <dt>Audience</dt><dd>${esc(segDescribe(P.seg))}<div class="note">Only leads that match this rule are counted: the router checks every lead before the call, so 100% of counted leads match this rule. About ${nf(P.vol.perDay)} leads a day.</div></dd>
+      <dt>Audience</dt><dd>${esc(segDescribe(P.seg))}<div class="note">The router checks every lead before the call and counts only those that match: 100% of counted leads matched this rule. About ${nf(P.vol.perDay)} leads a day.</div></dd>
       <dt>Primary goal</dt><dd>${prim ? mLine(tm[0]) + `<div class="note">today ${fmtMetric(P.base.value, prim)} · improvement to catch ${fmtPts(P.dir === "lower" ? -P.d : P.d, prim)}</div>` : "Not chosen"}</dd>
       <dt>Guardrails</dt><dd>${tm.filter(x => x.role === "guardrail").map(mLine).join("") || "None"}</dd>
       <dt>Secondary</dt><dd>${tm.filter(x => x.role === "secondary").map(mLine).join("") || "None"}<div class="note">For insight only: never used for the decision.</div></dd>
@@ -270,7 +271,7 @@ function wzBody(w) {
     <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:500">Show the full prompt B</summary><textarea readonly class="prompt-box" rows="14" style="margin-top:8px" aria-label="Prompt B (read-only)">${esc(ps.B)}</textarea></details>
     <h3 style="margin:24px 0 8px">Pre-launch checklist</h3><div style="display:grid;gap:8px" id="w-checks">${chk.map(x => `<div class="check ${x.ok ? "ok" : "bad"}"><span class="ico">${x.ok ? "✓" : "✕"}</span><span><b>${esc(x.label)}</b>: ${esc(x.why)}${x.ok ? "" : ` <button class="link" data-goto="${x.step}">Fix in step ${x.step}</button>`}</span></div>`).join("")}</div>
     <div class="form-grid" style="margin-top:16px">${F("Start date", `<input type="date" id="w-start" value="${esc(w.startDate)}" min="${TODAY}">`, w.startDate > TODAY ? "a later date makes it Scheduled" : "optional; today starts it now")}</div>
-    <h3 style="margin:24px 0 8px">Where do the results come from?</h3><div style="display:grid;gap:8px"><label class="radio"><input type="radio" name="w-src" value="sim" ${w.source === "sim" ? "checked" : ""}><div><b>Simulator (demo only)</b><span>Leads are replayed from the 30-day history with a known effect you set on the primary goal, so you can check the engine decides correctly. The effect is put into B's input, never into the result.</span></div></label>
+    <h3 style="margin:24px 0 8px">Where do the results come from?</h3><div style="display:grid;gap:8px"><label class="radio"><input type="radio" name="w-src" value="sim" ${w.source === "sim" ? "checked" : ""}><div><b>Simulator (demo only)</b><span>Leads are replayed from the 30-day history with a known effect you set on the primary goal, so you can check the engine decides correctly. The effect is put into B's input, never into the result. A call ends in one outcome, so when B gets more goal outcomes its other outcomes shrink in proportion: a guardrail on another disposition moves a little too.</span></div></label>
       <label class="radio"><input type="radio" name="w-src" value="files" ${w.source === "files" ? "checked" : ""}><div><b>Results files from the voice platform</b><span>The test runs elsewhere; you give Canary the A and B results and it decides with the plan above.</span></div></label></div>
     ${w.source === "sim" ? `<div class="form-grid" style="margin-top:16px"><div class="field wide"><label>Simulation settings (demo only)</label><div class="seg" role="group" aria-label="Preset">${(P.dir === "lower" ? [["win", "B wins (−15%)"], ["worse", "B worse (+15%)"], ["flat", "Flat (0%)"], ["custom", "Custom"]] : [["win", "B wins (+15%)"], ["worse", "B worse (−15%)"], ["flat", "Flat (0%)"], ["custom", "Custom"]]).map(([k, n]) => `<button data-preset="${k}" aria-pressed="${w.preset === k}">${n}</button>`).join("")}</div></div>
       ${F("B's true effect on the primary goal (relative)", `<input type="number" id="w-eff" step="1" value="${w.effectRel}" ${w.preset === "custom" ? "" : "disabled"}>`, "% of A's value")}${F("Random seed", `<input type="number" id="w-seed" value="${w.seed}">`, "same seed, same run")}${F("B's calls are longer by (%)", `<input type="number" id="w-dx" step="1" value="${w.durExtra || 0}">`, "to test a call-length guardrail")}${usesHang ? F("B's early hang-ups are higher by (points)", `<input type="number" id="w-hx" step="0.5" min="0" value="${w.hangExtra || 0}">`, `today ${fmtMetric(baselineFor(metricByKey("early_hangup"), P.seg).value, metricByKey("early_hangup"))} of answered calls`) : ""}</div>`
@@ -321,7 +322,7 @@ function bindWizard(el, w) {
     save();
   };
   const redraw = () => { sync(); wzRedraw(); };
-  const goStep = t => { sync(); for (let s = w.step; s < t; s++) { const m = wzValid(w, s); if (m) { toast(m); return; } if (s === 3) w.audienceSet = true; if (s === 4 && !w.shareTouched) w.share = suggestShare(w).share; } w.step = t; w.panel = null; save(); route(); };
+  const goStep = t => { sync(); for (let s = w.step; s < t; s++) { const m = wzValid(w, s); if (m) { toast(m); return; } if (s === 3) w.audienceSet = true; if (s === 4 && !w.shareTouched) { const sg = suggestShare(w); w.share = sg.share; w.shareWhy = sg.why; w.shareAuto = true; } } w.step = t; w.panel = null; save(); route(); };
   $$("[data-step]", el).forEach(b => b.onclick = () => { const t = +b.dataset.step; if (t <= w.step) { sync(); w.step = t; w.panel = null; save(); route(); } else goStep(t); });
   $$("[data-goto]", el).forEach(b => b.onclick = () => { sync(); w.step = +b.dataset.goto; save(); route(); });
   const nx = $1("#w-next"); if (nx) nx.onclick = () => goStep(w.step + 1);
@@ -353,16 +354,16 @@ function bindWizard(el, w) {
   const pr = $1("#w-primary"); if (pr) pr.onchange = () => { sync(); if (pr.value === "__custom") { w.ui.primCustom = true; w.cm = newCm(); } else { w.ui.primCustom = false; w.primary = pr.value || null; } redraw(); };
   const cms = $1("#w-cmsavep"); if (cms) cms.onclick = () => { sync(); const def = cmDef(w.cm), chk = metricCheck(def); if (!chk.ok) { toast(chk.errors[0]); return; } const keep = { ...def, group: "Custom" }; DYN.settings.customMetrics = [...customMetrics().filter(x => x.key !== keep.key), keep]; w.primary = keep.key; w.ui.primCustom = false; w.cm = null; toast(`Saved "${keep.name}" to the metric list and set it as the primary goal.`); redraw(); };
   const cmc = $1("#w-cmcancel"); if (cmc) cmc.onclick = () => { w.ui.primCustom = false; w.cm = null; redraw(); };
-  const openPanel = (role, edit, idx) => { const list = role === "guardrail" ? w.guards : w.secondary, item = edit ? list[idx] : null, m = item && metricByKey(item.key, w.localMetrics);
-    w.panel = { role: edit ? role : (roleFull(w, "guardrail") ? "secondary" : "guardrail"), origRole: role, idx, edit: !!edit, tab: "list", key: item ? item.key : null, direction: item ? item.direction : "lower", limit: item && item.limit ? item.limit.value : 10, kind: item && item.limit ? item.limit.kind : "rel", q: "" }; w.cm = null; if (m && !m.direction) w.panel.direction = "higher"; redraw(); setTimeout(() => { const p = $("#w-panel"); if (p) p.scrollIntoView({ block: "nearest" }); }, 0); };
+  const openPanel = (role, edit, idx) => { sync(); const list = role === "guardrail" ? w.guards : w.secondary, item = edit ? list[idx] : null, m = item && metricByKey(item.key, w.localMetrics);
+    w.panel = { role: edit ? role : (roleFull(w, "guardrail") ? "secondary" : "guardrail"), origRole: role, idx, edit: !!edit, tab: "list", key: item ? item.key : null, direction: item ? item.direction : "lower", limit: item && item.limit ? item.limit.value : 10, kind: item && item.limit ? item.limit.kind : "rel", q: "" }; w.cm = null; if (m && !m.direction) w.panel.direction = "higher"; save(); wzRedraw(); setTimeout(() => { const p = $("#w-panel"); if (p) p.scrollIntoView({ block: "nearest" }); }, 0); };
   const am = $1("#w-addm"); if (am) am.onclick = () => openPanel("guardrail", false);
   $$("[data-mcard]", el).forEach(c => { const go2 = ev => { if (ev.target.closest("button,details,summary")) return; const [role, i] = c.dataset.mcard.split(":"); openPanel(role, true, +i); }; c.onclick = go2; c.onkeydown = ev => { if (ev.key === "Enter" && ev.target === c) go2(ev); }; });
   $$("[data-mdel]", el).forEach(b => b.onclick = ev => { ev.stopPropagation(); const [role, i] = b.dataset.mdel.split(":"); (role === "guardrail" ? w.guards : w.secondary).splice(+i, 1); w.panel = null; redraw(); });
   $$("[data-mmove]", el).forEach(b => b.onclick = ev => { ev.stopPropagation(); const [role, i] = b.dataset.mmove.split(":"), from = role === "guardrail" ? w.guards : w.secondary, to = role === "guardrail" ? "secondary" : "guardrail"; if (roleFull(w, to)) { toast("Max reached — more metrics mean more false alarms."); return; }
-    const [it] = from.splice(+i, 1); if (to === "guardrail") w.guards.push({ key: it.key, direction: it.direction, limit: it.limit || { value: 10, kind: "rel" } }); else w.secondary.push({ key: it.key, direction: it.direction }); w.panel = null; redraw(); });
+    const [it] = from.splice(+i, 1); if (to === "guardrail") w.guards.push({ key: it.key, direction: it.direction, limit: it.limit || { value: 10, kind: "rel" } }); else w.secondary.push({ key: it.key, direction: it.direction, limit: it.limit }); w.panel = null; redraw(); });
   $$("[data-prole]", el).forEach(b => b.onclick = () => { sync(); w.panel.role = b.dataset.prole; redraw(); });
   $$("[data-ptab]", el).forEach(b => b.onclick = () => { sync(); w.panel.tab = b.dataset.ptab; if (w.panel.tab === "custom" && !w.cm) w.cm = newCm(); redraw(); });
-  $$("input[name=w-pick]", el).forEach(r => r.onchange = () => { sync(); const m = metricByKey(r.value, w.localMetrics); if (m) w.panel.direction = m.direction || "higher"; redraw(); });
+  $$("input[name=w-pick]", el).forEach(r => r.onchange = () => { sync(); const m = metricByKey(r.value, w.localMetrics); w.panel.key = r.value; if (m) w.panel.direction = m.direction || "higher"; save(); wzRedraw(); });
   const ps = $1("#w-psearch"); if (ps) ps.oninput = () => { w.panel.q = ps.value; clearTimeout(window.__pq); window.__pq = setTimeout(wzRedraw, 200); };
   const pc = () => { w.panel = null; w.cm = null; redraw(); }; const px = $1("#w-pclose"); if (px) px.onclick = pc; const pcc = $1("#w-pcancel"); if (pcc) pcc.onclick = pc;
   const pa = $1("#w-padd"); if (pa) pa.onclick = () => { sync(); const p = w.panel; let key = p.key;
@@ -389,9 +390,15 @@ function bindWizard(el, w) {
   const cn = $1("#w-cmname"); if (cn) { let t; cn.oninput = () => { w.cm.name = cn.value; clearTimeout(t); t = setTimeout(() => { const prev = $1("#w-cmprev"); if (prev) { const chk = metricCheck(cmDef(w.cm)); prev.className = "cm-prev " + (chk.ok ? "" : "bad"); if (!chk.ok) prev.innerHTML = chk.errors.map(esc).join("<br>"); else wzRedraw(); } }, 300); }; }
 
   /* step 5: duration */
-  const ln = $1("#w-len"); if (ln) ln.onchange = () => { sync(); w.lenMode = ln.value; if (w.lenMode === "custom") { const P = wzPlan({ ...w, lenMode: "rec" }); w.customLpd = Math.round(P.vol.perDay); w.customDays = P.rec; w.customD = P.m.type === "average" ? +P.d.toFixed(1) : +(P.d * 100).toFixed(1); } redraw(); };
+  const ln = $1("#w-len"); if (ln) ln.onchange = () => { sync(); w.lenMode = ln.value; if (w.lenMode === "custom") { const P = wzPlan({ ...w, lenMode: "rec" }); w.customDays = P.rec; w.customLpdTouched = false; w.customDTouched = false; } redraw(); };
   $$("[data-size]", el).forEach(b => b.onclick = () => { sync(); w.size = b.dataset.size; redraw(); });
-  ["#w-share", "#w-clpd", "#w-cdays", "#w-cd", "#w-conf", "#w-min", "#w-harm", "#w-appr", "#w-assign", "#w-start", "#w-eff", "#w-seed", "#w-dx", "#w-hx"].forEach(id => { const e = $1(id); if (e) e.onchange = () => { if (id === "#w-share") w.shareTouched = true; redraw(); }; });
+  ["#w-share", "#w-clpd", "#w-cdays", "#w-cd", "#w-conf", "#w-min", "#w-harm", "#w-appr", "#w-assign", "#w-start", "#w-eff", "#w-seed", "#w-dx", "#w-hx"].forEach(id => { const e = $1(id); if (e) e.onchange = () => {
+    const v = +e.value;
+    if (id === "#w-share") { w.shareTouched = true; w.shareAuto = false; if (!(e.value !== "" && v >= 5 && v <= 50 && Number.isInteger(v))) toast(`B's share must be a whole percent from 5 to 50; it is set to ${Math.min(50, Math.max(5, Math.round(v) || 5))}%.`, 4500); }
+    if (id === "#w-clpd") { if (v > 0) w.customLpdTouched = true; else { toast("Leads per day must be above 0; it is back to the value from the data.", 4500); w.customLpdTouched = false; } }
+    if (id === "#w-cd") { const m = wzRef(w); if (v > 0) { w.customDTouched = true; w.customDType = m.type; } else { toast("The improvement to catch must be above 0; it is back to the preset.", 4500); w.customDTouched = false; } }
+    if (id === "#w-min" && !(v >= 20)) toast("The minimum leads per arm must be at least 20.", 4500);
+    redraw(); }; });
   $$("input[name=w-rule],input[name=w-src]", el).forEach(r => r.onchange = redraw);
   const adv = $1("#w-adv"); if (adv) adv.ontoggle = () => { w.ui.advOpen = adv.open; };
   $$("[data-preset]", el).forEach(b => b.onclick = () => { sync(); w.preset = b.dataset.preset; if (w.preset !== "custom") w.effectRel = { win: 15, worse: -15, flat: 0 }[w.preset]; redraw(); });

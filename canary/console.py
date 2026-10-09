@@ -84,6 +84,13 @@ def demo_experiments() -> list[dict]:
     return out
 
 
+# History re-runs deal leads with the stratified router, whose groups come from the factor catalog. When the catalog became the 8 factors of the
+# New Experiment spec, two re-runs drew differently and stopped showing their scenario's stated outcome ("The fix does almost nothing" promoted,
+# "calls much longer: held for a person" ended inconclusive). These two seeds were re-picked (the first seed, counting up, that shows the stated
+# outcome) so History still illustrates each scenario as titled; the proof lab measures how often each outcome really happens.
+HISTORY_SEEDS = {"fix_flat": 3, "guardrail_hold": 3}
+
+
 def past_tests() -> list[dict]:
     """Finished tests for the History screen: our scenarios re-run with earlier start dates, plus the sample result files."""
     out = []
@@ -93,7 +100,7 @@ def past_tests() -> list[dict]:
     t0 = datetime(2026, 6, 1, 9)                       # one timeline, a test starting every week, all finished before the demo day
     n_sim = len(keys)
     for i, key in enumerate(keys):
-        cfg, sim, sc = make(key)
+        cfg, sim, sc = make(key, seed=HISTORY_SEEDS.get(key))
         cfg = Config(**{**cfg.as_dict(), "start": (t0 + timedelta(days=7 * i)).isoformat(timespec="seconds"), "assignment": "stratified"})
         rec = run_experiment(cfg, sim)
         out.append({"id": f"past_{key}", "kind": "simulated", "preset": sc.title, "hypothesis": sc.story,
