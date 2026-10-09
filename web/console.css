@@ -158,3 +158,28 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .nav a[aria-current="page"] { border-bottom-color: var(--blue); } .side-foot { display: none; }
   .main { padding: 16px; } .g2, .g3, .g4, .form-grid { grid-template-columns: minmax(0, 1fr); } .kv { grid-template-columns: 1fr; }
 }
+
+tr.grp td { background: var(--bg-2); }
+.btn { white-space: nowrap; }
+/* ---- new experiment: chips, goal cards, calculator, traffic light */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); cursor: pointer; font-size: 13px; }
+.chip:has(input:checked) { border-color: var(--blue); background: var(--blue-wash); color: var(--navy); font-weight: 500; } .chip input { accent-color: var(--blue); margin: 0; }
+.goal-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+.goal-card { position: relative; border: 1px solid var(--line); border-radius: var(--r); padding: 12px 16px; background: var(--bg); display: grid; gap: 4px; align-content: start; }
+.goal-card.primary { border-color: var(--blue); background: var(--blue-wash); } .goal-card.add { background: var(--bg-2); border-style: dashed; }
+.goal-card b { color: var(--navy); font-weight: 600; } .goal-card .def { font-size: 12px; color: var(--ink-2); } .goal-card .meta { font-size: 13px; color: var(--ink-2); }
+.goal-card .arrow { font-weight: 700; color: var(--navy); font-size: 16px; }
+.role { display: inline-block; width: fit-content; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 0 8px; border-radius: 4px; background: var(--navy); color: #fff; } .role.g { background: var(--bg-2); color: var(--ink-2); border: 1px solid var(--line); }
+.goal-card .x { position: absolute; right: 8px; top: 8px; border: 0; background: transparent; font-size: 18px; line-height: 1; color: var(--ink-2); border-radius: 6px; width: 28px; height: 28px; } .goal-card .x:hover { background: var(--neg-wash); color: #b23b3b; }
+.wz-side { align-content: start; position: sticky; top: 16px; } @media (max-width: 1100px) { .wz-side { position: static; } }
+.light { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.light i { width: 10px; height: 10px; border-radius: 50%; background: var(--off); display: inline-block; }
+.light.green { background: var(--pos-wash); color: #167a70; } .light.green i { background: var(--pos); } .light.amber { background: var(--warn-wash); color: #8a5a00; } .light.amber i { background: var(--warn); } .light.red { background: var(--neg-wash); color: #b23b3b; } .light.red i { background: var(--neg); }
+
+/* ---- traffic map */
+.tmrow { display: grid; grid-template-columns: minmax(180px, 280px) 1fr; gap: 12px; align-items: center; margin: 8px 0; } .tmname { font-size: 13px; }
+.tmap { display: flex; height: 24px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+.tm { display: flex; align-items: center; justify-content: center; font-size: 11px; white-space: nowrap; overflow: hidden; min-width: 0; } .tm.out { background: var(--bg-2); color: var(--ink-2); } .tm.a { background: var(--a); color: #fff; } .tm.b { background: var(--b); color: #fff; }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -2px; border: 1px solid var(--line); } .sw.out { background: var(--bg-2); } .sw.a { background: var(--a); border-color: var(--a); } .sw.b { background: var(--b); border-color: var(--b); }
+@media (max-width: 860px) { .tmrow { grid-template-columns: 1fr; } }

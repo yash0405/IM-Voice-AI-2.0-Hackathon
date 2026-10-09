@@ -10,9 +10,9 @@ import math
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 
-from . import seqdesign
+from . import catalog, seqdesign
 from .ledger import Ledger, canonical, verify
-from .router import Router
+from .router import Router, StratifiedRouter
 from .stats import loss_pvalue, norm_cdf, pooled_z, ratio_effect, score_diff_ci, srm_pvalue
 from .variants import describe_pair, load_base
 
@@ -26,7 +26,7 @@ class Config:
     agent: str = "VANI BuyLead qualification agent"
     variant_b: str = "reconcile_limits"
     share_b: float = 0.10
-    assignment: str = "balanced"        # balanced | hash
+    assignment: str = "balanced"        # balanced | hash | stratified (the BRD's router: shuffled blocks inside each Hot Lead type x Nature of Business group)
     salt: str = "s1"
     start: str = "2026-10-12T09:00:00"
     window_days: int = 14
@@ -65,9 +65,19 @@ class Config:
     # what the goal and the guardrails MEAN (which dispositions count, which column, what threshold): part of the locked config
     goal_definition: str = ""
     guard_definition: str = ""
+    # audience: None = every lead (a neutral test). Otherwise {"rules": [{"var", "values"}], "text"}: pre-call variables only. `leads_per_day` is ALL traffic;
+    # the leads that match the segment are `eligible_per_day`.
+    segment: dict | None = None
+    # after a promotion a small slice stays on the old prompt for a while, to confirm the gain holds (the BRD's 5% for 7 days)
+    holdback_share: float = 0.05
+    holdback_days: int = 7
 
     def as_dict(self):
         return asdict(self)
+
+    @property
+    def eligible_per_day(self) -> float:
+        return self.leads_per_day * catalog.segment_share(self.segment)
 
     def hash(self) -> str:
         return hashlib.sha256(canonical(self.as_dict()).encode()).hexdigest()[:12]
@@ -84,8 +94,17 @@ class Config:
             errs.append("baseline and mde must be probabilities")
         if self.primary_direction == "higher" and self.baseline + self.mde >= 1:
             errs.append("baseline + mde must stay below 1")
-        if self.assignment not in ("balanced", "hash"):
-            errs.append("assignment must be balanced or hash")
+        if self.assignment in ("balanced", "stratified") and abs(self.share_b * 100 - round(self.share_b * 100)) > 1e-6:
+            errs.append("the B share must be a whole percent when leads are dealt in blocks (a block cannot hold a fraction of a lead); use the hash assignment for other shares")
+        if self.assignment not in ("balanced", "hash", "stratified"):
+            errs.append("assignment must be balanced, hash or stratified")
+        if self.segment:
+            try:
+                catalog.validate_segment(self.segment)
+            except ValueError as e:
+                errs.append(str(e))
+            if self.assignment != "stratified":
+                errs.append("a segmented test needs assignment 'stratified' (the router has to read the lead's variables)")
         if self.secondary_role not in ("guardrail", "goal", "none"):
             errs.append("secondary_role must be guardrail, goal or none")
         if self.approval not in ("auto", "manual"):
@@ -106,6 +125,8 @@ class Config:
             errs.append("rule_set must be sequential or final_look")
         if self.guard_rate_worse_when not in ("higher", "lower"):
             errs.append("guard_rate_worse_when must be higher or lower")
+        if not 0 <= self.holdback_share < 0.5 or self.holdback_days < 0:
+            errs.append("holdback_share must be between 0 and 50% and holdback_days must not be negative")
         if self.guard_rate and not 0 < self.guard_rate_margin < 1:
             errs.append("guard_rate_margin must be a fraction between 0 and 1")
         if errs:
@@ -133,12 +154,14 @@ class Design:
     duration_cv: float = 0.0
     guardrail_proof_prob: float = 1.0
     rule_set: str = "sequential"
+    harm_g: list | None = None   # bar for a guardrail breach at each look (None = same as `harm`); the one-look rule keeps it strict on the last day too
 
     def summary(self) -> dict:
         d = {k: v for k, v in self.__dict__.items()}
         return d
 
 
+FINAL_FLOOR = 50   # one-look rule: fewest leads per arm for which the end-of-test call is made at all
 NEVER_Z = 99.0     # a boundary this high can never be crossed: used where a rule set does not allow a promotion yet
 
 
@@ -149,23 +172,27 @@ def build_design(cfg: Config, look_n: list | None = None, planned_final: int | N
     cfg.validate()
     sign = 1 if cfg.primary_direction == "higher" else -1
     plan = seqdesign.plan_sample_size(cfg.baseline, sign * cfg.mde, cfg.share_b, cfg.alpha, cfg.power, cfg.n_looks)
-    capacity = planned_final or cfg.window_days * cfg.leads_per_day
+    elig = cfg.eligible_per_day
+    capacity = planned_final or int(round(cfg.window_days * elig))
     if cfg.rule_set == "final_look":
         # one winner call at the end of the window (day `window_days`); a strict harm check at every look in between
         final_n = capacity
         if look_n is None:
-            look_n = [max(1, round(cfg.leads_per_day * (k + 1))) for k in range(cfg.window_days)]
+            look_n = [max(1, round(elig * (k + 1))) for k in range(cfg.window_days)]
             look_n[-1] = final_n
         look_n = [n for n in look_n if n < final_n] + [final_n]
         K = len(look_n)
         ts = [n / final_n for n in look_n]
         eff = [NEVER_Z] * (K - 1) + [float(seqdesign.norm.ppf(1 - cfg.alpha))]
         harm = [float(seqdesign.norm.ppf(1 - cfg.alpha_harm_daily))] * K
+        harm_g = list(harm)
+        harm[-1] = float(seqdesign.norm.ppf(1 - cfg.alpha))     # the end-of-test call is two-sided: a B significantly WORSE at 95% is kept out and logged as a loss
         theta = (seqdesign.norm.ppf(1 - cfg.alpha) + seqdesign.norm.ppf(cfg.power)) * math.sqrt(final_n / plan["n_fixed"])
         power_in_window = float(norm_cdf(theta - eff[-1]))
         n_max, look_every, inflation, will_finish = final_n, max(1, round(final_n / K)), 1.0, final_n >= plan["n_fixed"]
         theta = float(theta)
     else:
+        harm_g = None
         n_max = n_horizon or plan["n_max"]
         look_every = max(1, math.ceil(n_max / cfg.n_looks))
         final_n = min(n_max, capacity)
@@ -194,7 +221,7 @@ def build_design(cfg: Config, look_n: list | None = None, planned_final: int | N
     return Design(n_max=n_max, look_every=look_every, capacity=capacity, look_n=look_n, ts=ts,
                   eff=eff, harm=harm, theta=theta, inflation=inflation,
                   n_fixed=plan["n_fixed"], power_in_window=power_in_window, will_finish=will_finish,
-                  duration_cv=cv, guardrail_proof_prob=gp, rule_set=cfg.rule_set)
+                  duration_cv=cv, guardrail_proof_prob=gp, rule_set=cfg.rule_set, harm_g=harm_g)
 
 
 # ---------------------------------------------------------------------------- monitor
@@ -242,6 +269,9 @@ class Monitor:
     def look(self, k: int, c: Counts, final: bool, want_row: bool = False):
         cfg, d = self.cfg, self.d
         ce, ch, t = d.eff[k], d.harm[k], d.ts[k]
+        chg = d.harm_g[k] if d.harm_g else ch          # guardrail-breach bar
+        # the minimum-leads gate holds back the daily harm check; the one-look rule's final call only needs enough leads for the normal approximation
+        floor = min(cfg.min_per_arm, FINAL_FLOOR) if (final and cfg.rule_set == "final_look") else cfg.min_per_arm
         n = c.nA + c.nB
         p_srm = srm_pvalue(c.nA, c.nB, cfg.share_b)
         p_loss = loss_pvalue(c.aA, c.nA, c.aB, c.nB) if (cfg.loss_check and (c.aA + c.aB) >= cfg.srm_min_n) else 1.0
@@ -266,25 +296,30 @@ class Monitor:
             kind = "HALT_SRM"
             reason = (f"sample-ratio mismatch: logged B share {c.nB / n:.1%} vs configured {cfg.share_b:.1%} "
                       f"(p={p_srm:.1e} < {cfg.srm_alpha}); results cannot be trusted")
-        elif c.nA < cfg.min_per_arm or c.nB < cfg.min_per_arm:
+        elif c.nA < floor or c.nB < floor:
             if final:
-                kind, reason = "INCONCLUSIVE", f"fewer than {cfg.min_per_arm} calls in an arm at the end of the window"
+                kind, reason = "INCONCLUSIVE", f"fewer than {floor} leads in an arm at the end of the window"
             else:
-                reason = f"waiting for {cfg.min_per_arm} calls per arm before any decision"
+                reason = f"waiting for {floor} leads per arm before any decision"
         else:
-            breach = next(((x, nm, mg, kd) for x, nm, mg, kd in guards if x["z_breach"] >= ch), None)
+            breach = next(((x, nm, mg, kd) for x, nm, mg, kd in guards if x["z_breach"] >= chg), None)
             if z <= -ch:
                 kind = "STOP_HARM"
-                reason = f"B is clearly worse on {cfg.primary_goal}: z={z:.2f} crossed the harm boundary -{ch:.2f}"
+                if final and cfg.rule_set == "final_look":
+                    cause = "loss_at_end"
+                    reason = (f"at the final call B is significantly worse than A on {cfg.primary_goal}: z={z:.2f}, past the end-of-test line -{ch:.2f} "
+                              f"(95% two-sided); keep A, logged as a loss")
+                else:
+                    reason = f"B is clearly worse on {cfg.primary_goal}: z={z:.2f} crossed the harm boundary -{ch:.2f}"
             elif breach is not None:
                 x, nm, mg, kd = breach
                 kind = "STOP_GUARDRAIL"
                 if kd == "relative":
                     reason = (f"guardrail breached: {nm} is {x['worse']:+.1%} worse (tolerated {mg:+.0%}), "
-                              f"z={x['z_breach']:.2f} crossed {ch:.2f}")
+                              f"z={x['z_breach']:.2f} crossed {chg:.2f}")
                 else:
                     reason = (f"guardrail breached: {nm} is {x['worse'] * 100:+.1f} points worse (tolerated {mg * 100:+.0f}), "
-                              f"z={x['z_breach']:.2f} crossed {ch:.2f}")
+                              f"z={x['z_breach']:.2f} crossed {chg:.2f}")
             else:
                 if z >= ce and self.eff_at is None:
                     self.eff_at, self.eff_z = k, z
@@ -335,7 +370,7 @@ class Monitor:
         row = {"k": k, "n": n, "t": round(t, 5), "nA": c.nA, "xA": c.xA, "nB": c.nB, "xB": c.xB,
                "rateA": c.xA / c.nA if c.nA else None, "rateB": c.xB / c.nB if c.nB else None,
                "diff": d_, "rci": [lo_rci, hi_rci], "ci95": [lo95, hi95],
-               "z": z, "eff": ce, "harm": ch, "naive_cross": (abs(z) >= 1.96 and n >= 2 * cfg.min_per_arm),
+               "z": z, "eff": ce, "harm": ch, "harm_g": chg, "naive_cross": (abs(z) >= 1.96 and n >= 2 * cfg.min_per_arm),
                "p_srm": min(p_srm, p_loss), "p_loss": p_loss, "assignedB": c.aB / (c.aA + c.aB) if (c.aA + c.aB) else None,
                "loggedB": c.nB / n if n else None, "guardrail": g, "guardrail2": g2, "decision": dec["kind"]}
         return dec, row
@@ -348,8 +383,11 @@ def _iso(start: datetime, seconds: float) -> str:
     return (start + timedelta(seconds=seconds)).isoformat(timespec="seconds")
 
 
-def run_experiment(cfg: Config, sim, design: Design | None = None) -> dict:
-    """Run one experiment end to end against a traffic simulator. Fully deterministic."""
+def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict | None = None) -> dict:
+    """Run one experiment end to end against a traffic simulator. Fully deterministic.
+
+    `capture`, if given, is filled with the per-lead rows the record does not keep (they would bloat every stored result):
+    capture["assignments"] = [{lead_id, stratum, variant, assigned_at}], capture["calls"] = [{call_id, lead_id, time, in_segment, variant, converted, duration_s, repeat}]."""
     cfg.validate()
     d = design or build_design(cfg)
     start = datetime.fromisoformat(cfg.start)
@@ -357,7 +395,12 @@ def run_experiment(cfg: Config, sim, design: Design | None = None) -> dict:
     clock_state = {"i": 0}
     ledger = Ledger(lambda: _iso(start, clock_state["i"] * secs_per_call))
     variants = describe_pair(cfg.variant_b)
-    router = Router(cfg.exp_id, cfg.share_b, cfg.salt, cfg.assignment)
+    seg = catalog.validate_segment(cfg.segment)
+    strat_plan = catalog.plan_strata(cfg.window_days * cfg.eligible_per_day, seg) if cfg.assignment == "stratified" else None
+    router = (StratifiedRouter(cfg.exp_id, cfg.share_b, cfg.salt, strat_plan["merged"]) if cfg.assignment == "stratified"
+              else Router(cfg.exp_id, cfg.share_b, cfg.salt, cfg.assignment))
+    track_vars = cfg.assignment == "stratified"          # lead variables are read only where the router (or a segment) needs them
+    oos_leads = set()
     mon = Monitor(cfg, d)
     c = Counts()
     base = load_base()
@@ -368,6 +411,9 @@ def run_experiment(cfg: Config, sim, design: Design | None = None) -> dict:
         "config_version": cfg.version, "parent_config_hash": cfg.parent_hash or None, "config_locked": True,
         "design": {"n_max": d.n_max, "looks": len(d.look_n), "alpha": cfg.alpha, "alpha_harm": cfg.alpha_harm,
                    "rule_set": cfg.rule_set, "spending": _spending(cfg), "power": cfg.power, "mde": cfg.mde}}
+    if track_vars:
+        created["audience"] = {"rule": catalog.describe(seg), "share_of_traffic": round(catalog.segment_share(seg), 4), "eligible_per_day": round(cfg.eligible_per_day, 1),
+                               "strata": [r["label"] for r in strat_plan["strata"]], "merged": strat_plan["merged"], "block": router.size}
     if variants["B"].get("evidence"):
         created["variant_B_evidence"] = variants["B"]["evidence"]       # why the system proposed this edit (AI-mined variants only)
     ledger.append("experiment_created", created)
@@ -376,18 +422,36 @@ def run_experiment(cfg: Config, sim, design: Design | None = None) -> dict:
     looks, k = [], 0
     decision = None
     final_row = None
-    calls = 0
+    calls = routed = 0                    # calls = every call the simulator produced; routed = those inside the segment (the ones the router saw)
     for call in sim.calls(cfg, d):
         calls += 1
         clock_state["i"] = call["i"]
-        arm = router.assign(call["lead"])
+        attrs = catalog.lead_vars(call["lead"]) if track_vars else None
+        if seg and not catalog.matches(seg, attrs):
+            oos_leads.add(call["lead"])   # not in the segment: gets the production prompt, is not counted ("out of segment")
+            if capture is not None:
+                capture.setdefault("calls", []).append({"call_id": call["i"], "lead_id": call["lead"], "time": _iso(start, call["i"] * secs_per_call), "in_segment": False,
+                                                        "variant": "A", "converted": None, "duration_s": None, "repeat": call["repeat"]})
+            continue
+        routed += 1
+        new_lead = call["lead"] not in router.ledger
+        arm = router.assign(call["lead"], attrs)
+        if capture is not None and new_lead:
+            capture.setdefault("assignments", []).append({"lead_id": call["lead"], "stratum": getattr(router, "stratum_of", {}).get(call["lead"]), "variant": arm,
+                                                          "assigned_at": _iso(start, call["i"] * secs_per_call)})
         if call["repeat"]:
+            if capture is not None:
+                capture.setdefault("calls", []).append({"call_id": call["i"], "lead_id": call["lead"], "time": _iso(start, call["i"] * secs_per_call), "in_segment": True,
+                                                        "variant": arm, "converted": None, "duration_s": None, "repeat": True})
             continue                      # repeat calls are routed sticky but not analysed twice
         if arm == "A":
             c.aA += 1
         else:
             c.aB += 1
         logged, converted, dur = sim.observe(arm, call)
+        if capture is not None:
+            capture.setdefault("calls", []).append({"call_id": call["i"], "lead_id": call["lead"], "time": _iso(start, call["i"] * secs_per_call), "in_segment": True,
+                                                    "variant": arm, "converted": int(converted) if logged else None, "duration_s": round(dur, 2) if logged else None, "repeat": False})
         if not logged:
             continue
         ev = sim.event(arm, call) if cfg.guard_rate else 0
@@ -403,7 +467,11 @@ def run_experiment(cfg: Config, sim, design: Design | None = None) -> dict:
             row["time"] = _iso(start, call["i"] * secs_per_call)
             row["day"] = (k + 1) if cfg.rule_set == "final_look" else int(call["i"] * secs_per_call // 86400) + 1      # final_look looks are daily by design
             row["exposedB"] = router.calls["B"]
-            row["calls"] = calls                      # every call so far, repeats included (the split panel shows the split by call as well as by lead)
+            row["calls"] = routed                     # every routed call so far, repeats included (the split panel shows the split by call as well as by lead)
+            if track_vars:
+                row["mix"] = {n: {v: list(ab) for v, ab in m.items()} for n, m in router.mix.items()}       # A vs B by lead type, firm type and city, up to this look
+                row["mix_p"] = mix_pvalues(router.mix)
+                row["oos"] = len(oos_leads)
             ledger.append("look", {"k": k, "n": n, "z": round(row["z"], 4), "bound_eff": round(row["eff"], 4),
                                    "bound_harm": round(row["harm"], 4), "rateA": row["rateA"], "rateB": row["rateB"],
                                    "p_srm": row["p_srm"], "decision": dec["kind"]})
@@ -421,19 +489,76 @@ def run_experiment(cfg: Config, sim, design: Design | None = None) -> dict:
 
     ok, _ = verify(ledger.entries)
     sticky = _stickiness(router, sim, cfg)
-    tails = decision_tails(ledger.entries, kind, hold_cause, base["hash"], variants["B"]["hash"], looks[-1]["time"] if looks else cfg.start)
+    seg_check = None
+    if track_vars:
+        bad = sum(1 for lead in router.ledger if seg and not catalog.matches(seg, catalog.lead_vars(lead)))       # re-read every counted lead's variables
+        seg_check = {"rule": catalog.describe(seg), "counted_leads": len(router.ledger), "matching": len(router.ledger) - bad, "out_of_segment_leads": len(oos_leads),
+                     "share_of_traffic": catalog.segment_share(seg), "eligible_per_day": cfg.eligible_per_day, "strata": strat_plan["strata"], "merged": strat_plan["merged"]}
+    tails = decision_tails(ledger.entries, kind, hold_cause, base["hash"], variants["B"]["hash"], looks[-1]["time"] if looks else cfg.start, holdback=cfg.holdback_share, holdback_days=cfg.holdback_days, scope_rule=catalog.describe(cfg.segment) if cfg.segment else "")
     result = {
-        "kind": kind, "reason": decision["reason"], "hold_cause": hold_cause, "at_look": len(looks), "of_looks": len(d.look_n),
+        "kind": kind, "reason": decision["reason"], "hold_cause": hold_cause, "cause": decision.get("cause"), "at_look": len(looks), "of_looks": len(d.look_n),
         "calls_analysed": final_row["n"] if final_row else 0, "n_max": d.n_max,
         "routing_after": routing, "production_before": base["hash"], "production_after": production_after,
         "exposed_b_calls": router.calls["B"], "time": looks[-1]["time"] if looks else cfg.start,
         "split": router.split_report(), "stickiness": sticky,
     }
+    if seg_check:
+        result["segment_check"] = seg_check
     if kind == "INCONCLUSIVE" and final_row:
-        result["more_leads"] = more_leads(cfg, d, final_row, cfg.leads_per_day)
-    return {"config": cfg.as_dict(), "config_hash": cfg.hash(), "design": d.summary(), "variants": variants,
-            "looks": looks, "result": result, "ledger": ledger.entries, "ledger_head": ledger.head,
-            "ledger_ok": ok, "calls_simulated": calls, "calls_read": calls, "tails": tails}
+        result["more_leads"] = more_leads(cfg, d, final_row, cfg.eligible_per_day)
+    rec = {"config": cfg.as_dict(), "config_hash": cfg.hash(), "design": d.summary(), "variants": variants,
+           "looks": looks, "result": result, "ledger": ledger.entries, "ledger_head": ledger.head,
+           "ledger_ok": ok, "calls_simulated": calls, "calls_read": calls, "tails": tails}
+    sc = getattr(sim, "sc", None)
+    if kind in ("PROMOTE", "HOLD_FOR_APPROVAL") and sc is not None and cfg.holdback_days > 0 and cfg.holdback_share > 0:
+        rec["holdback"] = holdback_week(cfg, sc.true_a, sc.true_b, sc.seed)         # starts when B is promoted (for a held test: when a person approves)
+    return rec
+
+
+def holdback_week(cfg: Config, true_a: float, true_b: float, seed: int, true_b_after: float | None = None) -> dict:
+    """The week after a promotion: B is the production prompt, but `holdback_share` of leads stay on A so a regression would show.
+
+    It replays the same simulated world forward with fresh random draws (the injected truth carries on; `true_b_after` lets a test make B decay).
+    A small slice cannot re-prove the gain: it can only catch a B that has turned clearly worse, and `detectable_drop_pp` says how big that drop must be.
+    """
+    import numpy as np
+    from .stats import norm_ppf
+    per_day = max(1, int(round(cfg.eligible_per_day)))
+    rng = np.random.default_rng(seed + 7919)
+    bar = norm_ppf(1 - cfg.alpha_harm_daily)
+    nA = xA = nB = xB = 0
+    rows, alert_day = [], None
+    for day in range(1, cfg.holdback_days + 1):
+        tb = true_b if (true_b_after is None or day <= 1) else true_b_after
+        a = int(rng.binomial(per_day, cfg.holdback_share))
+        b = per_day - a
+        nA += a; xA += int(rng.binomial(a, true_a)); nB += b; xB += int(rng.binomial(b, tb))
+        z = pooled_z(xA, nA, xB, nB) if nA and nB else 0.0
+        d, lo, hi = score_diff_ci(xA, nA, xB, nB, 1.96) if nA and nB else (0.0, -1.0, 1.0)
+        alert = z <= -bar
+        alert_day = alert_day or (day if alert else None)
+        rows.append({"day": day, "nA": nA, "xA": xA, "nB": nB, "xB": xB, "rateA": xA / nA if nA else None, "rateB": xB / nB if nB else None,
+                     "diff": d, "ci95": [lo, hi], "z": z, "bar": bar, "alert": alert})
+    n_a_end, n_b_end = rows[-1]["nA"], rows[-1]["nB"]
+    p = cfg.baseline
+    se = math.sqrt(p * (1 - p) * (1 / max(1, n_a_end) + 1 / max(1, n_b_end)))
+    detectable = (bar + norm_ppf(cfg.power)) * se               # a drop this big is caught with 80% power at the harm bar
+    last = rows[-1]
+    verdict = "alert" if alert_day else ("ahead" if last["diff"] > 0 and last["ci95"][0] > 0 else "no_sign_of_loss")
+    return {"share": cfg.holdback_share, "days": cfg.holdback_days, "rows": rows, "alert_day": alert_day, "detectable_drop_pp": round(detectable * 100, 1), "verdict": verdict}
+
+
+def mix_pvalues(mix: dict) -> dict:
+    """Chi-square p-value for each balance variable: do A and B have the same mix of values? Values nobody has drawn yet are left out."""
+    from scipy.stats import chi2_contingency
+    out = {}
+    for name, vals in mix.items():
+        cols = [ab for ab in vals.values() if ab[0] + ab[1] > 0]
+        if len(cols) < 2 or min(sum(c[i] for c in cols) for i in (0, 1)) == 0:
+            out[name] = None
+            continue
+        out[name] = float(chi2_contingency([[c[0] for c in cols], [c[1] for c in cols]], correction=False)[1])
+    return out
 
 
 def _spending(cfg: Config) -> dict:
@@ -454,22 +579,38 @@ def act_on_decision(cfg: Config, ledger: Ledger, decision: dict, final_row, base
         hold_cause = decision.get("cause") or "guardrail_not_proven"
     if kind == "PROMOTE":
         production_after = b_hash
-        routing = {"A": 0.0, "B": 1.0}
+        routing = promoted_routing(cfg)
         ledger.append("decision", {"kind": kind, "reason": decision["reason"], "evidence": _evidence(final_row)})
-        ledger.append("promotion", {"approval": "auto", "production_before": base_hash, "production_after": production_after})
-        ledger.append("routing_changed", {**routing, "reason": "winner promoted to all traffic"})
+        ledger.append("promotion", {"approval": "auto", "production_before": base_hash, "production_after": production_after, **({"scope": catalog.describe(cfg.segment)} if cfg.segment else {})})
+        ledger.append("routing_changed", {**routing, "reason": promoted_reason(cfg)})
     elif kind == "HOLD_FOR_APPROVAL":
         routing = test_split                  # nothing changes for callers while a person decides
         ledger.append("decision", {"kind": kind, "reason": decision["reason"], "cause": hold_cause, "evidence": _evidence(final_row)})
         ledger.append("approval_requested", {"candidate": b_hash, "cause": hold_cause})
     else:
         routing = {"A": 1.0, "B": 0.0}
-        ledger.append("decision", {"kind": kind, "reason": decision["reason"], "evidence": _evidence(final_row)})
+        ledger.append("decision", {"kind": kind, "reason": decision["reason"], **({"cause": decision["cause"]} if decision.get("cause") else {}), "evidence": _evidence(final_row)})
         ledger.append("routing_changed", {**routing, "reason": f"{kind}: all traffic back to control A"})
     return decision, routing, production_after, hold_cause
 
 
-def decision_tails(entries: list, kind: str, hold_cause, base_hash: str, b_hash: str, when: str, demo: bool = True) -> dict:
+def promoted_routing(cfg_or_share) -> dict:
+    h = cfg_or_share if isinstance(cfg_or_share, float) else cfg_or_share.holdback_share
+    return {"A": round(h, 4), "B": round(1.0 - h, 4)}
+
+
+def promoted_reason(cfg_or_share, days: int | None = None, scope_rule: str = "") -> str:
+    h = cfg_or_share if isinstance(cfg_or_share, float) else cfg_or_share.holdback_share
+    d = days if days is not None else (7 if isinstance(cfg_or_share, float) else cfg_or_share.holdback_days)
+    scope = ""
+    rule = scope_rule or (catalog.describe(cfg_or_share.segment) if not isinstance(cfg_or_share, float) and cfg_or_share.segment else "")
+    if rule:
+        scope = f" for {rule} only (the only leads it was tested on; everyone else keeps today's prompt)"
+    return (f"winner promoted: B is the production prompt{scope or ' for all traffic'}" if h <= 0 else
+            f"winner promoted: B is the production prompt{scope}; {h:.0%} of leads stay on A for {d} days to confirm the gain holds")
+
+
+def decision_tails(entries: list, kind: str, hold_cause, base_hash: str, b_hash: str, when: str, demo: bool = True, holdback: float = 0.05, holdback_days: int = 7, scope_rule: str = "") -> dict:
     """What the ledger would say next, for the two human actions: approve / reject a held test, or roll back a promotion.
 
     Both branches are chained from the real ledger head, so the dashboard can show the click and still verify the chain.
@@ -494,7 +635,7 @@ def decision_tails(entries: list, kind: str, hold_cause, base_hash: str, b_hash:
         return {
             "approve": branch([("approval", {**who, "action": "approved", "candidate": b_hash}),
                                ("promotion", {"approval": "human", "production_before": base_hash, "production_after": b_hash}),
-                               ("routing_changed", {"A": 0.0, "B": 1.0, "reason": "approved: B promoted to all traffic"})], 2),
+                               ("routing_changed", {**promoted_routing(holdback), "reason": "approved: " + promoted_reason(holdback, holdback_days, scope_rule)})], 2),
             "reject": branch([("approval", {**who, "action": "rejected", "candidate": b_hash}),
                               ("routing_changed", {"A": 1.0, "B": 0.0, "reason": "rejected: all traffic back to control A"})], 2)}
     return {"rollback": branch([("rollback", {**who, "from": b_hash, "to": base_hash, "reason": "one-click rollback of the promoted prompt"}),

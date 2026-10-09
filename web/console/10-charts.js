@@ -37,13 +37,13 @@ function shareBars(label, configured, achieved, n) {
 /** A plain-English summary, written from the numbers by a template (a model never writes the numbers). */
 function plainSummary(e) {
   const v = view(e), r = v.res, c = v.config, last = dayRows(e.record).pop().row, goal = (C.metrics.find(m => m.key === c.primary_goal) || {}).name || c.primary_goal.replace(/_/g, " ");
-  const lift = (last.rateB - last.rateA) * 100, lr = liftRange(last);
+  const lift = (last.rateB - last.rateA) * 100, lr = liftRange(last, c);
   const rng = ` The true difference is probably between ${sgn(lr.lo * 100, 0)} and ${sgn(lr.hi * 100, 0)} points${lr.interim ? " (an interim range: the test stopped before its final call)" : ""}.`;
   const nums = `Over ${v.ld} day${v.ld === 1 ? "" : "s"}, ${pct(last.rateB)} of ${nf(last.nB)} leads on the new prompt reached the goal (${goal}) against ${pct(last.rateA)} of ${nf(last.nA)} on today's prompt: ${sgn(lift, 0)} points.${rng}`;
   const g = last.guardrail ? ` Average call length was ${sgn(last.guardrail.rel_change * 100, 0)}% against a limit of +${(c.guardrail_margin * 100).toFixed(0)}%.` : "";
   const src = e.kind === "files" ? " These results came from a file supplied by the voice platform." : " These results are simulated with a known injected effect; they show the engine decides correctly, not that a real prompt is better.";
   const k = v.kind;
-  const verdict = { PROMOTE: "Decision: promote B to all traffic. The evidence is strong enough that luck is an unlikely explanation and the guardrail holds.", STOP_HARM: "Decision: stop B early and send its leads back to A. B is clearly worse.", STOP_GUARDRAIL: "Decision: stop B. It breaks a guardrail even if the goal improved.",
+  const verdict = { PROMOTE: "Decision: promote B to all traffic. The evidence is strong enough that luck is an unlikely explanation and the guardrail holds.", STOP_HARM: "Decision: stop B early and send its leads back to A. B is clearly worse.", LOSS: "Decision: keep A. At the final call B is significantly worse than A, so it is logged as a loss and nothing ships.", STOP_GUARDRAIL: "Decision: stop B. It breaks a guardrail even if the goal improved.",
     HOLD_FOR_APPROVAL: "Decision: hold for a person. B wins on the goal but a guardrail is not proven. Nothing has changed for callers.", INCONCLUSIVE: "Decision: inconclusive, keep A. The test found no evidence of a difference; that is not proof of none.", HALT_SRM: "Decision: halted. The test itself is broken (the split or the log), so nothing can be trusted.",
     REJECTED: "Decision: a person rejected the held change. A stays live.", ROLLED_BACK: "Decision: B was promoted and then rolled back by a person.", STOPPED_MANUAL: "Decision: a person stopped the test early." }[k] || "No decision yet.";
   const more = k === "INCONCLUSIVE" && r.more_leads && r.more_leads.options ? " " + r.more_leads.options.map(o => o.enough_already ? `There was already enough data to detect ${o.lift_pp} points, so any real lift is smaller.` : `Detecting ${o.lift_pp} points would take about ${nf(o.more_leads)} more leads (about ${o.more_days} days).`).slice(0, 2).join(" ") : "";

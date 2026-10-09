@@ -38,10 +38,7 @@
   "version": 1,
   "parent_hash": "",
   "goal_definition": "",
-  "guard_definition": "",
-  "segment": null,
-  "holdback_share": 0.05,
-  "holdback_days": 7
+  "guard_definition": ""
  },
  "design": {
   "n_max": 4703,
@@ -1533,10 +1530,10 @@
        ]
       },
       "INCONCLUSIVE": {
-       "rate": 0.936,
+       "rate": 0.96025,
        "ci": [
-        0.9279664533203291,
-        0.9433891515525176
+        0.9537250535336924,
+        0.9660911137686461
        ]
       },
       "PROMOTE": {
@@ -1547,10 +1544,10 @@
        ]
       },
       "STOP_HARM": {
-       "rate": 0.03,
+       "rate": 0.00575,
        "ci": [
-        0.024934208293768714,
-        0.03576674224736376
+        0.0036483946687871235,
+        0.00861540361948066
        ]
       }
      },
@@ -1948,17 +1945,17 @@
        ]
       },
       "INCONCLUSIVE": {
-       "rate": 0.012,
+       "rate": 0.10225,
        "ci": [
-        0.008860744216979301,
-        0.015879103280413566
+        0.09302887568613437,
+        0.11205661191838662
        ]
       },
       "STOP_HARM": {
-       "rate": 0.9825,
+       "rate": 0.89225,
        "ci": [
-        0.9779409069087931,
-        0.986333139950385
+        0.8822281022280433,
+        0.9016947317501331
        ]
       }
      },
@@ -2001,377 +1998,6 @@
    }
   }
  },
- "aa_brd": {
-  "runs": 12000,
-  "seed": 20266009,
-  "config": {
-   "exp_id": "exp-001",
-   "name": "Make the ask limits agree with each other",
-   "agent": "VANI BuyLead qualification agent",
-   "variant_b": "reconcile_limits",
-   "share_b": 0.3,
-   "assignment": "balanced",
-   "salt": "s1",
-   "start": "2026-10-12T09:00:00",
-   "window_days": 7,
-   "leads_per_day": 1000,
-   "primary_goal": "buylead_created",
-   "primary_direction": "higher",
-   "baseline": 0.45,
-   "mde": 0.05,
-   "secondary_metric": "duration_s",
-   "secondary_role": "guardrail",
-   "secondary_worse_when": "higher",
-   "guardrail_margin": 0.15,
-   "alpha": 0.025,
-   "alpha_harm": 0.025,
-   "power": 0.8,
-   "n_looks": 40,
-   "min_per_arm": 1000,
-   "srm_alpha": 0.001,
-   "srm_min_n": 300,
-   "loss_check": true,
-   "approval": "auto",
-   "rule_set": "final_look",
-   "alpha_harm_daily": 0.001,
-   "guard_rate": "",
-   "guard_rate_margin": 0.02,
-   "guard_rate_worse_when": "higher",
-   "version": 1,
-   "parent_hash": "",
-   "goal_definition": "",
-   "guard_definition": "",
-   "segment": null,
-   "holdback_share": 0.05,
-   "holdback_days": 7
-  },
-  "days": 7,
-  "leads_total": 7000,
-  "false_winner": {
-   "count": 300,
-   "rate": 0.025,
-   "ci": [
-    0.022280649740548983,
-    0.027952951740129156
-   ]
-  },
-  "promoted": {
-   "count": 300,
-   "rate": 0.025,
-   "ci": [
-    0.022280649740548983,
-    0.027952951740129156
-   ]
-  },
-  "held_for_approval": {
-   "count": 0,
-   "rate": 0.0,
-   "ci": [
-    0.0,
-    0.0003073593766020121
-   ]
-  },
-  "logged_as_loss": {
-   "count": 267,
-   "rate": 0.02225,
-   "ci": [
-    0.019685739199592513,
-    0.02504947667362697
-   ]
-  },
-  "significant_either_way": {
-   "count": 567,
-   "rate": 0.04725,
-   "ci": [
-    0.0435223697919992,
-    0.051199164844708954
-   ]
-  },
-  "early_harm_stop": {
-   "count": 26,
-   "rate": 0.0021666666666666666,
-   "ci": [
-    0.0014158116930263708,
-    0.003173068355601521
-   ]
-  },
-  "early_harm_stop_per_check": 0.0007228848666833486,
-  "daily_checks": 35967,
-  "halted_split": {
-   "count": 46,
-   "rate": 0.003833333333333333,
-   "ci": [
-    0.002807807501565051,
-    0.005109855986829579
-   ]
-  },
-  "no_call": {
-   "count": 11361,
-   "rate": 0.94675,
-   "ci": [
-    0.942581368429154,
-    0.9507002034028356
-   ]
-  },
-  "plain_daily_check_false_winner": {
-   "count": 991,
-   "rate": 0.08258333333333333,
-   "ci": [
-    0.0777185699179981,
-    0.08765167795349613
-   ]
-  },
-  "plain_daily_check_false_stop": {
-   "count": 1029,
-   "rate": 0.08575,
-   "ci": [
-    0.08079960952916512,
-    0.09090238959926719
-   ]
-  }
- },
- "split_brd": [
-  {
-   "share": 0.1,
-   "n": 1000,
-   "segment": "All leads (neutral test)",
-   "reps": 60,
-   "stratified": {
-    "mean_abs_err_pp": 0.14499999999999988,
-    "p95_abs_err_pp": 0.399999999999999,
-    "max_abs_err_pp": 0.5000000000000004,
-    "within_half_pp": 0.9666666666666667,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 1.623132530027884,
-      "p95": 2.827607291385827
-     },
-     "nature_of_business": {
-      "mean": 1.2274738724199483,
-      "p95": 1.9458185584152143
-     },
-     "city": {
-      "mean": 5.957043650679745,
-      "p95": 10.37786549967791
-     }
-    },
-    "arm_changes_after_reask": 0
-   },
-   "hash": {
-    "mean_abs_err_pp": 0.8116666666666668,
-    "p95_abs_err_pp": 1.899999999999999,
-    "max_abs_err_pp": 2.3999999999999995,
-    "within_half_pp": 0.35,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 6.29654701749431,
-      "p95": 10.887022020499804
-     },
-     "nature_of_business": {
-      "mean": 6.212232990372917,
-      "p95": 10.469014990660426
-     },
-     "city": {
-      "mean": 6.255307115151521,
-      "p95": 10.69758196966077
-     }
-    },
-    "arm_changes_after_reask": 0
-   }
-  },
-  {
-   "share": 0.1,
-   "n": 7000,
-   "segment": "All leads (neutral test)",
-   "reps": 30,
-   "stratified": {
-    "mean_abs_err_pp": 0.014761904761904782,
-    "p95_abs_err_pp": 0.02857142857142919,
-    "max_abs_err_pp": 0.042857142857141706,
-    "within_half_pp": 1.0,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 0.17229605115943755,
-      "p95": 0.2832717662822448
-     },
-     "nature_of_business": {
-      "mean": 0.1404520203851753,
-      "p95": 0.21204528725142568
-     },
-     "city": {
-      "mean": 2.6346517291756246,
-      "p95": 4.998423746797259
-     }
-    },
-    "arm_changes_after_reask": 0
-   },
-   "hash": {
-    "mean_abs_err_pp": 0.29952380952380964,
-    "p95_abs_err_pp": 0.6978571428571428,
-    "max_abs_err_pp": 1.0714285714285718,
-    "within_half_pp": 0.9,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 2.454148907981828,
-      "p95": 3.665185428017362
-     },
-     "nature_of_business": {
-      "mean": 2.2546222443682953,
-      "p95": 3.5903360769512345
-     },
-     "city": {
-      "mean": 2.4579755456868058,
-      "p95": 4.040653669284212
-     }
-    },
-    "arm_changes_after_reask": 0
-   }
-  },
-  {
-   "share": 0.3,
-   "n": 1000,
-   "segment": "All leads (neutral test)",
-   "reps": 60,
-   "stratified": {
-    "mean_abs_err_pp": 0.22166666666666685,
-    "p95_abs_err_pp": 0.5099999999999999,
-    "max_abs_err_pp": 0.7000000000000006,
-    "within_half_pp": 0.9,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 1.0425207638662797,
-      "p95": 1.9307321912372313
-     },
-     "nature_of_business": {
-      "mean": 0.7659447040318746,
-      "p95": 1.276832955828305
-     },
-     "city": {
-      "mean": 4.044782402956118,
-      "p95": 7.88799766099956
-     }
-    },
-    "arm_changes_after_reask": 0
-   },
-   "hash": {
-    "mean_abs_err_pp": 1.0250000000000004,
-    "p95_abs_err_pp": 2.7100000000000017,
-    "max_abs_err_pp": 3.1000000000000028,
-    "within_half_pp": 0.3333333333333333,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 3.901867764372581,
-      "p95": 6.965268299301304
-     },
-     "nature_of_business": {
-      "mean": 3.5848383959432377,
-      "p95": 6.5790031322392135
-     },
-     "city": {
-      "mean": 3.9712830035804028,
-      "p95": 6.106730423718042
-     }
-    },
-    "arm_changes_after_reask": 0
-   }
-  },
-  {
-   "share": 0.3,
-   "n": 7000,
-   "segment": "All leads (neutral test)",
-   "reps": 30,
-   "stratified": {
-    "mean_abs_err_pp": 0.02761904761904706,
-    "p95_abs_err_pp": 0.05714285714285561,
-    "max_abs_err_pp": 0.08571428571428896,
-    "within_half_pp": 1.0,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 0.10454805881410863,
-      "p95": 0.17137506907230876
-     },
-     "nature_of_business": {
-      "mean": 0.1043362359710358,
-      "p95": 0.16778938709277597
-     },
-     "city": {
-      "mean": 1.4458504728931068,
-      "p95": 2.464323145820424
-     }
-    },
-    "arm_changes_after_reask": 0
-   },
-   "hash": {
-    "mean_abs_err_pp": 0.3885714285714287,
-    "p95_abs_err_pp": 1.0678571428571433,
-    "max_abs_err_pp": 1.2285714285714289,
-    "within_half_pp": 0.7333333333333333,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 1.4555483047225988,
-      "p95": 2.96203326318213
-     },
-     "nature_of_business": {
-      "mean": 1.2814354573890114,
-      "p95": 2.2292575905647274
-     },
-     "city": {
-      "mean": 1.5236212140332137,
-      "p95": 2.999879071938414
-     }
-    },
-    "arm_changes_after_reask": 0
-   }
-  },
-  {
-   "share": 0.3,
-   "n": 3150,
-   "segment": "NOB = Proprietor",
-   "reps": 30,
-   "stratified": {
-    "mean_abs_err_pp": 0.03492063492063491,
-    "p95_abs_err_pp": 0.09523809523809573,
-    "max_abs_err_pp": 0.09523809523809823,
-    "within_half_pp": 1.0,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 0.15483507062199464,
-      "p95": 0.26147788772025116
-     },
-     "nature_of_business": {
-      "mean": 0.0,
-      "p95": 0.0
-     },
-     "city": {
-      "mean": 2.294624282334701,
-      "p95": 3.8480725623582765
-     }
-    },
-    "arm_changes_after_reask": 0
-   },
-   "hash": {
-    "mean_abs_err_pp": 0.6814814814814816,
-    "p95_abs_err_pp": 1.5968253968253934,
-    "max_abs_err_pp": 2.031746031746029,
-    "within_half_pp": 0.5,
-    "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 2.2541845942731706,
-      "p95": 3.6485341853942277
-     },
-     "nature_of_business": {
-      "mean": 0.0,
-      "p95": 0.0
-     },
-     "city": {
-      "mean": 2.1442289402173573,
-      "p95": 4.181875559125617
-     }
-    },
-    "arm_changes_after_reask": 0
-   }
-  }
- ],
  "stickiness": {
   "calls": 20000,
   "distinct_leads": 13891,
@@ -2439,5 +2065,5 @@
    "extra_calls_factor": 2.0301934935147776
   }
  ],
- "seconds": 126.6
+ "seconds": 69.7
 }

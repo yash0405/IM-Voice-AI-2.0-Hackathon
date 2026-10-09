@@ -14,9 +14,19 @@ from __future__ import annotations
 import hashlib
 import random
 
+from . import catalog
 from .stats import binom_ci
 
 BLOCK = 100
+
+
+def block_for(share: float) -> tuple[int, int]:
+    """(block size, B slots per block): 10 where the share allows (10%, 20%, 30% ...), else the smallest block that gives the share exactly."""
+    for size in (10, 20, 40, 50, 100):
+        k = share * size
+        if abs(k - round(k)) < 1e-9 and round(k) >= 1:
+            return size, int(round(k))
+    return 100, max(1, int(round(share * 100)))
 
 
 def _u(exp_id: str, salt: str, lead: str) -> float:
@@ -36,6 +46,12 @@ class Router:
         self._block_no = 0
         self.counts = {"A": 0, "B": 0}      # distinct leads per arm
         self.calls = {"A": 0, "B": 0}       # all calls per arm (incl. repeats)
+        self.mix = {n: {v: [0, 0] for v in catalog.VARS[n]["values"]} for n in catalog.BALANCE_VARS}   # leads per value and arm: the balance table
+
+    def _note_mix(self, arm: str, attrs: dict | None):
+        if attrs:
+            for n in catalog.BALANCE_VARS:
+                self.mix[n][attrs[n]][0 if arm == "A" else 1] += 1
 
     def _next_in_block(self) -> str:
         if not self._block:
@@ -46,7 +62,7 @@ class Router:
             self._block, self._block_no = blk, self._block_no + 1
         return self._block.pop()
 
-    def assign(self, lead: str) -> str:
+    def assign(self, lead: str, attrs: dict | None = None) -> str:
         arm = self.ledger.get(lead)
         if arm is None:
             if self.mode == "hash":
@@ -55,6 +71,7 @@ class Router:
                 arm = self._next_in_block()
             self.ledger[lead] = arm
             self.counts[arm] += 1
+            self._note_mix(arm, attrs)
         self.calls[arm] += 1
         return arm
 
@@ -67,6 +84,64 @@ class Router:
                 "abs_error_pp": (achieved - self.share_b) * 100 if n else float("nan"),
                 "binomial_ci": [lo, hi],
                 "within_chance_band": bool(lo <= self.share_b <= hi) if n else True}
+
+
+class StratifiedRouter(Router):
+    """The BRD's router: a new lead is dealt into its stratum (Hot Lead type x Nature of Business) from shuffled blocks of 10 (or the smallest
+    block that gives the share exactly). Every stratum therefore carries the configured B share to within one block, so A and B end with the
+    same mix of lead types. Assignments are remembered, so a lead is sticky: it never changes arm and never sees both prompts.
+
+    Strata too small to fill blocks (expected leads below catalog.MIN_STRATUM) are merged into one "Other" stratum before splitting.
+    """
+
+    def __init__(self, exp_id: str, share_b: float, salt: str = "s1", merged: list | None = None):
+        super().__init__(exp_id, share_b, salt, "balanced")
+        self.mode = "stratified"
+        self.size, self.k = block_for(share_b)
+        self.merged = set(merged or [])
+        self._blocks: dict[str, list] = {}
+        self._block_no: dict[str, int] = {}
+        self.strata: dict[str, list] = {}          # stratum -> [leads in A, leads in B]
+        self.stratum_of: dict[str, str] = {}
+
+    def stratum(self, attrs: dict) -> str:
+        label = " x ".join(catalog.stratum_key(attrs))
+        return "Other" if label in self.merged else label
+
+    def _deal(self, st: str) -> str:
+        blk = self._blocks.get(st)
+        if not blk:
+            n = self._block_no.get(st, 0)
+            blk = ["B"] * self.k + ["A"] * (self.size - self.k)
+            random.Random(f"{self.exp_id}:{self.salt}:{st}:blk{n}").shuffle(blk)
+            self._block_no[st] = n + 1
+            self._blocks[st] = blk
+        return blk.pop()
+
+    def assign(self, lead: str, attrs: dict | None = None) -> str:
+        arm = self.ledger.get(lead)
+        if arm is None:
+            if attrs is None:
+                raise ValueError("the stratified router needs the lead's variables")
+            st = self.stratum(attrs)
+            arm = self._deal(st)
+            self.ledger[lead] = arm
+            self.stratum_of[lead] = st
+            self.counts[arm] += 1
+            self.strata.setdefault(st, [0, 0])[0 if arm == "A" else 1] += 1
+            self._note_mix(arm, attrs)
+        self.calls[arm] += 1
+        return arm
+
+    def split_report(self, conf: float = 0.95) -> dict:
+        r = super().split_report(conf)
+        rows = []
+        for st, (a, b) in sorted(self.strata.items()):
+            n = a + b
+            rows.append({"stratum": st, "a": a, "b": b, "share_b": b / n if n else None, "off_slots": round(b - self.share_b * n, 2)})
+        r.update({"block": self.size, "b_slots": self.k, "strata": rows, "merged": sorted(self.merged),
+                  "max_stratum_off_slots": max((abs(x["off_slots"]) for x in rows), default=0.0)})
+        return r
 
 
 class NaiveRouter:

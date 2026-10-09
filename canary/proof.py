@@ -78,7 +78,7 @@ def evaluate(a: dict, M: int, d, cfg: Config, with_dur: bool = True, methods=MET
     """Run the methods on the same simulated counts. Returns per-method kinds, n, B exposure."""
     K = len(d.look_n)
     aB = {m: [] for m in methods}
-    res = {m: {"kind": [], "n": [], "expB": []} for m in methods}
+    res = {m: {"kind": [], "n": [], "expB": [], "cause": [], "look": []} for m in methods}
     cols = {k: v.tolist() for k, v in a.items()}
     kf = next((i for i, n in enumerate(d.look_n) if n >= d.n_fixed), K - 1)
     c = Counts()
@@ -92,13 +92,14 @@ def evaluate(a: dict, M: int, d, cfg: Config, with_dur: bool = True, methods=MET
     for m in range(M):
         if "canary" in methods:
             mon = Monitor(cfg, d)
-            kind, kk = "INCONCLUSIVE", K - 1
+            kind, kk, why = "INCONCLUSIVE", K - 1, None
             for k in range(K):
                 load(m, k)
                 dec = mon.look(k, c, k == K - 1)
                 if dec["terminal"]:
-                    kind, kk = dec["kind"], k
+                    kind, kk, why = dec["kind"], k, dec.get("cause")
                     break
+            res["canary"]["cause"].append(why); res["canary"]["look"].append(kk)
             res["canary"]["kind"].append(kind); res["canary"]["n"].append(cols["nA"][m][kk] + cols["nB"][m][kk])
             res["canary"]["expB"].append(cols["aB"][m][kk])
         if "naive_peek" in methods:
@@ -274,6 +275,82 @@ def evaluator_error_study(runs: int, seed: int):
     return out
 
 
+# ---------------------------------------------------------------------------- the BRD's headline proofs
+
+AA_CFG = dict(share_b=0.30, baseline=0.45, mde=0.05, window_days=7, leads_per_day=1000, rule_set="final_look", min_per_arm=1000)
+
+
+def aa_study(runs: int, seed: int) -> dict:
+    """A vs A under the one-look rule: how often is a winner wrongly declared, and how often does the daily harm check fire by mistake?
+
+    The BRD's target is '~5%'. That is the two-sided 95% test: 5% of identical-prompt tests look different in EITHER direction, about 2.5% in
+    B's favour (a false winner: promoted) and about 2.5% against it (logged as a loss: nothing ships). Both are reported."""
+    cfg = Config(**AA_CFG)
+    d = build_design(cfg)
+    rng = np.random.default_rng(seed)
+    a = _gen(rng, runs, d, cfg, cfg.baseline, cfg.baseline, with_dur=True)
+    r = evaluate(a, runs, d, cfg, True, methods=["canary"])["canary"]
+    nv = evaluate(a, runs, d, Config(**{**AA_CFG, "min_per_arm": 50}), True, methods=["naive_peek"])["naive_peek"]["kind"]     # a plain daily p < 0.05 check, from the first 50 leads per prompt
+    kinds, cause, look = r["kind"], r["cause"], r["look"]
+    cnt = lambda f: sum(1 for k, c, l in zip(kinds, cause, look) if f(k, c, l))
+    mk = lambda x: {"count": x, "rate": x / runs, "ci": list(binom_ci(x, runs))}
+    K = len(d.look_n)
+    promote, hold = cnt(lambda k, c, l: k == "PROMOTE"), cnt(lambda k, c, l: k == "HOLD_FOR_APPROVAL")
+    loss = cnt(lambda k, c, l: k == "STOP_HARM" and (c == "loss_at_end" or l == K - 1))             # any last-day call that B is worse is the end-of-test call
+    early = cnt(lambda k, c, l: k == "STOP_HARM" and l < K - 1)                                      # the daily harm check, before the last day
+    nA, nB = a["nA"], a["nB"]
+    checks = 0                                                                                       # daily harm checks that could actually fire: both prompts past the minimum, before the last day
+    for m, (k, l) in enumerate(zip(kinds, look)):
+        last = l if (k == "STOP_HARM" and l < K - 1) else K - 2
+        checks += sum(1 for j in range(0, last + 1) if nA[m][j] >= cfg.min_per_arm and nB[m][j] >= cfg.min_per_arm)
+    mk = lambda x: {"count": x, "rate": x / runs, "ci": list(binom_ci(x, runs))}
+    return {"runs": runs, "seed": seed, "config": cfg.as_dict(), "days": cfg.window_days, "leads_total": d.look_n[-1],
+            "false_winner": mk(promote + hold), "promoted": mk(promote), "held_for_approval": mk(hold), "logged_as_loss": mk(loss),
+            "significant_either_way": mk(promote + hold + loss), "early_harm_stop": mk(early),
+            "early_harm_stop_per_check": early / max(1, checks), "daily_checks": checks, "halted_split": mk(cnt(lambda k, c, l: k == "HALT_SRM")),
+            "no_call": mk(cnt(lambda k, c, l: k == "INCONCLUSIVE")),
+            "plain_daily_check_false_winner": mk(nv.count("PROMOTE")), "plain_daily_check_false_stop": mk(nv.count("STOP_HARM"))}
+
+
+def _attrs_cache(n: int) -> list:
+    from . import catalog
+    return [catalog.lead_vars(f"L{i:07d}") for i in range(n)]
+
+
+def split_cell(args):
+    """Achieved share and lead mix: the BRD's router (stratified blocks) against a plain coin flip per lead (hash) and a coin flip per call (naive)."""
+    from . import catalog
+    from .router import StratifiedRouter
+    share, n, reps, seed, seg = args
+    seg = catalog.validate_segment(seg) if seg else None
+    attrs = [a for a in _attrs_cache(int(n / max(catalog.segment_share(seg), 0.05) * 1.3)) if catalog.matches(seg, a)][:n]
+    plan = catalog.plan_strata(n, seg)
+    out = {}
+    for mode in ("stratified", "hash"):
+        errs, gaps, both, within = [], {n: [] for n in catalog.BALANCE_VARS}, 0, 0
+        for r in range(reps):
+            rt = StratifiedRouter(f"s{seed}-{r}", share, f"salt{r}", plan["merged"]) if mode == "stratified" else Router(f"s{seed}-{r}", share, f"salt{r}", "hash")
+            for i, a in enumerate(attrs):
+                rt.assign(f"L{i:07d}", a)
+            both += sum(1 for i, a in enumerate(attrs[:300]) if rt.ledger[f"L{i:07d}"] != rt.assign(f"L{i:07d}", a))          # asked again: nobody changes arm
+            err = (rt.counts["B"] / n - share) * 100
+            errs.append(err); within += abs(err) <= 0.5
+            for name, vals in rt.mix.items():              # the biggest difference, over the values of one variable, between A's share and B's share
+                ta, tb = sum(v[0] for v in vals.values()), sum(v[1] for v in vals.values())
+                gaps[name].append(max((abs(v[0] / ta - v[1] / tb) * 100 for v in vals.values()), default=0.0) if ta and tb else 0.0)
+        e = np.abs(np.array(errs))
+        out[mode] = {"mean_abs_err_pp": float(e.mean()), "p95_abs_err_pp": float(np.percentile(e, 95)), "max_abs_err_pp": float(e.max()), "within_half_pp": within / reps,
+                     "mix_gap_pp": {n: {"mean": float(np.mean(g)), "p95": float(np.percentile(g, 95))} for n, g in gaps.items()}, "arm_changes_after_reask": both}
+    return {"share": share, "n": n, "segment": catalog.describe(seg), "reps": reps, **out}
+
+
+def run_split_brd(pool, seed: int) -> list:
+    seg = {"rules": [{"var": "nature_of_business", "values": ["Proprietor"]}], "text": "Proprietors"}
+    jobs = [(0.10, 1000, 60, seed + 1, None), (0.10, 7000, 30, seed + 2, None), (0.30, 1000, 60, seed + 3, None), (0.30, 7000, 30, seed + 4, None),
+            (0.30, 3150, 30, seed + 5, seg)]
+    return pool.map(split_cell, jobs)
+
+
 # ---------------------------------------------------------------------------- decisions from files, and the spec's single-look rule
 
 FILE_CASES = {"aa": ("No real difference (A = B)", 0.45, 0.45), "win": ("B truly +7 points", 0.45, 0.52),
@@ -359,6 +436,9 @@ def run_all(runs: int = 4000, aa_runs: int = 12000, seed: int = 20261009, progre
         proof["files"] = run_files(max(200, runs // 7), seed + 3000, pool)
         progress("spec's single-look rule vs ours...")
         proof["rulesets"] = run_rulesets(runs, seed + 4000, pool)
+        progress("the BRD's A vs A study and split quality...")
+        proof["aa_brd"] = aa_study(aa_runs, seed + 5000)
+        proof["split_brd"] = run_split_brd(pool, seed + 6000)
     progress("stickiness...")
     proof["stickiness"] = stickiness_test()
     progress("evaluator error...")

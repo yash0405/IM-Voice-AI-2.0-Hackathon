@@ -12,6 +12,7 @@ function historyIdeas() {
   EXPS().forEach(e => { const l = dyn(e).learning; if (l && v_ok(e)) out.push({ id: "learn_" + e.id, source: "Past tests", title: `Follow up on "${l}"`, hypothesis: `You tagged "${e.record.config.name}" with: "${l}". Try a follow-up edit on the same idea.`, patch: e.record.variants.B.name, patch_name: e.record.variants.B.name, patch_note: "The same edit as the original test.", metric: e.record.config.primary_goal, expected: "a follow-up to what you learned", expected_pp: 0, days: null, ease: 2, caveat: "", variant: e.record.config.variant_b }); });
   return out.slice(0, 6);
 }
+function createFrom(c) { startWizard({ name: c.title, change: c.hypothesis, variant: c.variant || "cap_two_asks", why: c.caveat || "", effect: c.expected, mde: c.expected_pp ? Math.max(0.01, c.expected_pp / 100) : SET().mde }); }
 ROUTES.suggest = (el) => {
   const base = C.suggestions.filter(c => !c.from_history), hi = historyIdeas(), all = [...base, ...hi], sources = [...new Set(all.map(c => c.source))];
   const list = all.filter(c => SF.source === "all" || c.source === SF.source), learn = EXPS().map(e => dyn(e).learning && { n: e.record.config.name, t: dyn(e).learning }).filter(Boolean);
@@ -23,7 +24,7 @@ ROUTES.suggest = (el) => {
       ${c.caveat ? `<p class="note">${esc(c.caveat)}</p>` : ""}<div class="actions"><button class="btn primary" data-create="${esc(c.id)}" ${c.disabled ? "disabled" : ""}>Create experiment</button></div></div>`; }).join("")}</div>
     ${learn.length ? `<div class="card" style="margin-top:16px"><h2>Learnings from History</h2><div class="sub">One line saved on each finished test. They shape the next ideas.</div><ul style="margin:8px 0 0;padding-left:20px;font-size:13px">${learn.map(l => `<li><b>${esc(l.t)}</b> <span class="muted">(${esc(l.n)})</span></li>`).join("")}</ul></div>` : ""}`;
   $("#g-src").onchange = ev => { SF.source = ev.target.value; DYN.ui.sug = SF; saveDyn(); route(); };
-  $$("[data-create]", el).forEach(b => b.onclick = () => { const c = all.find(x => x.id === b.dataset.create); startWizard({ name: c.title, change: c.hypothesis, variant: c.variant || "cap_two_asks", why: c.caveat || "", effect: c.expected, days: c.days ? Math.min(60, Math.max(1, Math.ceil(c.days))) : SET().window_days, mde: c.expected_pp ? Math.max(0.01, c.expected_pp / 100) : SET().mde }); });
+  $$("[data-create]", el).forEach(b => b.onclick = () => createFrom(all.find(x => x.id === b.dataset.create)));
 };
 
 /* ------------------------------------------------------------------ Import results files: the voice test ran elsewhere; we judge its results */

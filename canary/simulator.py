@@ -54,7 +54,7 @@ class TrafficSim:
     def calls(self, cfg, design):
         sc = self.sc
         rng = np.random.default_rng(sc.seed)
-        m = int(3 * design.capacity / (1.0 - sc.repeat_rate)) + 2000
+        m = int(3 * max(design.capacity, cfg.window_days * cfg.leads_per_day) / (1.0 - sc.repeat_rate)) + 2000       # all traffic, not just the segment
         self._u_out = rng.random(m)
         self._dur = rng.choice(self.durs, size=m)
         self._u_drop = rng.random(m)

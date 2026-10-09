@@ -95,14 +95,17 @@ class Wizard(unittest.TestCase):
     def test_a_pasted_prompt_must_keep_its_template_variables(self):
         base = variants.load_base()["text"]
         with self.assertRaises(ValueError) as e:
-            server.run_wizard({"name": "Broken", "full_prompt": base.replace("buyer_name", "x"), "window_days": 3})
+            server.run_wizard({"name": "Broken", "full_prompt": base.replace("buyer_name", "x"), "window_days": 7})
         self.assertIn("buyer_name", str(e.exception))
-        ok = server.run_wizard({"name": "Edited", "full_prompt": base.replace("buyer name = 3", "buyer name = 2"), "effect_rel": 0.0, "window_days": 3, "leads_per_day": 600, "share_b": 0.3})
+        ok = server.run_wizard({"name": "Edited", "full_prompt": base.replace("buyer name = 3", "buyer name = 2"), "effect_rel": 0.0, "window_days": 7, "leads_per_day": 600, "share_b": 0.3})
         self.assertTrue(ok["record"]["variants"]["B"]["diff"])
 
     def test_limits_protect_the_live_demo(self):
         with self.assertRaises(ValueError):
             server.run_wizard({"window_days": 60, "leads_per_day": 5000})
+        with self.assertRaises(ValueError) as e:                                     # whole weeks only: 7, 14, 21 or 28 days
+            server.run_wizard({"window_days": 10, "leads_per_day": 1000})
+        self.assertIn("whole weeks", str(e.exception))
         with self.assertRaises(ValueError):
             server.run_wizard({"effect_rel": 9})
 

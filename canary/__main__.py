@@ -5,6 +5,7 @@
   build     bundle the dashboard into dist/canary_demo.html and the technical tools into dist/canary_tools.html (both work offline)
   serve     live dashboard + Label Lab on http://127.0.0.1:8765
   qa        write QA_REPORT.md from out/proof.json
+  export-db export every test, version, assignment, call and decision to one SQLite file (out/canary.db)
   slide     write dist/one_slide.html (the one-slide deliverable)
   eval      score a tagger on labelled calls (synthetic benchmark, or real labels + transcripts dir)
   arena     voice arena: Sarvam LLM + Bulbul voices play a buyer against prompt A and B (plan | run --yes --budget N)
@@ -20,7 +21,7 @@ import sys
 
 def main():
     ap = argparse.ArgumentParser(prog="canary", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "slide", "all", "autolabel", "arena", "fix", "decide", "samples"])
+    ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "slide", "all", "autolabel", "arena", "fix", "decide", "samples", "export-db"])
     ap.add_argument("action", nargs="?", default="plan", help="for autolabel: plan | run | status | queue | report | issues")
     ap.add_argument("--n", type=int, default=5, help="autolabel: how many calls (first N of a fixed random order)")
     ap.add_argument("--budget", type=float, default=10.0, help="autolabel: hard cap in rupees for everything spent so far")
@@ -31,6 +32,9 @@ def main():
     ap.add_argument("--runs", type=int, default=4000)
     ap.add_argument("--aa-runs", type=int, default=12000)
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--out", default="out/canary.db", help="export-db: where to write the SQLite file")
+    ap.add_argument("--no-past", action="store_true", help="export-db: leave out the history samples")
+    ap.add_argument("--no-calls", action="store_true", help="export-db: leave out the per-call rows")
     ap.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 so other laptops on the office network can label")
     ap.add_argument("--transcripts", help="folder of <idx>.txt transcripts for real-label evaluation")
     ap.add_argument("files", nargs="*", help="decide: more results files")
@@ -56,6 +60,10 @@ def main():
     d.add_argument("--complete", action="store_true", help="the test window is over: treat the last day in the file as the final look")
     d.add_argument("--json", help="also write the full record (what the dashboard shows) to this file")
     a = ap.parse_args()
+    if a.cmd == "export-db":
+        from . import export_db
+        export_db.main(["--out", a.out] + (["--no-past"] if a.no_past else []) + (["--no-calls"] if a.no_calls else []))
+        return
     if a.cmd == "samples":
         from .samples import write_all
         for p in write_all():

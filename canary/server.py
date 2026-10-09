@@ -67,14 +67,27 @@ def run_wizard(body: dict) -> dict:
     from . import console
     num = lambda k, d, t=float: t(body.get(k, d))
     win, share, lpd = num("window_days", 7, int), num("share_b", 0.30), num("leads_per_day", 1000, int)
-    if not 1 <= win <= 60 or not 1 <= lpd <= 20000 or win * lpd > 60000:
-        raise ValueError("test length 1-60 days and 1-20,000 leads a day; days x leads a day is capped at 60,000 for the live demo")
+    if win not in (7, 14, 21, 28):
+        raise ValueError("test length must be 7, 14, 21 or 28 days: whole weeks cover a full week of patterns, and a longer test drags on")
+    if not 1 <= lpd <= 20000 or win * lpd > 60000:
+        raise ValueError("1-20,000 leads a day; days x leads a day is capped at 60,000 for the live demo")
     effect = num("effect_rel", 0.0)
     if not -0.9 <= effect <= 3.0:
         raise ValueError("the simulated effect must be between -90% and +300%")
     over = dict(share_b=share, baseline=num("baseline", 0.45), mde=num("mde", 0.05), window_days=win, leads_per_day=lpd,
                 rule_set=str(body.get("rule_set", "final_look")), alpha=(1 - num("confidence", 0.95)) / 2, alpha_harm_daily=1 - num("harm_bar", 0.999),
-                guardrail_margin=num("duration_margin", 0.10), approval=str(body.get("approval", "auto")), min_per_arm=num("min_leads_per_arm", 50, int))
+                guardrail_margin=num("duration_margin", 0.10), approval=str(body.get("approval", "auto")), min_per_arm=num("min_leads_per_arm", 1000, int),
+                assignment=str(body.get("assignment", "stratified")))
+    from . import catalog
+    seg = catalog.validate_segment(body.get("segment"))            # raises a plain message for an in-call variable or a segment that is too small
+    if seg:
+        over.update(segment=seg, assignment="stratified")
+        if win * lpd * catalog.segment_share(seg) < 200:
+            raise ValueError("this segment has too few leads for the window: widen it, raise leads per day or lengthen the test")
+    goal = str(body.get("primary_goal") or "buylead_created")
+    if goal not in {m["key"] for m in console.metrics() if m["role"] == "goal"}:
+        raise ValueError(f"unknown primary goal {goal!r}")
+    over.update(primary_goal=goal, primary_direction="lower" if body.get("primary_direction") == "lower" else "higher")
     if body.get("duration_on") is False:
         over.update(secondary_role="none")
     if body.get("early_hangup"):
@@ -93,7 +106,7 @@ def run_wizard(body: dict) -> dict:
         if not rep["ok"]:
             raise ValueError("prompt B no longer uses these template variables: " + ", ".join(rep["dropped"]))
         variant = _v.register_text(name, full)
-    rec = console.run_preset(name, variant, start, exp_id, effect, num("seed", 7, int), dur_mult=num("dur_mult", 1.0), **over)
+    rec = console.run_preset(name, variant, start, exp_id, effect, num("seed", 7, int), dur_mult=num("dur_mult", 1.0), hang_extra=max(0.0, num("hang_extra_pp", 0.0)) / 100.0, **over)
     return {"id": exp_id, "kind": "simulated", "preset": str(body.get("preset", "Custom")), "hypothesis": str(body.get("hypothesis", ""))[:600],
             "truth": {"effect_rel": effect, "true_a": rec["config"]["baseline"], "true_b": round(rec["config"]["baseline"] * (1 + effect), 4)},
             "record": console.slim(rec)}

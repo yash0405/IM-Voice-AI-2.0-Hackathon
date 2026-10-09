@@ -119,8 +119,9 @@ class Engine(unittest.TestCase):
         for k in ORDER:
             r = self.b[k]["record"]["result"]
             share = self.b[k]["record"]["config"]["share_b"]
-            # promoted: everyone gets B; held for a person: the test split is left alone meanwhile; anything else: all back to A
-            want = 1.0 if r["kind"] == "PROMOTE" else share if r["kind"] == "HOLD_FOR_APPROVAL" else 0.0
+            # promoted: B is production and a 5% holdback stays on A for a week; held for a person: the test split is left alone meanwhile; anything else: all back to A
+            hold = self.b[k]["record"]["config"]["holdback_share"]
+            want = 1.0 - hold if r["kind"] == "PROMOTE" else share if r["kind"] == "HOLD_FOR_APPROVAL" else 0.0
             self.assertEqual(r["routing_after"]["B"], want, k)
         self.assertEqual([k for k in ORDER if self.b[k]["record"]["result"]["kind"] == "PROMOTE"], ["b_wins"])
 
