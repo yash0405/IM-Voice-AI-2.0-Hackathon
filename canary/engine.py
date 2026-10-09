@@ -65,15 +65,40 @@ class Config:
     # what the goal and the guardrails MEAN (which dispositions count, which column, what threshold): part of the locked config
     goal_definition: str = ""
     guard_definition: str = ""
-    # audience: None = every lead (a neutral test). Otherwise {"rules": [{"var", "values"}], "text"}: pre-call variables only. `leads_per_day` is ALL traffic;
-    # the leads that match the segment are `eligible_per_day`.
-    segment: dict | None = None
+    # audience: None = every lead (a neutral test). Otherwise a list of rules [{"factor", "column", "values"}] on pre-call factors only (catalog.py;
+    # the earlier {"rules": [{"var", "values"}]} form is still read). `leads_per_day` is ALL traffic; the leads that match the segment are `eligible_per_day`.
+    segment: list | dict | None = None
     # after a promotion a small slice stays on the old prompt for a while, to confirm the gain holds (the BRD's 5% for 7 days)
     holdback_share: float = 0.05
     holdback_days: int = 7
+    # ---- the metrics path (tests launched from the New Experiment wizard). None = the original single-goal path above.
+    # [{"role": "primary" | "guardrail" | "secondary", "def": <metriclib definition>, "limit": {"value", "kind": "rel" | "pts"} | None}]
+    # One primary decides; guardrails can stop or hold B; secondary metrics are reported only. When set, primary_goal / primary_direction /
+    # primary_type follow the primary and the original guardrail fields are off.
+    metrics: list | None = None
+    primary_type: str = "rate"          # rate | average (of the primary)
+    primary_sd: float = 0.0             # averages only: standard deviation of one unit (one call or one lead) on the last 30 days
+    primary_units_per_lead: float = 1.0  # units the primary's denominator counts per analysed lead (connected leads, calls ...), from the 30-day history
+    variant_a: str = ""                 # "" = the production prompt in data/; else the key of the live prompt A pasted in the wizard (variants.RUNTIME)
+
+    def __post_init__(self):
+        if self.metrics:
+            prim = [m for m in self.metrics if isinstance(m, dict) and m.get("role") == "primary" and isinstance(m.get("def"), dict)]
+            if len(prim) == 1:
+                p = prim[0]["def"]
+                self.primary_goal = str(p.get("key", self.primary_goal))
+                self.primary_direction = p.get("direction", self.primary_direction)
+                self.primary_type = p.get("type", self.primary_type)
+                self.secondary_role = "none"
+                self.guard_rate = ""
 
     def as_dict(self):
-        return asdict(self)
+        d = asdict(self)
+        if self.metrics is None:                   # the original path: the fields added for the metric list are left out while they hold their default,
+            for k, v in _LATER_DEFAULTS.items():   # so every earlier config (and its registered hash) stays exactly as it was
+                if k in d and d[k] == v:
+                    d.pop(k)
+        return d
 
     @property
     def eligible_per_day(self) -> float:
@@ -90,10 +115,24 @@ class Config:
         errs = []
         if not 0 < self.share_b <= 0.5:
             errs.append("share_b must be between 0 and 0.5 (the test slice is the smaller share)")
-        if not 0 < self.baseline < 1 or not 0 < self.mde < 1:
-            errs.append("baseline and mde must be probabilities")
-        if self.primary_direction == "higher" and self.baseline + self.mde >= 1:
-            errs.append("baseline + mde must stay below 1")
+        if self.metrics is not None:
+            errs += check_metrics(self.metrics)
+        if self.primary_type not in ("rate", "average"):
+            errs.append("primary_type must be rate or average")
+        if self.primary_type == "average":
+            if not self.baseline > 0:
+                errs.append("the primary's current average (baseline) must be above 0")
+            if not self.mde > 0:
+                errs.append("the improvement to detect must be above 0 (in the metric's own units)")
+            if not self.primary_sd > 0:
+                errs.append("the primary's spread (primary_sd) must be above 0: it comes from the last 30 days of data")
+        else:
+            if not 0 < self.baseline < 1 or not 0 < self.mde < 1:
+                errs.append("baseline and mde must be probabilities")
+            if self.primary_direction == "higher" and self.baseline + self.mde >= 1:
+                errs.append("baseline + mde must stay below 1")
+        if not self.primary_units_per_lead > 0:
+            errs.append("primary_units_per_lead must be above 0")
         if self.assignment in ("balanced", "stratified") and abs(self.share_b * 100 - round(self.share_b * 100)) > 1e-6:
             errs.append("the B share must be a whole percent when leads are dealt in blocks (a block cannot hold a fraction of a lead); use the hash assignment for other shares")
         if self.assignment not in ("balanced", "hash", "stratified"):
@@ -134,6 +173,66 @@ class Config:
         return self
 
 
+_LATER_DEFAULTS = {"metrics": None, "primary_type": "rate", "primary_sd": 0.0, "primary_units_per_lead": 1.0, "variant_a": ""}
+ROLES = ("primary", "guardrail", "secondary")
+MAX_GUARDRAILS, MAX_SECONDARY = 3, 5
+
+
+def check_metrics(metrics) -> list:
+    """Plain messages for a locked metric list that cannot be run (empty list = fine)."""
+    if not isinstance(metrics, list) or not metrics:
+        return ["metrics must be a list with one primary metric"]
+    errs = []
+    roles = [m.get("role") if isinstance(m, dict) else None for m in metrics]
+    if any(r not in ROLES for r in roles):
+        errs.append("each metric's role must be primary, guardrail or secondary")
+    if roles.count("primary") != 1:
+        errs.append("choose exactly one primary metric (it decides the test)")
+    if roles.count("guardrail") > MAX_GUARDRAILS:
+        errs.append(f"at most {MAX_GUARDRAILS} guardrails")
+    if roles.count("secondary") > MAX_SECONDARY:
+        errs.append(f"at most {MAX_SECONDARY} secondary metrics")
+    keys = []
+    for m in metrics:
+        if not isinstance(m, dict):
+            continue
+        d = m.get("def")
+        if not isinstance(d, dict) or not d.get("key") or not d.get("name"):
+            errs.append("each metric needs a definition with a key and a name")
+            continue
+        keys.append(d["key"])
+        if d.get("type") not in ("rate", "average"):
+            errs.append(f"{d['name']}: the type must be rate or average")
+        elif d["type"] == "rate" and not (isinstance(d.get("num"), dict) and isinstance(d.get("den"), dict)):
+            errs.append(f"{d['name']}: a rate needs a numerator and a denominator")
+        elif d["type"] == "average" and not d.get("col"):
+            errs.append(f"{d['name']}: an average needs a column")
+        if d.get("direction") not in ("higher", "lower"):
+            errs.append(f"{d['name']}: direction must be higher or lower")
+        lim = m.get("limit")
+        if m.get("role") == "guardrail":
+            if not isinstance(lim, dict) or lim.get("kind") not in ("rel", "pts"):
+                errs.append(f"guardrail {d['name']}: set a limit, relative (%) or absolute (points or the metric's units)")
+            else:
+                try:
+                    v = float(lim.get("value"))
+                except (TypeError, ValueError):
+                    v = float("nan")
+                if not (v > 0 and math.isfinite(v)):
+                    errs.append(f"guardrail {d['name']}: the limit must be above 0")
+    if len(set(keys)) != len(keys):
+        errs.append("a metric is used twice: each metric can have one role only")
+    return errs
+
+
+def metric_unit(defn: dict) -> str:
+    """The unit an average is in (the column's unit in the data, e.g. 's'); '' for rates and unit-less columns."""
+    if defn.get("type") != "average":
+        return ""
+    from . import history
+    return history.COL.get(defn.get("col"), {}).get("unit", "")
+
+
 # ---------------------------------------------------------------------------- design
 
 
@@ -165,13 +264,38 @@ FINAL_FLOOR = 50   # one-look rule: fewest leads per arm for which the end-of-te
 NEVER_Z = 99.0     # a boundary this high can never be crossed: used where a rule set does not allow a promotion yet
 
 
+def primary_plan(cfg: Config, mde: float | None = None) -> dict:
+    """Sample size for the primary (total over both arms): n_fixed (one look), n_max (the sequential rule's horizon), theta and the inflation.
+
+    Rate: the existing two-proportion planning (seqdesign), baseline and mde absolute. Average: n_fixed = (z_a + z_b)^2 sd^2 (1/s + 1/(1-s)) / mde^2,
+    and n_max = n_fixed x the same inflation the sequential boundaries need for a rate ((theta / theta_fixed)^2).
+    On the metrics path the plan counts the primary's own units (connected leads, answered calls ...); it is turned into analysed leads with
+    `primary_units_per_lead` (1.0 on the original path, so nothing changes there)."""
+    mde = cfg.mde if mde is None else mde
+    sign = 1 if cfg.primary_direction == "higher" else -1
+    if cfg.primary_type == "average":
+        theta = seqdesign._design_theta(cfg.alpha, cfg.power, cfg.n_looks, "obf")
+        theta_fixed = float(seqdesign.norm.ppf(1 - cfg.alpha) + seqdesign.norm.ppf(cfg.power))
+        s = cfg.share_b
+        n_fixed = theta_fixed ** 2 * cfg.primary_sd ** 2 * (1 / s + 1 / (1 - s)) / mde ** 2
+        infl = (theta / theta_fixed) ** 2
+        plan = {"n_fixed": n_fixed, "n_max": n_fixed * infl, "theta": theta, "inflation": infl}
+    else:
+        plan = dict(seqdesign.plan_sample_size(cfg.baseline, sign * mde, cfg.share_b, cfg.alpha, cfg.power, cfg.n_looks))
+        if not cfg.metrics:
+            return plan
+    u = cfg.primary_units_per_lead
+    plan["n_fixed"] = int(math.ceil(plan["n_fixed"] / u))
+    plan["n_max"] = int(math.ceil(plan["n_max"] / u))
+    return plan
+
+
 def build_design(cfg: Config, look_n: list | None = None, planned_final: int | None = None, n_horizon: int | None = None) -> Design:
     """The pre-registered design. `look_n` lets a results-file run use the real look times (end of each day) instead of
     equally spaced ones; the alpha-spending boundaries are recomputed for exactly those times. `n_horizon` replaces the planned maximum
     (used when a results file holds more leads than the plan asked for)."""
     cfg.validate()
-    sign = 1 if cfg.primary_direction == "higher" else -1
-    plan = seqdesign.plan_sample_size(cfg.baseline, sign * cfg.mde, cfg.share_b, cfg.alpha, cfg.power, cfg.n_looks)
+    plan = primary_plan(cfg)
     elig = cfg.eligible_per_day
     capacity = planned_final or int(round(cfg.window_days * elig))
     if cfg.rule_set == "final_look":
@@ -209,6 +333,7 @@ def build_design(cfg: Config, look_n: list | None = None, planned_final: int | N
         harm = seqdesign.compute_boundaries(ts, cfg.alpha_harm, "pocock", exhaust_last=truncated)
         power_in_window = seqdesign.crossing_probability(ts, eff, plan["theta"])
         theta, inflation, will_finish = plan["theta"], float(plan["n_max"] / plan["n_fixed"]), not truncated
+    # on the metrics path the guardrails come from the metric list; there is no planned proof probability for them (1.0, as for no guardrail)
     # how likely is the guardrail to be PROVEN non-inferior at the last look if B changes nothing?
     cv, gp = 0.0, 1.0
     if cfg.secondary_role == "guardrail":
@@ -228,13 +353,14 @@ def build_design(cfg: Config, look_n: list | None = None, planned_final: int | N
 
 
 class Counts:
-    __slots__ = ("nA", "xA", "nB", "xB", "sA", "qA", "sB", "qB", "aA", "aB", "gA", "gB")
+    __slots__ = ("nA", "xA", "nB", "xB", "sA", "qA", "sB", "qB", "aA", "aB", "gA", "gB", "acc")
 
     def __init__(self):
         self.nA = self.xA = self.nB = self.xB = 0
         self.sA = self.qA = self.sB = self.qB = 0.0
         self.aA = self.aB = 0   # assigned first calls (before any logging loss)
         self.gA = self.gB = 0   # events of the optional rate guardrail (e.g. fatal calls) among analysed calls
+        self.acc = None         # metrics path: {"A": [metriclib.Acc per metric], "B": [...]}, in the order of cfg.metrics
 
 
 TERMINAL = {"PROMOTE", "STOP_HARM", "STOP_GUARDRAIL", "HALT_SRM", "INCONCLUSIVE", "HOLD_FOR_APPROVAL"}
@@ -265,28 +391,104 @@ class Monitor:
         self.eff_at = None
         self.eff_z = None
         self.use_g = cfg.secondary_role == "guardrail"
+        self.mp = bool(cfg.metrics)                 # the metrics path: the locked metric list decides (see Config.metrics)
+        self.goal = cfg.primary_goal
+        if self.mp:
+            ms = cfg.metrics
+            self.pi = next(i for i, m in enumerate(ms) if m["role"] == "primary")
+            self.gi = [i for i, m in enumerate(ms) if m["role"] == "guardrail"]
+            self.si = [i for i, m in enumerate(ms) if m["role"] == "secondary"]
+            p = ms[self.pi]["def"]
+            self.goal = p["name"]                   # reasons name metrics by their name
+            self.lead_rate = p["type"] == "rate" and p["num"]["unit"] == "leads" and p["den"]["unit"] == "leads"
+            self.use_g = False
+
+    # ---- the metrics path
+    def _pair(self, c: Counts, i: int):
+        a, b = c.acc["A"][i], c.acc["B"][i]
+        return a, b, a.value, b.value, a.var(), b.var()
+
+    def _primary_z(self, c: Counts) -> float:
+        a, b, ra, rb, va, vb = self._pair(c, self.pi)
+        if self.lead_rate:                          # a lead-level proportion: the BRD's two-proportion z-test on whole counts
+            return self.sgn * pooled_z(int(round(a.sn)), int(round(a.sd)), int(round(b.sn)), int(round(b.sd)))
+        if None in (ra, rb, va, vb) or va + vb <= 0:
+            return 0.0
+        return self.sgn * (rb - ra) / math.sqrt(va + vb)
+
+    def _guard(self, c: Counts, i: int, ce: float):
+        """One guardrail of the metric list: how much worse B is (relative or absolute), with its standard error. None = no data to judge it."""
+        m = self.cfg.metrics[i]
+        dfn, lim = m["def"], m["limit"]
+        a, b, ra, rb, va, vb = self._pair(c, i)
+        if None in (ra, rb, va, vb):
+            return None
+        bad = 1 if dfn["direction"] == "lower" else -1          # +1: a rise is bad
+        if lim["kind"] == "rel":
+            if not ra > 0:
+                return None
+            worse = bad * (rb / ra - 1)
+            se = math.sqrt(vb / ra ** 2 + rb ** 2 * va / ra ** 4)
+            margin = float(lim["value"]) / 100
+        else:
+            worse = bad * (rb - ra)
+            se = math.sqrt(va + vb)
+            margin = float(lim["value"]) / 100 if dfn["type"] == "rate" else float(lim["value"])
+        if not (se > 0 and math.isfinite(se)):
+            return None
+        return {"key": dfn["key"], "name": dfn["name"], "kind": lim["kind"], "type": dfn["type"], "unit": metric_unit(dfn), "rate_a": ra, "rate_b": rb,
+                "worse": worse, "se": se, "margin": margin, "z_breach": (worse - margin) / se, "upper": worse + ce * se, "lower": worse - ce * se}
+
+    def _metric_rows(self, c: Counts, gx: dict) -> list:
+        out = []
+        for i in [self.pi] + self.gi + self.si:
+            m = self.cfg.metrics[i]
+            dfn = m["def"]
+            a, b, ra, rb, va, vb = self._pair(c, i)
+            diff = rb - ra if None not in (ra, rb) else None
+            se = math.sqrt(va + vb) if None not in (va, vb) else None
+            r = {"key": dfn["key"], "name": dfn["name"], "role": m["role"], "type": dfn["type"], "direction": dfn["direction"], "unit": metric_unit(dfn),
+                 "A": {"value": ra, "num": a.sn, "den": a.sd, "n": a.n, "se": _sqrt(va)}, "B": {"value": rb, "num": b.sn, "den": b.sd, "n": b.n, "se": _sqrt(vb)},
+                 "diff": diff, "se": se, "lo": diff - 1.96 * se if diff is not None and se is not None else None,
+                 "hi": diff + 1.96 * se if diff is not None and se is not None else None, "rel": (rb / ra - 1) if (ra and rb is not None) else None}
+            if m["role"] == "guardrail":
+                x = gx.get(i)
+                r.update(limit=m["limit"], worse=x["worse"] if x else None, worse_se=x["se"] if x else None, z_breach=x["z_breach"] if x else None,
+                         upper=x["upper"] if x else None, lower=x["lower"] if x else None, margin=x["margin"] if x else None)
+            out.append(r)
+        return out
 
     def look(self, k: int, c: Counts, final: bool, want_row: bool = False):
         cfg, d = self.cfg, self.d
         ce, ch, t = d.eff[k], d.harm[k], d.ts[k]
         chg = d.harm_g[k] if d.harm_g else ch          # guardrail-breach bar
-        # the minimum-leads gate holds back the daily harm check; the one-look rule's final call only needs enough leads for the normal approximation
-        floor = min(cfg.min_per_arm, FINAL_FLOOR) if (final and cfg.rule_set == "final_look") else cfg.min_per_arm
+        # the minimum-leads gate holds back the daily harm check; the one-look rule's final call only needs enough leads for the normal approximation.
+        # On the metrics path the gate holds back every decision, the final call included.
+        floor = cfg.min_per_arm if self.mp else (min(cfg.min_per_arm, FINAL_FLOOR) if (final and cfg.rule_set == "final_look") else cfg.min_per_arm)
         n = c.nA + c.nB
         p_srm = srm_pvalue(c.nA, c.nB, cfg.share_b)
         p_loss = loss_pvalue(c.aA, c.nA, c.aB, c.nB) if (cfg.loss_check and (c.aA + c.aB) >= cfg.srm_min_n) else 1.0
-        z = self.sgn * pooled_z(c.xA, c.nA, c.xB, c.nB)
-        g = None
-        if self.use_g and c.nA > 1 and c.nB > 1:
-            r, se, ma, mb = ratio_effect(c.sA, c.qA, c.nA, c.sB, c.qB, c.nB)
-            worse = r if cfg.secondary_worse_when == "higher" else -r
-            if se > 0 and math.isfinite(se):
-                g = {"rel_change": r, "worse": worse, "se": se, "mean_a": ma, "mean_b": mb,
-                     "z_breach": (worse - cfg.guardrail_margin) / se,
-                     "upper": worse + ce * se, "lower": worse - ce * se}
-        g2 = rate_guard(cfg, c, ce)
-        guards = [(g, cfg.secondary_metric, cfg.guardrail_margin, "relative"), (g2, cfg.guard_rate, cfg.guard_rate_margin, "points")]
-        guards = [(x, nm, mg, kd) for x, nm, mg, kd in guards if x is not None]
+        g = g2 = None
+        unavailable, gx = [], {}
+        if self.mp:
+            z = self._primary_z(c)
+            for i in self.gi:
+                gx[i] = self._guard(c, i, ce)
+            guards = [(x, x["name"], x["margin"], x["kind"]) for x in (gx[i] for i in self.gi) if x is not None]
+            unavailable = [(None, cfg.metrics[i]["def"]["name"], None, "unavailable") for i in self.gi if gx[i] is None]
+        else:
+            z = self.sgn * pooled_z(c.xA, c.nA, c.xB, c.nB)
+            if self.use_g and c.nA > 1 and c.nB > 1:
+                r, se, ma, mb = ratio_effect(c.sA, c.qA, c.nA, c.sB, c.qB, c.nB)
+                worse = r if cfg.secondary_worse_when == "higher" else -r
+                if se > 0 and math.isfinite(se):
+                    g = {"rel_change": r, "worse": worse, "se": se, "mean_a": ma, "mean_b": mb,
+                         "z_breach": (worse - cfg.guardrail_margin) / se,
+                         "upper": worse + ce * se, "lower": worse - ce * se}
+            g2 = rate_guard(cfg, c, ce)
+            guards = [(g, cfg.secondary_metric, cfg.guardrail_margin, "relative"), (g2, cfg.guard_rate, cfg.guard_rate_margin, "points")]
+            guards = [(x, nm, mg, kd) for x, nm, mg, kd in guards if x is not None]
+        goal = self.goal
         kind, reason, cause = "CONTINUE", "collecting data", None
         if cfg.loss_check and (c.aA + c.aB) >= cfg.srm_min_n and p_loss < cfg.srm_alpha:
             kind = "HALT_SRM"
@@ -307,14 +509,17 @@ class Monitor:
                 kind = "STOP_HARM"
                 if final and cfg.rule_set == "final_look":
                     cause = "loss_at_end"
-                    reason = (f"at the final call B is significantly worse than A on {cfg.primary_goal}: z={z:.2f}, past the end-of-test line -{ch:.2f} "
+                    reason = (f"at the final call B is significantly worse than A on {goal}: z={z:.2f}, past the end-of-test line -{ch:.2f} "
                               f"(95% two-sided); keep A, logged as a loss")
                 else:
-                    reason = f"B is clearly worse on {cfg.primary_goal}: z={z:.2f} crossed the harm boundary -{ch:.2f}"
+                    reason = f"B is clearly worse on {goal}: z={z:.2f} crossed the harm boundary -{ch:.2f}"
             elif breach is not None:
                 x, nm, mg, kd = breach
                 kind = "STOP_GUARDRAIL"
-                if kd == "relative":
+                if self.mp:
+                    reason = (f"guardrail breached: {nm} is {_gtxt(x, 'worse')} worse (tolerated {_glim(x)}), "
+                              f"z={x['z_breach']:.2f} crossed {chg:.2f}")
+                elif kd == "relative":
                     reason = (f"guardrail breached: {nm} is {x['worse']:+.1%} worse (tolerated {mg:+.0%}), "
                               f"z={x['z_breach']:.2f} crossed {chg:.2f}")
                 else:
@@ -326,6 +531,7 @@ class Monitor:
                 unproven = [(x, nm, mg, kd) for x, nm, mg, kd in guards if not x["upper"] < mg]
                 if self.use_g and g is None:      # asked for, but the data cannot show it (no spread, no durations): never promote on that
                     unproven.insert(0, (None, cfg.secondary_metric, cfg.guardrail_margin, "unavailable"))
+                unproven = unavailable + unproven     # metrics path: a guardrail with no data cannot be proven
                 if self.eff_at is not None:
                     if z < ce:
                         # the win line was crossed earlier, but the evidence has since faded back below it: do not ship on a peak
@@ -338,23 +544,29 @@ class Monitor:
                             reason = f"the win line was crossed at look {self.eff_at + 1}, but the evidence is now weaker (z={z:.2f} < {ce:.2f}); waiting"
                     elif not unproven:
                         kind = "PROMOTE"
-                        reason = (f"B beats A on {cfg.primary_goal} at the final call: z={z:.2f}, needed {ce:.2f}" if cfg.rule_set == "final_look"
-                                  else f"B beats A on {cfg.primary_goal}: z={self.eff_z:.2f} crossed the efficacy boundary")
+                        reason = (f"B beats A on {goal} at the final call: z={z:.2f}, needed {ce:.2f}" if cfg.rule_set == "final_look"
+                                  else f"B beats A on {goal}: z={self.eff_z:.2f} crossed the efficacy boundary")
                         if self.eff_at != k and cfg.rule_set != "final_look":
                             reason += f" at look {self.eff_at + 1} (z={z:.2f} now, still above the {ce:.2f} line)"
                         for x, nm, mg, kd in guards:
-                            reason += f"; guardrail {nm} proven within {mg:+.0%}" if kd == "relative" else f"; guardrail {nm} proven within {mg * 100:+.0f} points"
+                            if self.mp:
+                                reason += f"; guardrail {nm} proven within {_glim(x)}"
+                            else:
+                                reason += f"; guardrail {nm} proven within {mg:+.0%}" if kd == "relative" else f"; guardrail {nm} proven within {mg * 100:+.0f} points"
                     elif final:
                         kind = "HOLD_FOR_APPROVAL"
                         x, nm, mg, kd = unproven[0]
                         if x is None:
-                            reason = (f"B won on {cfg.primary_goal} but the guardrail {nm} could not be evaluated from the data supplied "
+                            reason = (f"B won on {goal} but the guardrail {nm} could not be evaluated from the data supplied "
                                       f"(missing, unusable or constant values); held for a person to approve or reject")
+                        elif self.mp:
+                            reason = (f"B won on {goal} but the guardrail {nm} was not proven within {_glim(x)} ({_gtxt(x, 'worse')} worse, upper bound "
+                                      f"{_gtxt(x, 'upper')}); held for a person to approve or reject")
                         else:
                             shown = (f"{x['worse']:+.1%} worse, upper bound {x['upper']:+.1%}" if kd == "relative"
                                      else f"{x['worse'] * 100:+.1f} points worse, upper bound {x['upper'] * 100:+.1f}")
                             lim = f"{mg:+.0%}" if kd == "relative" else f"{mg * 100:+.0f} points"
-                            reason = (f"B won on {cfg.primary_goal} but the guardrail {nm} was not proven within {lim} ({shown}); "
+                            reason = (f"B won on {goal} but the guardrail {nm} was not proven within {lim} ({shown}); "
                                       f"held for a person to approve or reject")
                     else:
                         reason = "efficacy shown; waiting for the guardrail to be proven"
@@ -365,6 +577,8 @@ class Monitor:
         dec = {"kind": kind, "reason": reason, "terminal": kind in TERMINAL, "cause": cause}
         if not want_row:
             return dec
+        if self.mp:
+            return dec, self._row_mp(k, c, z, ce, ch, chg, t, n, p_srm, p_loss, gx, dec)
         d_, lo_rci, hi_rci = score_diff_ci(c.xA, c.nA, c.xB, c.nB, ce)
         _, lo95, hi95 = score_diff_ci(c.xA, c.nA, c.xB, c.nB, 1.96)
         row = {"k": k, "n": n, "t": round(t, 5), "nA": c.nA, "xA": c.xA, "nB": c.nB, "xB": c.xB,
@@ -374,6 +588,55 @@ class Monitor:
                "p_srm": min(p_srm, p_loss), "p_loss": p_loss, "assignedB": c.aB / (c.aA + c.aB) if (c.aA + c.aB) else None,
                "loggedB": c.nB / n if n else None, "guardrail": g, "guardrail2": g2, "decision": dec["kind"]}
         return dec, row
+
+    def _row_mp(self, k, c, z, ce, ch, chg, t, n, p_srm, p_loss, gx, dec) -> dict:
+        cfg = self.cfg
+        a, b, ra, rb, va, vb = self._pair(c, self.pi)
+        if self.lead_rate:
+            xA, dA, xB, dB = int(round(a.sn)), int(round(a.sd)), int(round(b.sn)), int(round(b.sd))
+            d_, lo_rci, hi_rci = score_diff_ci(xA, dA, xB, dB, ce)
+            _, lo95, hi95 = score_diff_ci(xA, dA, xB, dB, 1.96)
+        else:
+            xA, dA, xB, dB = a.sn, a.sd, b.sn, b.sd
+            d_ = rb - ra if None not in (ra, rb) else None
+            se = math.sqrt(va + vb) if None not in (va, vb) else None
+            if d_ is None or se is None:
+                lo_rci = hi_rci = lo95 = hi95 = None
+            elif cfg.primary_type == "rate" and ce > 25:
+                lo_rci, hi_rci, lo95, hi95 = -1.0, 1.0, d_ - 1.96 * se, d_ + 1.96 * se      # no promotion possible at this look: the same open range score_diff_ci gives
+            else:
+                lo_rci, hi_rci, lo95, hi95 = d_ - ce * se, d_ + ce * se, d_ - 1.96 * se, d_ + 1.96 * se
+        return {"k": k, "n": n, "t": round(t, 5), "nA": c.nA, "xA": xA, "dA": dA, "nB": c.nB, "xB": xB, "dB": dB,
+                "rateA": ra, "rateB": rb, "seA": _sqrt(va), "seB": _sqrt(vb), "diff": d_, "rci": [lo_rci, hi_rci], "ci95": [lo95, hi95],
+                "z": z, "eff": ce, "harm": ch, "harm_g": chg, "naive_cross": (abs(z) >= 1.96 and n >= 2 * cfg.min_per_arm),
+                "p_srm": min(p_srm, p_loss), "p_loss": p_loss, "assignedB": c.aB / (c.aA + c.aB) if (c.aA + c.aB) else None,
+                "loggedB": c.nB / n if n else None, "guardrail": None, "guardrail2": None, "metrics": self._metric_rows(c, gx), "decision": dec["kind"]}
+
+
+def _sqrt(v):
+    return math.sqrt(v) if v is not None and v >= 0 else None
+
+
+def _gnum(x: dict, v: float) -> str:
+    if x["kind"] == "rel":
+        return f"{v:+.1%}"
+    if x["type"] == "rate":
+        return f"{v * 100:+.1f} points"
+    return f"{v:+.1f}" + (f" {x['unit']}" if x["unit"] else "")
+
+
+def _gtxt(x: dict, key: str) -> str:
+    """A guardrail value (worse / upper) in its own terms: % for a relative limit, points for a rate, the metric's units for an average."""
+    return _gnum(x, x[key])
+
+
+def _glim(x: dict) -> str:
+    mg = x["margin"]
+    if x["kind"] == "rel":
+        return f"+{mg * 100:g}%"
+    if x["type"] == "rate":
+        return f"+{mg * 100:g} points"
+    return f"+{mg:g}" + (f" {x['unit']}" if x["unit"] else "")
 
 
 # ---------------------------------------------------------------------------- runner
@@ -387,14 +650,19 @@ def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict
     """Run one experiment end to end against a traffic simulator. Fully deterministic.
 
     `capture`, if given, is filled with the per-lead rows the record does not keep (they would bloat every stored result):
-    capture["assignments"] = [{lead_id, stratum, variant, assigned_at}], capture["calls"] = [{call_id, lead_id, time, in_segment, variant, converted, duration_s, repeat}]."""
+    capture["assignments"] = [{lead_id, stratum, variant, assigned_at}], capture["calls"] = [{call_id, lead_id, time, in_segment, variant, converted, duration_s, repeat}].
+
+    The metrics path (cfg.metrics set) needs a simulator with `observe_rows(arm, call)` (simulator.HistorySim): each analysed lead's call rows are
+    counted into every metric of the list (metriclib.contrib), per arm. `converted` in the capture is then 1 when the lead adds to the primary's
+    numerator, and `duration_s` is the answered call's length."""
     cfg.validate()
     d = design or build_design(cfg)
     start = datetime.fromisoformat(cfg.start)
     secs_per_call = 86400.0 / sim.calls_per_day(cfg)
     clock_state = {"i": 0}
     ledger = Ledger(lambda: _iso(start, clock_state["i"] * secs_per_call))
-    variants = describe_pair(cfg.variant_b)
+    variants = describe_pair(cfg.variant_b, cfg.variant_a)
+    base_hash = variants["A"]["hash"]                    # the production prompt before the test (the live prompt A when the wizard supplied one)
     seg = catalog.validate_segment(cfg.segment)
     strat_plan = catalog.plan_strata(cfg.window_days * cfg.eligible_per_day, seg) if cfg.assignment == "stratified" else None
     router = (StratifiedRouter(cfg.exp_id, cfg.share_b, cfg.salt, strat_plan["merged"]) if cfg.assignment == "stratified"
@@ -403,11 +671,18 @@ def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict
     oos_leads = set()
     mon = Monitor(cfg, d)
     c = Counts()
-    base = load_base()
+    mp = bool(cfg.metrics)
+    if mp:
+        if not hasattr(sim, "observe_rows"):
+            raise ValueError("a test with a metric list needs a simulator that produces call rows (simulator.HistorySim)")
+        from . import metriclib
+        mdefs = [m["def"] for m in cfg.metrics]
+        pi = next(i for i, m in enumerate(cfg.metrics) if m["role"] == "primary")
+        c.acc = {"A": [metriclib.Acc() for _ in mdefs], "B": [metriclib.Acc() for _ in mdefs]}
     created = {
         "exp_id": cfg.exp_id, "config_hash": cfg.hash(), "config": cfg.as_dict(),
         "variant_A": variants["A"]["hash"], "variant_B": variants["B"]["hash"],
-        "variant_B_origin": variants["B"]["origin"], "production_before": base["hash"],
+        "variant_B_origin": variants["B"]["origin"], "production_before": base_hash,
         "config_version": cfg.version, "parent_config_hash": cfg.parent_hash or None, "config_locked": True,
         "design": {"n_max": d.n_max, "looks": len(d.look_n), "alpha": cfg.alpha, "alpha_harm": cfg.alpha_harm,
                    "rule_set": cfg.rule_set, "spending": _spending(cfg), "power": cfg.power, "mde": cfg.mde}}
@@ -448,17 +723,37 @@ def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict
             c.aA += 1
         else:
             c.aB += 1
-        logged, converted, dur = sim.observe(arm, call)
-        if capture is not None:
-            capture.setdefault("calls", []).append({"call_id": call["i"], "lead_id": call["lead"], "time": _iso(start, call["i"] * secs_per_call), "in_segment": True,
-                                                    "variant": arm, "converted": int(converted) if logged else None, "duration_s": round(dur, 2) if logged else None, "repeat": False})
-        if not logged:
-            continue
-        ev = sim.event(arm, call) if cfg.guard_rate else 0
-        if arm == "A":
-            c.nA += 1; c.xA += converted; c.sA += dur; c.qA += dur * dur; c.gA += ev
+        if mp:
+            if attrs is not None:
+                call["attrs"] = attrs                  # the lead's factors, already read: the simulator puts them on the call rows
+            rows = sim.observe_rows(arm, call)          # None = the lead's calls never reached the log
+            cont = [metriclib.contrib(m, rows) for m in mdefs] if rows is not None else None
+            if capture is not None:
+                ans = next((r["call_duration"] for r in rows if r["call_status"] == "Answered"), None) if rows is not None else None
+                capture.setdefault("calls", []).append({"call_id": call["i"], "lead_id": call["lead"], "time": _iso(start, call["i"] * secs_per_call), "in_segment": True,
+                                                        "variant": arm, "converted": (1 if cont[pi][0] > 0 else 0) if rows is not None else None,
+                                                        "duration_s": round(float(ans), 2) if ans is not None else None, "repeat": False})
+            if rows is None:
+                continue
+            accs = c.acc[arm]
+            for acc, (nu, de) in zip(accs, cont):
+                acc.add(nu, de)
+            if arm == "A":
+                c.nA += 1; c.xA = accs[pi].sn
+            else:
+                c.nB += 1; c.xB = accs[pi].sn
         else:
-            c.nB += 1; c.xB += converted; c.sB += dur; c.qB += dur * dur; c.gB += ev
+            logged, converted, dur = sim.observe(arm, call)
+            if capture is not None:
+                capture.setdefault("calls", []).append({"call_id": call["i"], "lead_id": call["lead"], "time": _iso(start, call["i"] * secs_per_call), "in_segment": True,
+                                                        "variant": arm, "converted": int(converted) if logged else None, "duration_s": round(dur, 2) if logged else None, "repeat": False})
+            if not logged:
+                continue
+            ev = sim.event(arm, call) if cfg.guard_rate else 0
+            if arm == "A":
+                c.nA += 1; c.xA += converted; c.sA += dur; c.qA += dur * dur; c.gA += ev
+            else:
+                c.nB += 1; c.xB += converted; c.sB += dur; c.qB += dur * dur; c.gB += ev
         n = c.nA + c.nB
         if n == d.look_n[k]:
             final = k == len(d.look_n) - 1
@@ -484,7 +779,7 @@ def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict
         final_row = looks[-1] if looks else None
 
     # ---- act on the decision
-    decision, routing, production_after, hold_cause = act_on_decision(cfg, ledger, decision, final_row, base["hash"], variants["B"]["hash"], len(looks))
+    decision, routing, production_after, hold_cause = act_on_decision(cfg, ledger, decision, final_row, base_hash, variants["B"]["hash"], len(looks))
     kind = decision["kind"]
 
     ok, _ = verify(ledger.entries)
@@ -494,11 +789,11 @@ def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict
         bad = sum(1 for lead in router.ledger if seg and not catalog.matches(seg, catalog.lead_vars(lead)))       # re-read every counted lead's variables
         seg_check = {"rule": catalog.describe(seg), "counted_leads": len(router.ledger), "matching": len(router.ledger) - bad, "out_of_segment_leads": len(oos_leads),
                      "share_of_traffic": catalog.segment_share(seg), "eligible_per_day": cfg.eligible_per_day, "strata": strat_plan["strata"], "merged": strat_plan["merged"]}
-    tails = decision_tails(ledger.entries, kind, hold_cause, base["hash"], variants["B"]["hash"], looks[-1]["time"] if looks else cfg.start, holdback=cfg.holdback_share, holdback_days=cfg.holdback_days, scope_rule=catalog.describe(cfg.segment) if cfg.segment else "")
+    tails = decision_tails(ledger.entries, kind, hold_cause, base_hash, variants["B"]["hash"], looks[-1]["time"] if looks else cfg.start, holdback=cfg.holdback_share, holdback_days=cfg.holdback_days, scope_rule=catalog.describe(cfg.segment) if cfg.segment else "")
     result = {
         "kind": kind, "reason": decision["reason"], "hold_cause": hold_cause, "cause": decision.get("cause"), "at_look": len(looks), "of_looks": len(d.look_n),
         "calls_analysed": final_row["n"] if final_row else 0, "n_max": d.n_max,
-        "routing_after": routing, "production_before": base["hash"], "production_after": production_after,
+        "routing_after": routing, "production_before": base_hash, "production_after": production_after,
         "exposed_b_calls": router.calls["B"], "time": looks[-1]["time"] if looks else cfg.start,
         "split": router.split_report(), "stickiness": sticky,
     }
@@ -510,7 +805,8 @@ def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict
            "looks": looks, "result": result, "ledger": ledger.entries, "ledger_head": ledger.head,
            "ledger_ok": ok, "calls_simulated": calls, "calls_read": calls, "tails": tails}
     sc = getattr(sim, "sc", None)
-    if kind in ("PROMOTE", "HOLD_FOR_APPROVAL") and sc is not None and cfg.holdback_days > 0 and cfg.holdback_share > 0:
+    proportion = not mp or cfg.primary_type == "rate"     # the holdback week is a proportion check: not run for an average primary
+    if kind in ("PROMOTE", "HOLD_FOR_APPROVAL") and sc is not None and cfg.holdback_days > 0 and cfg.holdback_share > 0 and proportion:
         rec["holdback"] = holdback_week(cfg, sc.true_a, sc.true_b, sc.seed)         # starts when B is promoted (for a held test: when a person approves)
     return rec
 
@@ -523,7 +819,7 @@ def holdback_week(cfg: Config, true_a: float, true_b: float, seed: int, true_b_a
     """
     import numpy as np
     from .stats import norm_ppf
-    per_day = max(1, int(round(cfg.eligible_per_day)))
+    per_day = max(1, int(round(cfg.eligible_per_day * cfg.primary_units_per_lead)))
     rng = np.random.default_rng(seed + 7919)
     bar = norm_ppf(1 - cfg.alpha_harm_daily)
     nA = xA = nB = xB = 0
@@ -655,11 +951,21 @@ def more_leads(cfg: Config, d: Design, row: dict, leads_per_day: float) -> dict:
     lpd = max(1.0, float(leads_per_day))
     sign = 1 if cfg.primary_direction == "higher" else -1
 
+    avg = cfg.primary_type == "average"           # metrics path, average primary: lifts are in the metric's own units, not points
+
     def need(delta: float) -> int:
         mde = abs(delta)
-        pa = min(base, 1 - mde - 1e-4) if sign > 0 else max(base, mde + 1e-4)
         key = "n_fixed" if cfg.rule_set == "final_look" else "n_max"
-        return seqdesign.plan_sample_size(pa, sign * mde, cfg.share_b, cfg.alpha, cfg.power, cfg.n_looks)[key]
+        if avg:
+            return primary_plan(cfg, mde)[key]
+        pa = min(base, 1 - mde - 1e-4) if sign > 0 else max(base, mde + 1e-4)
+        tot = seqdesign.plan_sample_size(pa, sign * mde, cfg.share_b, cfg.alpha, cfg.power, cfg.n_looks)[key]
+        return int(math.ceil(tot / cfg.primary_units_per_lead)) if cfg.metrics else tot
+
+    def lift(delta: float) -> dict:
+        if not cfg.metrics:
+            return {"lift_pp": round(delta * 100, 2)}
+        return {"lift_pp": None if avg else round(delta * 100, 2), "lift": round(delta, 6), "unit": metric_unit(cfg.metrics[[m["role"] for m in cfg.metrics].index("primary")]["def"])}
 
     opts, seen_pending = [], 0
     for frac in (1.0, 0.5, 1 / 3, 0.25):
@@ -667,16 +973,16 @@ def more_leads(cfg: Config, d: Design, row: dict, leads_per_day: float) -> dict:
         tot = need(delta)
         extra = max(0, tot - n)
         opts.append({"label": "the planned lift" if frac == 1.0 else f"{frac:.2g} of the planned lift" if frac in (0.5, 0.25) else "a third of the planned lift",
-                     "lift_pp": round(delta * 100, 2), "total_leads": tot, "more_leads": extra, "more_days": round(extra / lpd, 1),
+                     **lift(delta), "total_leads": tot, "more_leads": extra, "more_days": round(extra / lpd, 1),
                      "enough_already": extra == 0, "guess": False, "impractical": extra / lpd > 365})
     enough = [o for o in opts if o["enough_already"]]
     pending = [o for o in opts if not o["enough_already"]]
     out = enough[-1:] + pending[:2]                       # the smallest lift already testable, then the next two to aim for
     seen = abs(row["diff"]) if row.get("diff") is not None else 0
-    if 0.002 < seen < cfg.mde and (row["diff"] > 0) == (sign > 0):
+    if (0 if avg else 0.002) < seen < cfg.mde and (row["diff"] > 0) == (sign > 0):
         tot = need(seen)
         extra = max(0, tot - n)
-        out.append({"label": "the lift seen so far, if it is real (a guess: small lifts are mostly noise)", "lift_pp": round(seen * 100, 2), "total_leads": tot,
+        out.append({"label": "the lift seen so far, if it is real (a guess: small lifts are mostly noise)", **lift(seen), "total_leads": tot,
                     "more_leads": extra, "more_days": round(extra / lpd, 1), "enough_already": extra == 0, "guess": True, "impractical": extra / lpd > 365})
     return {"analysed": n, "leads_per_day": round(lpd), "options": out}
 
@@ -685,7 +991,11 @@ def _evidence(row):
     if not row:
         return {}
     keep = ("n", "nA", "xA", "nB", "xB", "rateA", "rateB", "diff", "rci", "ci95", "z", "eff", "harm", "p_srm", "guardrail")
-    return {k: row[k] for k in keep}
+    out = {k: row[k] for k in keep}
+    if "metrics" in row:                  # metrics path: every metric of the locked list, as it stood at the decision
+        out.update(dA=row["dA"], dB=row["dB"], metrics=[{k: m.get(k) for k in ("key", "name", "role", "diff", "lo", "hi", "rel", "worse", "upper", "margin")}
+                                                          | {"A": m["A"]["value"], "B": m["B"]["value"]} for m in row["metrics"]])
+    return out
 
 
 def _stickiness(router: Router, sim, cfg: Config) -> dict:

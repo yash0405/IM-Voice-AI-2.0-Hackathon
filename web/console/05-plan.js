@@ -184,7 +184,7 @@ function testMetrics(w) {
   if (w.primary) out.push({ role: "primary", key: w.primary, m: metricByKey(w.primary, ex), direction: (metricByKey(w.primary, ex) || {}).direction });
   for (const g of w.guards || []) out.push({ role: "guardrail", key: g.key, m: metricByKey(g.key, ex), direction: g.direction, limit: g.limit });
   for (const s of w.secondary || []) out.push({ role: "secondary", key: s.key, m: metricByKey(s.key, ex), direction: s.direction });
-  return out;
+  return out.filter(x => x.m);                                                  // a metric removed from Settings since the draft was saved drops out
 }
 /** Roles have limits: 3 guardrails and 5 secondary metrics (the pre-added guardrail counts). */
 const roleFull = (w, role) => role === "guardrail" ? (w.guards || []).length >= METRIC_CAT().limits.guardrails : (w.secondary || []).length >= METRIC_CAT().limits.secondary;

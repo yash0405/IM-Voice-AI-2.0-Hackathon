@@ -2,7 +2,7 @@
 import json
 import unittest
 
-from canary import webapi
+from canary import variants, webapi
 
 
 class WebApi(unittest.TestCase):
@@ -14,7 +14,9 @@ class WebApi(unittest.TestCase):
         self.assertEqual(webapi.handle("GET", "/api/sample/b_wins")[0], 200)
 
     def test_wizard_runs_and_bad_input_is_a_400(self):
-        s, t = webapi.handle("POST", "/api/wizard", json.dumps({"name": "t", "window_days": 7, "leads_per_day": 500, "effect_rel": 0.1}))
+        body = {"name": "t", "window_days": 7, "leads_per_day": 500, "effect_rel": 0.1, "prompt_b": variants.load_base()["text"],
+                "metrics": [{"role": "primary", "key": "buylead_created"}]}
+        s, t = webapi.handle("POST", "/api/wizard", json.dumps(body))
         self.assertEqual(s, 200, t[:200])
         self.assertEqual(webapi.handle("POST", "/api/wizard", json.dumps({"window_days": 5}))[0], 400)
 

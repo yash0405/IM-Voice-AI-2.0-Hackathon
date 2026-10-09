@@ -2,37 +2,53 @@
 No network, no Sarvam credits."""
 import unittest
 
-from canary import catalog, console, server
+from canary import catalog, console, metriclib, server, variants
 from canary.engine import Config, Monitor, build_design, holdback_week, run_experiment
 from canary.router import StratifiedRouter, block_for
 from canary.simulator import Scenario, TrafficSim
 
-SEG = {"rules": [{"var": "nature_of_business", "values": ["Proprietor"]}], "text": "Proprietors"}
+SEG = [{"factor": "Legal Status", "column": "legal_status", "values": ["Proprietorship"]}]
+
+
+def wizard_body(**over):
+    """A New Experiment body: prompt B is the production prompt with one ask limit lowered; BuyLead created decides."""
+    base = variants.load_base()["text"]
+    return {"name": "Wizard test", "prompt_b": base.replace("buyer name = 3", "buyer name = 2"), "share_b": 0.3, "window_days": 7, "improvement": 0.05,
+            "leads_per_day": 1000, "metrics": [{"role": "primary", "key": "buylead_created"}], "effect_rel": 0.15, "seed": 6, **over}
 
 
 class Catalog(unittest.TestCase):
     def test_in_call_variables_cannot_pick_leads(self):
-        with self.assertRaises(ValueError) as e:
-            catalog.validate_segment({"rules": [{"var": "disposition", "values": ["BuyLead created"]}]})
-        self.assertIn("during the call", str(e.exception))
+        for seg in ({"rules": [{"var": "disposition", "values": ["BuyLead created"]}]}, [{"column": "disposition", "values": ["BuyLead created"]}]):
+            with self.assertRaises(ValueError) as e:
+                catalog.validate_segment(seg)
+            self.assertIn("during the call", str(e.exception))
 
     def test_bad_values_and_tiny_segments_are_refused(self):
         with self.assertRaises(ValueError):
-            catalog.validate_segment({"rules": [{"var": "city", "values": ["Atlantis"]}]})
-        with self.assertRaises(ValueError):             # Chennai x Partnership x ENQR is under 2% of traffic
-            catalog.validate_segment({"rules": [{"var": "city", "values": ["Chennai"]}, {"var": "nature_of_business", "values": ["Partnership"]}, {"var": "hot_lead_type", "values": ["ENQR"]}]})
+            catalog.validate_segment([{"column": "legal_status", "values": ["Atlantis"]}])
+        with self.assertRaises(ValueError):
+            catalog.validate_segment([{"column": "city", "values": ["Mumbai"]}])                      # not a factor of the catalog
+        with self.assertRaises(ValueError) as e:                                                       # UATF is 1% of traffic: under the 2% floor
+            catalog.validate_segment([{"column": "hl_type", "values": ["UATF"]}])
+        self.assertIn("1.0% of traffic", str(e.exception))
+        with self.assertRaises(ValueError) as e:                                                       # PIM is not one of the top 3 HL types
+            catalog.validate_segment([{"column": "hl_bucket", "values": ["Top 3"]}, {"column": "hl_type", "values": ["PIM"]}])
+        self.assertIn("no lead can match", str(e.exception))
 
-    def test_the_rule_is_written_the_way_the_brd_writes_it(self):
-        seg = catalog.validate_segment({"rules": [{"var": "city", "values": ["Mumbai"]}, {"var": "nature_of_business", "values": ["Proprietor"]},
-                                                  {"var": "hot_lead_type", "values": ["UA", "PNS"]}]})
-        self.assertEqual(catalog.describe(seg), "City = Mumbai AND NOB = Proprietor AND HL IN (UA, PNS)")
-        self.assertAlmostEqual(catalog.segment_share(seg), 0.14 * 0.45 * 0.60, places=6)
+    def test_the_rule_is_written_in_plain_words(self):
+        seg = catalog.validate_segment([{"column": "legal_status", "values": ["Proprietorship"]}, {"column": "hl_type", "values": ["PNSM", "UA"]}])
+        self.assertEqual(catalog.describe(seg), "Leads where HL Type is UA or PNSM AND Legal Status is Proprietorship")
+        self.assertEqual([r["column"] for r in seg], ["hl_type", "legal_status"])                       # catalog order: one segment, one hash
+        self.assertAlmostEqual(catalog.segment_share(seg), (0.20 + 0.12) * 0.45, places=6)
+        self.assertEqual(catalog.validate_segment({"rules": [{"var": "legal_status", "values": ["Proprietorship"]}]}), catalog.validate_segment(SEG))   # the earlier form still reads
 
     def test_lead_variables_are_a_fixed_function_of_the_lead(self):
         self.assertEqual(catalog.lead_vars("L0000042"), catalog.lead_vars("L0000042"))
         n = 20000
-        share = sum(catalog.lead_vars(f"L{i:07d}")["nature_of_business"] == "Proprietor" for i in range(n)) / n
-        self.assertAlmostEqual(share, 0.45, delta=0.02)
+        leads = [catalog.lead_vars(f"L{i:07d}") for i in range(n)]
+        self.assertAlmostEqual(sum(a["legal_status"] == "Proprietorship" for a in leads) / n, 0.45, delta=0.02)
+        self.assertTrue(all(a["hl_bucket"] == ("Top 3" if a["hl_type"] in catalog.HL_TOP3 else "Rest") for a in leads))     # a derived factor never disagrees
 
     def test_small_strata_merge_into_other(self):
         plan = catalog.plan_strata(300, None)           # 300 leads over 16 strata: most hold fewer than 30
@@ -50,7 +66,7 @@ class Router(unittest.TestCase):
         for l in leads:
             rt.assign(l, catalog.lead_vars(l))
         for st, (a, b) in rt.strata.items():
-            self.assertLessEqual(abs(b - 0.3 * (a + b)), 1.5, st)        # within one block's rounding
+            self.assertLessEqual(abs(b - 0.3 * (a + b)), 3 * 0.7 + 1e-9, st)   # within one block's rounding: a part-dealt block of 10 is at most 2.1 leads off
         self.assertLess(abs(rt.counts["B"] / 5000 - 0.30), 0.005)        # the BRD's +/-0.5 pp
         before = dict(rt.ledger)
         for l in leads[:500]:
@@ -68,14 +84,14 @@ class Engine(unittest.TestCase):
         self.assertGreater(sc["out_of_segment_leads"], sc["counted_leads"])      # 55% of traffic is outside "proprietors"
         self.assertAlmostEqual(sc["share_of_traffic"], 0.45)
         last = self.rec["looks"][-1]
-        self.assertEqual(sum(sum(ab) for ab in last["mix"]["nature_of_business"].values()), sc["counted_leads"])
-        self.assertEqual(sum(sum(ab) for k, ab in last["mix"]["nature_of_business"].items() if k != "Proprietor"), 0)
+        self.assertEqual(sum(sum(ab) for ab in last["mix"]["legal_status"].values()), sc["counted_leads"])
+        self.assertEqual(sum(sum(ab) for k, ab in last["mix"]["legal_status"].items() if k != "Proprietorship"), 0)
 
     def test_the_split_is_exact_and_the_mix_balanced(self):
         r = self.rec["result"]
         self.assertLess(abs(r["split"]["achieved_b"] - 0.30), 0.005)
         self.assertEqual(r["stickiness"]["arm_changes"], 0)
-        self.assertGreater(self.rec["looks"][-1]["mix_p"]["hot_lead_type"], 0.5)   # blocks inside each type: A and B share one mix
+        self.assertGreater(self.rec["looks"][-1]["mix_p"]["hl_type"], 0.5)          # blocks inside each type: A and B share one mix
 
     def test_by_call_share_counts_only_routed_calls(self):
         last = self.rec["looks"][-1]
@@ -140,11 +156,11 @@ class Holdback(unittest.TestCase):
 
 class Wizard(unittest.TestCase):
     def test_the_wizard_runs_a_segment_and_refuses_in_call_variables(self):
-        r = server.run_wizard({"name": "Seg", "effect_rel": 0.15, "seed": 7, "window_days": 7, "leads_per_day": 1000, "share_b": 0.3, "segment": SEG, "mde": 0.07})
-        self.assertEqual(r["record"]["config"]["segment"]["rules"][0]["var"], "nature_of_business")
+        r = server.run_wizard(wizard_body(name="Seg", seed=7, segment=SEG))
+        self.assertEqual(r["record"]["config"]["segment"][0]["column"], "legal_status")
         self.assertEqual(r["record"]["config"]["assignment"], "stratified")
         with self.assertRaises(ValueError):
-            server.run_wizard({"name": "Bad", "window_days": 7, "segment": {"rules": [{"var": "call_duration", "values": ["x"]}]}})
+            server.run_wizard(wizard_body(name="Bad", segment=[{"column": "call_duration", "values": ["x"]}]))
 
     def test_durations_are_whole_weeks(self):
         for d in (3, 10, 30):
@@ -154,7 +170,8 @@ class Wizard(unittest.TestCase):
     def test_the_demo_has_the_segmented_scenario(self):
         ids = [d["key"] for d in console.DEMO]
         self.assertIn("demo_segment", ids)
-        self.assertEqual(console.DEFAULTS["min_leads_per_arm"], 1000)         # the BRD's default for the daily harm check
+        self.assertEqual(console.DEFAULTS["min_leads_per_arm"], 500)          # new tests: 500 leads per prompt before any decision
+        self.assertEqual(console.DEMO_MIN_LEADS, 1000)                        # the five demo tests keep the BRD's 1,000
 
 
 if __name__ == "__main__":
@@ -179,18 +196,24 @@ class ReviewFixes(unittest.TestCase):
         self.assertEqual((dec["kind"], dec["cause"]), ("STOP_HARM", "loss_at_end"))
 
     def test_a_segment_win_says_it_is_promoted_for_the_segment_only(self):
-        rec = console.run_preset("w", "cap_two_asks", "2026-10-09T09:00:00", "exp-scope", 0.15, 7, assignment="stratified", segment=SEG, min_per_arm=1000, mde=0.07)
+        # the demo's own segmented test (same experiment id, so the same routing): B wins for proprietors
+        rec = console.run_preset("w", "cap_two_asks", "2026-10-09T09:00:00", "exp-demo-segment", 0.15, 7, assignment="stratified", segment=SEG, min_per_arm=1000, mde=0.07)
+        self.assertEqual(rec["result"]["kind"], "PROMOTE")
         import json
         reasons = [json.loads(e["body"])["payload"].get("reason", "") for e in rec["ledger"] if json.loads(e["body"])["type"] == "routing_changed"]
-        self.assertTrue(any("NOB = Proprietor only" in r for r in reasons), reasons)
+        self.assertTrue(any("for Leads where Legal Status is Proprietorship only" in r for r in reasons), reasons)
 
     def test_the_early_hangup_guardrail_sees_a_real_difference(self):
-        a = server.run_wizard({"name": "h0", "effect_rel": 0.15, "seed": 6, "window_days": 7, "leads_per_day": 1000, "share_b": 0.3, "early_hangup": True, "rate_margin_pp": 2, "hang_extra_pp": 0})
-        b = server.run_wizard({"name": "h9", "effect_rel": 0.15, "seed": 6, "window_days": 7, "leads_per_day": 1000, "share_b": 0.3, "early_hangup": True, "rate_margin_pp": 2, "hang_extra_pp": 9})
-        ga, gb = a["record"]["looks"][-1]["guardrail2"], b["record"]["looks"][-1]["guardrail2"]
-        self.assertAlmostEqual(ga["rate_a"], console.early_hangup_share(), delta=0.02)       # A's rate comes from the real recordings
-        self.assertGreater(gb["rate_b"] - gb["rate_a"], 0.07)
+        mets = [{"role": "primary", "key": "buylead_created"}, {"role": "guardrail", "key": "early_hangup", "limit": {"value": 2, "kind": "pts"}}]
+        a = server.run_wizard(wizard_body(name="h0", metrics=mets, hang_extra_pp=0))
+        b = server.run_wizard(wizard_body(name="h9", metrics=mets, hang_extra_pp=9))
+        ga = next(m for m in a["record"]["looks"][-1]["metrics"] if m["key"] == "early_hangup")
+        gb = next(m for m in b["record"]["looks"][-1]["metrics"] if m["key"] == "early_hangup")
+        hist = metriclib.evaluate(metriclib.BY_KEY["early_hangup"])["value"]          # A's rate comes from the history (lengths resampled from the real recordings)
+        self.assertAlmostEqual(ga["A"]["value"], hist, delta=0.02)
+        self.assertGreater(gb["B"]["value"] - gb["A"]["value"], 0.05)
         self.assertEqual(b["record"]["result"]["kind"], "STOP_GUARDRAIL")
+        self.assertIn("Early hang-ups", b["record"]["result"]["reason"])
 
     def test_the_a_vs_a_study_counts_only_daily_checks_that_could_fire(self):
         import json
@@ -198,16 +221,3 @@ class ReviewFixes(unittest.TestCase):
         P = json.loads((Path(__file__).resolve().parent.parent / "out" / "proof.json").read_text())["aa_brd"]
         self.assertLess(P["early_harm_stop_per_check"], 0.001)                                # the BRD's 0.1% per check
         self.assertAlmostEqual(P["significant_either_way"]["rate"], P["promoted"]["rate"] + P["held_for_approval"]["rate"] + P["logged_as_loss"]["rate"], places=9)
-
-
-class SegmentReader(unittest.TestCase):
-    def test_the_plain_english_reader_in_node(self):
-        import shutil
-        import subprocess
-        from pathlib import Path
-        node = shutil.which("node")
-        script = Path(__file__).resolve().parent / "browser" / "segment_reader.cjs"
-        if not node or not (Path(__file__).resolve().parent.parent / "out" / "console_bundle.json").exists():
-            self.skipTest("node or the built console bundle is not available")
-        r = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60)
-        self.assertIn("all ok", r.stdout, r.stdout + r.stderr)

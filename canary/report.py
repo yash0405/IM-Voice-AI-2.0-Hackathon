@@ -81,13 +81,24 @@ def _extra_sections(w, P):
                 w(f"| {label} | {pct(A[key]['rate'], 2)} | {pct(A[key]['ci'][0], 2)} to {pct(A[key]['ci'][1], 2)} | {note} |")
         w("")
         if SB:
-            w("**Split accuracy and lead mix** (the BRD's router: shuffled blocks inside each Hot Lead type x Nature of Business group, against a plain coin flip per lead; the lead variables are synthetic, see the limitations). Error is in percentage points of B share; mix gap is the biggest difference between A's and B's share over the values of one variable.\n")
-            w("| Leads | B share | Audience | Router | Mean error | 95th pct error | Within +/-0.5 pp | Mix gap HL / NOB / City (mean pp) | Leads that changed arm |\n|---|---|---|---|---|---|---|---|---|")
+            from . import catalog
+            gv = list(SB[0]["stratified"]["mix_gap_pp"])                      # the balance factors the study measured (catalog.BALANCE_VARS)
+            lab = lambda n, k="label": catalog.VARS[n][k] if n in catalog.VARS else n
+            blocked = [n for n in gv if n in catalog.STRATA_VARS]
+            n_strata = 1
+            for n in catalog.STRATA_VARS:
+                n_strata *= len(catalog.VARS[n]["values"])
+            w(f"**Split accuracy and lead mix** (the BRD's router: shuffled blocks inside each {' x '.join(lab(n) for n in catalog.STRATA_VARS)} group, against a plain coin flip per lead; the lead factors are synthetic, see the limitations). Error is in percentage points of B share; mix gap is the biggest difference between A's and B's share over the values of one factor.\n")
+            w(f"| Leads | B share | Audience | Router | Mean error | 95th pct error | Within +/-0.5 pp | Mix gap {' / '.join(lab(n, 'short') for n in gv)} (mean pp) | Leads that changed arm |\n|---|---|---|---|---|---|---|---|---|")
             for x in SB:
                 for mode, nm in (("stratified", "**Stratified blocks**"), ("hash", "Plain random")):
                     m = x[mode]; g = m["mix_gap_pp"]
-                    w(f"| {x['n']:,} | {x['share']:.0%} | {x['segment']} | {nm} | {m['mean_abs_err_pp']:.2f} | {m['p95_abs_err_pp']:.2f} | {m['within_half_pp']:.0%} | {g['hot_lead_type']['mean']:.1f} / {g['nature_of_business']['mean']:.1f} / {g['city']['mean']:.1f} | {m['arm_changes_after_reask']} |")
-            w("\nReading: with the blocks the achieved share is within 0.5 pp of the configured one in nearly every run from about 1,000 leads (at exactly 1,000 leads it holds in 90 to 97% of runs, depending on the share; at 3,000 leads or more in every run we drew), and A and B carry almost the same mix of lead type and firm type (the two blocked variables). City is not blocked, so its gaps are chance, as for a plain coin flip.\n")
+                    gaps = " / ".join(format(g[n]["mean"], ".1f") for n in gv)
+                    w(f"| {x['n']:,} | {x['share']:.0%} | {x['segment']} | {nm} | {m['mean_abs_err_pp']:.2f} | {m['p95_abs_err_pp']:.2f} | {m['within_half_pp']:.0%} | {gaps} | {m['arm_changes_after_reask']} |")
+            at1k = [x["stratified"]["within_half_pp"] for x in SB if x["n"] == 1000] or [0]
+            w(f"\nReading: with the blocks the achieved share is within 0.5 pp of the configured one in nearly every run from about 1,000 leads (at exactly 1,000 leads it holds in {min(at1k):.0%} to {max(at1k):.0%} of runs, depending on the share; at 3,000 leads or more in every run we drew). "
+              f"From about 3,000 leads A and B also carry a closer mix of {' and '.join(lab(n) for n in blocked)} (the blocked factors) than a plain coin flip gives; at 1,000 leads most of the {n_strata} strata expect fewer than {catalog.MIN_STRATUM} leads and are merged into one 'Other' stratum, so the mix is no better than chance. "
+              f"{' and '.join(lab(n) for n in gv if n not in blocked)} {'is' if len(gv) - len(blocked) == 1 else 'are'} not blocked, so {'its' if len(gv) - len(blocked) == 1 else 'their'} gaps are chance, as for a plain coin flip.\n")
         w("**BRD claims we checked**\n")
         w("- 'A 10% share needs about 2.8x more traffic than 50/50': total leads scale as 1 / (s x (1 - s)): 11.1 at 10% against 4.0 at 50%, a ratio of 2.78. Correct.")
         w("- 'Harm check starts once each variant has 1,000 leads': at 10% to B and 1,000 leads a day, B reaches 1,000 leads on day 10, after a 7-day test has ended, so the daily harm check would never run. The BRD's default is kept (it is a setting), but the calculator now shows the day the harm check starts and turns amber when it would not start inside the window. The end-of-test winner call is not held back by this gate.")

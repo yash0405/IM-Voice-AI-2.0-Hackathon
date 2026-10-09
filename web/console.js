@@ -139,6 +139,11 @@ function guardList(v) {
   if (c.guard_rate) out.push({ name: c.guard_rate.replace(/_/g, " ").replace(/^./, x => x.toUpperCase()), conf: confOf(c), st: guardStatus(cur && cur.guardrail2, c.guard_rate_margin, "pts", v), g: cur && cur.guardrail2 });
   return out;
 }
+function guardOverall(v) {
+  const l = guardList(v); if (!l.length) return { short: "n/a", cls: "plain" };
+  const worst = l.find(x => x.st.cls === "neg") || l.find(x => x.st.cls === "warn") || l.find(x => x.st.cls === "plain") || l[0];
+  return { short: l.length > 1 && worst.st.cls !== "pos" ? worst.name + ": " + worst.st.short : worst.st.short, cls: worst.st.cls };
+}
 /** Secondary metrics of a test: A against B with the 95% range of the difference. For insight only. */
 function secondaryList(v) { const c = v.config, cur = v.cur; return ((c && c.metrics) || []).filter(x => x.role === "secondary").map(x => ({ def: x.def, direction: x.def.direction, m: cur && (cur.metrics || []).find(y => y.key === x.def.key && y.role === "secondary") })); }
 function secondaryHtml(v) {
@@ -430,7 +435,7 @@ function testMetrics(w) {
   if (w.primary) out.push({ role: "primary", key: w.primary, m: metricByKey(w.primary, ex), direction: (metricByKey(w.primary, ex) || {}).direction });
   for (const g of w.guards || []) out.push({ role: "guardrail", key: g.key, m: metricByKey(g.key, ex), direction: g.direction, limit: g.limit });
   for (const s of w.secondary || []) out.push({ role: "secondary", key: s.key, m: metricByKey(s.key, ex), direction: s.direction });
-  return out;
+  return out.filter(x => x.m);                                                  // a metric removed from Settings since the draft was saved drops out
 }
 /** Roles have limits: 3 guardrails and 5 secondary metrics (the pre-added guardrail counts). */
 const roleFull = (w, role) => role === "guardrail" ? (w.guards || []).length >= METRIC_CAT().limits.guardrails : (w.secondary || []).length >= METRIC_CAT().limits.secondary;
@@ -611,7 +616,12 @@ function businessImpact() {
   const e = byId(live.expId), c = e.record.config, r = dayRows(e.record).pop().row, lr = liftRange(r, c), sign = c.primary_direction === "lower" ? -1 : 1, rel = sign * (r.rateB / r.rateA - 1), low = sign > 0 ? lr.lo / r.rateA : -lr.hi / r.rateA;
   return { rel, low, goal: (C.metrics.find(m => m.key === c.primary_goal) || {}).name || "the goal", since: live.time, name: live.from, id: e.id, lower: sign < 0 };
 }
-const needLeads = e => e.record.config.rule_set === "final_look" ? e.record.design.n_fixed : e.record.design.n_max;
+/** Leads the plan needs. A test from the New Experiment page reads the same durationPlan as its Step 5 (B's leads / B's share, connected leads turned into attempted leads). */
+function needLeads(e) {
+  const c = e.record.config;
+  if (c.metrics && c.rule_set === "final_look") { const d = primaryDef(c), P = durationPlan({ type: d.type, p: c.baseline, sd: c.primary_sd, lpd: 1000, share: c.share_b, d: c.mde, conf: 1 - 2 * c.alpha }); return Math.ceil(P.nB / c.share_b / Math.max(1e-9, connectShare())); }
+  return c.rule_set === "final_look" ? e.record.design.n_fixed : e.record.design.n_max;
+}
 
 /** Each running test's slice of today's traffic: outside the test, A inside it, B. */
 function trafficRow(e) { const c = e.record.config, s = segShare(c.segment); return { name: c.name, out: 1 - s, a: s * (1 - c.share_b), b: s * c.share_b, seg: c.segment, e }; }
@@ -740,7 +750,7 @@ function guardTile(item) {
 /** A against B on each balance factor of the catalog: the balance table. */
 function balanceHtml(cur) {
   const mix = cur && cur.mix; if (!mix) return `<div class="note">The lead mix was not recorded for this run.</div>`;
-  const strat = CAT().strata, blocks = CAT().balance.map(name => {
+  const strat = CAT().strata, blocks = CAT().balance.filter(name => mix[name]).map(name => {
     const vv = catVar(name), vals = vv.values.filter(x => mix[name][x][0] + mix[name][x][1] > 0), ta = vals.reduce((a, x) => a + mix[name][x][0], 0), tb = vals.reduce((a, x) => a + mix[name][x][1], 0), p = (cur.mix_p || {})[name], by = strat.includes(name);
     if (vals.length < 2 && p == null) return `<tr><td colspan="5"><b>${esc(vv.label)}</b> <span class="muted">${esc(vals[0] || "")}: every counted lead is the same, so there is nothing to balance.</span></td></tr>`;
     return `<tr class="grp"><td colspan="5"><b>${esc(vv.label)}</b> ${by ? pill("balanced by design", "pos") : pill("left to chance", "plain")} <span class="note">same-mix check p = ${p == null ? "-" : p < 0.001 ? p.toExponential(1) : p.toFixed(2)}</span></td></tr>` +
@@ -1042,7 +1052,7 @@ function wzValid(w, step) {
   if (step === 1 && !w.name.trim()) return "Give the test a name.";
   if (step === 2) { const ps = promptState(w); if (ps.same) return "Prompt B is the same as A. Make a change to continue."; if (!ps.vc.ok) return ps.vc.missing.length ? `Missing: ${ps.vc.missing.map(v => `{{${v}}}`).join(", ")}.` : `New variable not supplied by the bot: ${ps.vc.added.map(v => `{{${v}}}`).join(", ")}.`; }
   if (step === 3) { const r = segFromRows(w.segRows); if (r.errors.length) return r.errors[0]; }
-  if (step === 4) { if (!wzPrimary(w)) return "Choose the main goal."; if (w.ui.primCustom) return "Save the custom metric first, or cancel it."; if (w.guards.some(g => !(g.limit && g.limit.value > 0))) return "Every guardrail needs a limit above 0."; }
+  if (step === 4) { if (!wzPrimary(w)) return "Choose the main goal."; const gone = [...w.guards, ...w.secondary].filter(x => !metricByKey(x.key, w.localMetrics)); if (gone.length) { w.guards = w.guards.filter(x => metricByKey(x.key, w.localMetrics)); w.secondary = w.secondary.filter(x => metricByKey(x.key, w.localMetrics)); return "A metric in this test was removed from Settings > Metrics; it has been taken off. Check the goals again."; } if (w.ui.primCustom) return "Save the custom metric first, or cancel it."; if (w.guards.some(g => !(g.limit && g.limit.value > 0))) return "Every guardrail needs a limit above 0."; }
   if (step === 5) { const P = wzPlan(w); if (!(w.share >= 0.05 && w.share <= 0.5)) return "The share for B must be between 5% and 50%."; if (!(P.lpd >= 1)) return "Leads per day must be at least 1."; if (!(P.d > 0)) return "The improvement to catch must be above 0.";
     if (P.m.type === "rate" && (P.target <= 0 || P.target >= 1)) return "Today's rate plus the improvement must stay between 0 and 100%."; if (!(P.days >= 7 && P.days <= 28 && P.days % 7 === 0)) return "The test length must be 7, 14, 21 or 28 days.";
     if (engineLeadsPerDay(w, P) * P.days > 60000) return "Days x leads a day is capped at 60,000 for the live demo: shorten the test or narrow the audience."; }

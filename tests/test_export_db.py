@@ -89,7 +89,7 @@ class ExportDb(unittest.TestCase):
             self.assertEqual(version, 1)
             self.assertIsNotNone(b)                                   # the demo's B prompt is in the library
         self.assertEqual(self.one("SELECT COUNT(*) FROM experiment_versions"), 5)
-        self.assertEqual(self.one("SELECT segment_rule FROM experiments WHERE id = 'demo_segment'"), "NOB = Proprietor")
+        self.assertEqual(self.one("SELECT segment_rule FROM experiments WHERE id = 'demo_segment'"), "Leads where Legal Status is Proprietorship")
         # every experiment traces to a prompt version
         self.assertEqual(self.one("SELECT COUNT(*) FROM experiments e JOIN prompts p ON p.version_id = e.variant_b_version AND p.hash = e.variant_b_hash"), 5)
 
@@ -119,15 +119,20 @@ class ExportDb(unittest.TestCase):
         self.assertGreater(inside, 1000)
         self.assertGreater(outside, 1000)                              # the segment is 45% of traffic: the rest is out
         self.assertEqual(self.one("SELECT COUNT(*) FROM calls c JOIN assignments a ON a.experiment_id = c.experiment_id AND a.lead_id = c.lead_id "
-                                  "WHERE c.experiment_id = ? AND c.in_segment = 1 AND a.stratum NOT LIKE '%Proprietor'", seg), 0)
-        self.assertEqual(self.one("SELECT COUNT(*) FROM calls c JOIN assignments a ON a.experiment_id = c.experiment_id AND a.lead_id = c.lead_id "
                                   "WHERE c.experiment_id = ? AND c.in_segment = 0", seg), 0)                # out-of-segment leads have no assignment
-        self.assertEqual(self.one("SELECT COUNT(*) FROM assignments WHERE experiment_id = ? AND stratum NOT LIKE '%x Proprietor'", seg), 0)
+        # every counted call has its lead's assignment, and the strata are the catalog's (GST Nature of Business x HL Type, or the merged 'Other')
+        self.assertEqual(self.one("SELECT COUNT(*) FROM calls c LEFT JOIN assignments a ON a.experiment_id = c.experiment_id AND a.lead_id = c.lead_id "
+                                  "WHERE c.experiment_id = ? AND c.in_segment = 1 AND a.lead_id IS NULL", seg), 0)
+        for (stratum,) in self.q("SELECT DISTINCT stratum FROM assignments WHERE experiment_id = ?", seg):
+            if stratum != "Other":
+                nob, hl = stratum.split(" x ")
+                self.assertIn(nob, catalog.VARS["gst_nature_of_business"]["values"])
+                self.assertIn(hl, catalog.VARS["hl_type"]["values"])
         # outside the segment: production prompt, nothing counted
         self.assertEqual(self.one("SELECT COUNT(*) FROM calls WHERE experiment_id = ? AND in_segment = 0 AND (variant <> 'A' OR disposition IS NOT NULL OR connected IS NOT NULL OR duration_s IS NOT NULL)", seg), 0)
         # independent check against the catalog: every assigned lead really is a proprietor
         for (lead,) in self.q("SELECT lead_id FROM assignments WHERE experiment_id = ?", seg):
-            self.assertEqual(catalog.lead_vars(lead)["nature_of_business"], "Proprietor")
+            self.assertEqual(catalog.lead_vars(lead)["legal_status"], "Proprietorship")
         # the neutral demos have no out-of-segment calls
         self.assertEqual(self.one("SELECT COUNT(*) FROM calls WHERE experiment_id <> ? AND in_segment = 0", seg), 0)
 

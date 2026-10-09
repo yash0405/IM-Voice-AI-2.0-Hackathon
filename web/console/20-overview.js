@@ -40,7 +40,12 @@ function businessImpact() {
   const e = byId(live.expId), c = e.record.config, r = dayRows(e.record).pop().row, lr = liftRange(r, c), sign = c.primary_direction === "lower" ? -1 : 1, rel = sign * (r.rateB / r.rateA - 1), low = sign > 0 ? lr.lo / r.rateA : -lr.hi / r.rateA;
   return { rel, low, goal: (C.metrics.find(m => m.key === c.primary_goal) || {}).name || "the goal", since: live.time, name: live.from, id: e.id, lower: sign < 0 };
 }
-const needLeads = e => e.record.config.rule_set === "final_look" ? e.record.design.n_fixed : e.record.design.n_max;
+/** Leads the plan needs. A test from the New Experiment page reads the same durationPlan as its Step 5 (B's leads / B's share, connected leads turned into attempted leads). */
+function needLeads(e) {
+  const c = e.record.config;
+  if (c.metrics && c.rule_set === "final_look") { const d = primaryDef(c), P = durationPlan({ type: d.type, p: c.baseline, sd: c.primary_sd, lpd: 1000, share: c.share_b, d: c.mde, conf: 1 - 2 * c.alpha }); return Math.ceil(P.nB / c.share_b / Math.max(1e-9, connectShare())); }
+  return c.rule_set === "final_look" ? e.record.design.n_fixed : e.record.design.n_max;
+}
 
 /** Each running test's slice of today's traffic: outside the test, A inside it, B. */
 function trafficRow(e) { const c = e.record.config, s = segShare(c.segment); return { name: c.name, out: 1 - s, a: s * (1 - c.share_b), b: s * c.share_b, seg: c.segment, e }; }

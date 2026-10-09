@@ -7,8 +7,8 @@ Status words: **Built** (as the BRD says), **Adapted** (same job, different mean
 |---|---|---|---|---|
 | P1 | Prompt changes go to all traffic at once | Built | router gives B a configured slice; promotion only by the engine or an approval | QA_REPORT 5; Live page |
 | P2 | No fair way to split | Built | `router.py` sticky by lead; stratified blocks | 0 leads saw both prompts in every run; QA_REPORT 5d |
-| P3 | Test groups can be skewed | Built | `StratifiedRouter`: blocks of 10 inside each Hot Lead type x Nature of Business group; balance table | mix gap 0.1 pp vs 1.5 pp for plain random (7,000 leads) |
-| P4 | No way to target a segment | Built | `catalog.py`, wizard step 3 (dropdowns or plain English), exact rule shown | `tests/test_brd2.py`, `console_brd.mjs` |
+| P3 | Test groups can be skewed | Built | `StratifiedRouter`: blocks of 10 inside each HL Type x GST Nature of Business group; balance table | mix gap about 0.4 pp vs 1.5 pp for plain random (7,000 leads, 30% to B); with 85 groups, small tests merge most groups into "Other" and gain little (QA_REPORT 5d) |
+| P4 | No way to target a segment | Built | `catalog.py`, wizard step 3 (a segment builder: factor, values; AND between rows, OR within), the rule in plain words | `tests/test_brd2.py`, `tests/test_plan_units.py`, `new_experiment_e2e.mjs` |
 | P5 | No agreed goal for "better" | Built | goal cards: one primary, up to 3 guardrails | wizard step 4 |
 | P6 | Test length is guessed | Built | calculator, whole weeks 7 to 28, green / amber / red | wizard refuses other lengths (test) |
 | P7 | Good changes are not rolled out quickly | Built | auto-promotion on the decision day, optional approval | scenario 1 |
@@ -20,7 +20,7 @@ Status words: **Built** (as the BRD says), **Adapted** (same job, different mean
 | Goal (weight) | Target in the BRD | Measured |
 |---|---|---|
 | Pick winners correctly (30%) | A = B over 1,000+ runs: false winner about 5% | 12,000 runs: 2.50% wrongly promoted, 2.22% logged as a loss, 4.73% look different either way. The BRD's "5%" is the two-sided total; only 2.5% would ship. The dashboard button runs 1,000 such tests live in the browser |
-| Split traffic accurately (20%) | within +/-0.5 pp; 0 leads see both; same lead mix | share error 0.03 pp at 7,000 leads (0.14 pp at 1,000 leads, 10% share); 0 leads saw both; mix gap 0.1 pp on the two blocked variables |
+| Split traffic accurately (20%) | within +/-0.5 pp; 0 leads see both; same lead mix | share error 0.04 to 0.05 pp at 7,000 leads (0.10 pp at 1,000 leads, 10% share), every run within +/-0.5 pp; 0 leads saw both; mix gap about 0.4 pp on the two blocked factors (plain random about 1.5 pp) |
 | Promote and stop on time (30%) | all demo scenarios end in the right decision, logged with reason, numbers, time | the five demo tests end as designed (promote, stop on day 4, inconclusive, held, promote in a segment); each decision is in the record |
 | Primary and guardrail goals (20%) | any disposition as primary; duration and early hang-ups as guardrails | metric list in Settings; both guardrails computed on simulated traffic; fatal-call guardrail on result files |
 | Easy to use | a non-technical user can set up, save and launch | six-step wizard with a calculator, checklist, Save Test and Launch Test |

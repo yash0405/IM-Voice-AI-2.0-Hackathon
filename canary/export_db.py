@@ -70,11 +70,12 @@ CREATE TABLE variable_catalog (
   synthetic      INTEGER NOT NULL CHECK (synthetic IN (0, 1))
 );
 
--- The metrics the engine decides on (goal) or guards (guardrail).
+-- The built-in metrics (canary/metriclib.py): goals the engine decides on, guardrails, and plain metrics (reach). A test launched from the
+-- wizard locks its own list (primary / guardrails / secondary, custom metrics included) inside experiment_versions.config.
 CREATE TABLE metrics (
   key                    TEXT PRIMARY KEY,
   name                   TEXT NOT NULL,
-  role                   TEXT NOT NULL CHECK (role IN ('goal', 'guardrail')),
+  role                   TEXT NOT NULL CHECK (role IN ('goal', 'guardrail', 'metric')),
   numerator_dispositions TEXT CHECK (numerator_dispositions IS NULL OR json_valid(numerator_dispositions)),   -- JSON array
   denominator            TEXT,
   direction              TEXT,
@@ -135,7 +136,7 @@ CREATE TABLE experiment_versions (
 CREATE TABLE assignments (
   experiment_id TEXT NOT NULL REFERENCES experiments (id),
   lead_id       TEXT NOT NULL,
-  stratum       TEXT,                                  -- Hot Lead type x Nature of Business (NULL when the test is not stratified)
+  stratum       TEXT,                                  -- GST Nature of Business x HL Type (catalog.STRATA_VARS; NULL when the test is not stratified)
   variant       TEXT NOT NULL CHECK (variant IN ('A', 'B')),
   assigned_at   TEXT,
   PRIMARY KEY (experiment_id, lead_id)
@@ -279,6 +280,14 @@ def _daily_rows(exp_id: str, rec: dict) -> list[tuple]:
     for day in sorted(last):
         row = last[day]
         tests = {k: row[k] for k in keep if k in row}
+        if "metrics" in row:                       # a test with a locked metric list: every metric's value per variant
+            tests["metrics"] = [{k: m.get(k) for k in ("key", "role", "diff", "lo", "hi", "rel", "worse", "upper", "margin")} for m in row["metrics"]]
+            avg = (cfg.get("primary_type") or "rate") == "average"
+            for v in ("A", "B"):
+                mv = {m["key"] + ("_mean" if m["type"] == "average" else "_rate"): m[v]["value"] for m in row["metrics"]}
+                # leads = analysed leads; conversions = the primary's numerator count for a rate (0 for an average); rate = the primary's value
+                out.append((exp_id, day, v, row[f"n{v}"], 0 if avg else int(round(row[f"x{v}"])), row[f"rate{v}"], _j(mv), _j(tests)))
+            continue
         for v in ("A", "B"):
             mv = {f"{cfg['primary_goal']}_rate": row[f"rate{v}"]}
             g, g2 = row.get("guardrail"), row.get("guardrail2")
@@ -374,7 +383,7 @@ def _suggestion_rows() -> tuple:
             p = planner.plan_one(d["baseline"], max(0.005, c["expected_pp"] / 100), d["share_b"], d["duration_margin"])
             days = round(p["n_max"] / d["leads_per_day"], 1)
         priority = c["ease"] * c["expected_pp"] if c.get("ease") and c.get("expected_pp") else None
-        rows.append((c["id"], c["source"], c["title"], c["hypothesis"], c.get("patch"), c.get("metric"), c.get("expected"), days, priority, c.get("caveat")))
+        rows.append((c["id"], c["source"], c["title"], c["hypothesis"], c.get("change", c.get("patch")), c.get("metric"), c.get("expected"), days, priority, c.get("caveat")))
     return tuple(rows)
 
 

@@ -335,7 +335,7 @@ def split_cell(args):
             both += sum(1 for i, a in enumerate(attrs[:300]) if rt.ledger[f"L{i:07d}"] != rt.assign(f"L{i:07d}", a))          # asked again: nobody changes arm
             err = (rt.counts["B"] / n - share) * 100
             errs.append(err); within += abs(err) <= 0.5
-            for name, vals in rt.mix.items():              # the biggest difference, over the values of one variable, between A's share and B's share
+            for name, vals in rt.mix.items():              # the biggest difference, over the values of one balance factor (catalog.BALANCE_VARS), between A's share and B's share
                 ta, tb = sum(v[0] for v in vals.values()), sum(v[1] for v in vals.values())
                 gaps[name].append(max((abs(v[0] / ta - v[1] / tb) * 100 for v in vals.values()), default=0.0) if ta and tb else 0.0)
         e = np.abs(np.array(errs))
@@ -344,8 +344,11 @@ def split_cell(args):
     return {"share": share, "n": n, "segment": catalog.describe(seg), "reps": reps, **out}
 
 
+SPLIT_SEGMENT = [{"factor": "Legal Status", "column": "legal_status", "values": ["Proprietorship"]}]      # the demo's segmented test: 45% of traffic
+
+
 def run_split_brd(pool, seed: int) -> list:
-    seg = {"rules": [{"var": "nature_of_business", "values": ["Proprietor"]}], "text": "Proprietors"}
+    seg = SPLIT_SEGMENT
     jobs = [(0.10, 1000, 60, seed + 1, None), (0.10, 7000, 30, seed + 2, None), (0.30, 1000, 60, seed + 3, None), (0.30, 7000, 30, seed + 4, None),
             (0.30, 3150, 30, seed + 5, seg)]
     return pool.map(split_cell, jobs)

@@ -1,4 +1,4 @@
-// The second BRD's screens, offline: segment builder, goal cards, checklist, Save/Launch, split health, holdback, traffic map, A vs A in the browser.
+// The second BRD's screens, offline: segment builder, goals, checklist, Save/Launch, split health, holdback, traffic map, A vs A in the browser.
 // Usage: node tests/browser/console_brd.mjs "file://$PWD/dist/canary_demo.html"      (exit code 1 if any check fails)
 import puppeteer from 'puppeteer-core';
 import fs from 'fs'; fs.mkdirSync('/tmp/canary_shots', { recursive: true });
@@ -24,24 +24,20 @@ await click('#aa-run'); await sleep(3500); const aa = await txt('#aa-out');
 const rates = [...aa.matchAll(/(\d+\.\d)% (\d+) of 1,000/g)].map(m => +m[1]);
 check('A vs A in the browser: false winner under 5% and either-way under 8%', rates.length >= 3 && rates[0] < 5 && rates[2] < 8, aa.slice(100, 260));
 
-// ---- wizard: segment builder, goal cards, checklist, draft, launch
-await go('#/new'); await p.type('#w-name', 'Mumbai proprietors'); await click('#w-next'); await click('#w-next');
-await p.evaluate(() => document.querySelector('input[name=w-segmode][value=segment]').click()); await sleep(250);
-await p.type('#w-segtext', 'Mumbai proprietors on UA and PNS leads'); await click('#w-segread');
-check('plain English becomes the exact rule', (await txt('.banner .mono')) === 'City = Mumbai AND NOB = Proprietor AND HL IN (UA, PNS)', await txt('.banner .mono'));
-check('calculator says the segment is too small', (await txt('.calc')).includes('Segment too small') && (await txt('.calc')).includes('Will not finish'));
-await p.evaluate(() => { document.querySelector('#w-segtext').value = 'leads that answered the call'; }); await click('#w-segread');
-check('an in-call variable is refused with a reason', (await txt('#w-segmsg')).includes('decided during the call'));
-await p.evaluate(() => { document.querySelector('#w-segtext').value = 'proprietors but not UA'; }); await click('#w-segread');
-check('"not UA" is read as an exclusion', (await txt('.banner .mono')) === 'NOB = Proprietor AND HL IN (PUA, ENQR, PNS)', await txt('.banner .mono'));
-await p.evaluate(() => { document.querySelector('#w-segtext').value = 'proprietors'; }); await click('#w-segread');
-await click('#w-next'); check('goal cards: one primary, a duration guardrail, a delete button', (await p.$$('.goal-card.primary')).length === 1 && (await p.$$('[data-del="duration_s"]')).length === 1);
-await click('[data-del="duration_s"]'); check('a guardrail card can be removed', (await p.$$('[data-del="duration_s"]')).length === 0);
-await p.select('#w-add', 'g:early_hangup'); await sleep(300); check('a guardrail card can be added', (await p.$$('[data-del="early_hangup"]')).length === 1);
-await click('[data-del="early_hangup"]'); await p.select('#w-add', 'g:duration_s'); await sleep(300);
-await click('#w-next'); const dayOpts = await p.$$eval('#w-days option', e => e.map(x => x.value).join(','));
-check('durations are whole weeks 7 to 28', dayOpts === '7,14,21,28', dayOpts);
-await click('#w-next'); check('pre-launch checklist has five checks, all passing', (await p.$$('#w-checks .check.ok')).length === 5);
+// ---- wizard: segment builder, goals, checklist, draft, launch (every step in detail: tests/browser/new_experiment_e2e.mjs)
+const openMs = async id => { await p.evaluate(id => { const d = document.querySelector(`details[data-ms="${id}"]`); if (d && !d.open) d.querySelector('summary').click(); }, id); await sleep(200); };
+await go('#/new'); await p.type('#w-name', 'Proprietors, ask twice'); await click('#w-next');
+await p.evaluate(() => { const t = document.querySelector('#w-b'); t.value = t.value.replace('quantity = 3', 'quantity = 2'); t.dispatchEvent(new Event('input')); }); await sleep(500); await click('#w-next');
+await click('#w-segadd'); await p.select('select[data-segcol="0"]', 'legal_status'); await sleep(300); await openMs('seg-0'); await click('input[data-msv="seg-0"][value="Proprietorship"]');
+check('the builder shows the rule in plain words', (await txt('#w-segrule')).includes('Leads where Legal Status is Proprietorship'), await txt('#w-segrule'));
+check('in-call variables cannot pick leads', !(await p.$$eval('select[data-segcol="0"] option', o => o.some(x => x.value === 'disposition' || x.value === 'call_duration'))));
+await click('#w-next'); check('goals: empty primary, a duration guardrail with a remove button', (await p.$eval('#w-primary', e => e.value)) === '' && (await p.$$('[data-mdel="guardrail:0"]')).length === 1);
+await p.select('#w-primary', 'buylead_created'); await sleep(300);
+await click('[data-mdel="guardrail:0"]'); check('a guardrail card can be removed', (await p.$$('[data-mcard^="guardrail"]')).length === 0);
+await click('#w-addm'); await click('input[name=w-pick][value="duration_s"]'); await click('#w-padd'); check('a guardrail card can be added', (await p.$$('[data-mcard^="guardrail"]')).length === 1);
+await click('#w-next'); await p.select('#w-len', 'custom'); await sleep(300); const dayOpts = await p.$$eval('#w-cdays option', e => e.map(x => x.value).join(','));
+check('durations are whole weeks 7 to 28', dayOpts === '7,14,21,28', dayOpts); await p.select('#w-len', 'rec'); await sleep(300);
+await click('#w-next'); check('pre-launch checklist has six checks, all passing', (await p.$$('#w-checks .check.ok')).length === 6, await txt('#w-checks'));
 await click('#w-save'); check('Save Test keeps a draft', (await txt('.card h3')).includes('Saved drafts'));
 await go('#/overview'); check('the draft shows under Needs attention', (await txt('.card:has(h2)')).length > 0 && (await p.$$eval('.pill', e => e.some(x => x.innerText === 'Draft'))));
 await go('#/new'); await p.evaluate(() => document.querySelector('[data-draft]').click()); await sleep(300);
@@ -53,15 +49,17 @@ await click('#w-launch'); await sleep(600);
 check('a scheduled test shows Start now and cannot advance', !!(await p.$('#a-start')) && !(await p.$('#a-adv')), await txt('.exp-head .sub'));
 await click('#a-start'); check('Start now runs it', !!(await p.$('#a-adv')));
 // overlap: a second launch on the same leads is refused
-await go('#/new'); await p.evaluate(() => { WZ = null; DYN.ui.wizard = null; }); await go('#/new'); await p.type('#w-name', 'Second test'); for (let i = 0; i < 5; i++) await click('#w-next');
+await go('#/new'); await p.evaluate(() => { WZ = null; DYN.ui.wizard = null; }); await go('#/new'); await p.type('#w-name', 'Second test'); await click('#w-next');
+await p.evaluate(() => { const t = document.querySelector('#w-b'); t.value = t.value + '\nOne more line.\n'; t.dispatchEvent(new Event('input')); }); await sleep(500); await click('#w-next'); await click('#w-next');
+await p.select('#w-primary', 'buylead_created'); await sleep(300); await click('#w-next'); await click('#w-next');
 const ov = await p.$$eval('#w-checks .check', e => e.map(x => x.classList.contains('ok')));
-check('a test on the same leads is refused (overlap)', ov[4] === false && await p.$eval('#w-launch', e => e.disabled), JSON.stringify(ov));
+check('a test on the same leads is refused (overlap)', ov[5] === false && await p.$eval('#w-launch', e => e.disabled), JSON.stringify(ov));
 
 // ---- live: the segmented scenario, split health, holdback
-await go('#/live/demo_segment'); check('segment chips in the header', (await txt('.exp-head')).includes('NOB: Proprietor'));
+await go('#/live/demo_segment'); check('segment chips in the header', (await txt('.exp-head')).includes('Legal Status: Proprietorship'));
 for (let i = 0; i < 6; i++) { if (await p.$('#a-adv')) await click('#a-adv'); }
 const sh = await txt('#split-health');
-check('split health: chi-square, both prompts = 0, balance table, segment check', ['chi-square p', 'Leads that saw both prompts', 'balanced by design', '100% of counted leads match the rule', 'Out of segment'].every(t => sh.includes(t)));
+check('split health: chi-square, both prompts = 0, balance table, segment check', ['chi-square p', 'Leads that saw both prompts', 'balanced by design', '100% of counted leads matched this rule', 'Out of segment'].every(t => sh.includes(t)));
 check('by-call share counts only routed calls', /By call.*achieved (29|30|31)\.\d%/.test(sh.replace('B share by call (repeat calls included)', 'By call')) || sh.includes('achieved 30') || sh.includes('achieved 29') || sh.includes('achieved 31'), sh.slice(120, 330));
 check('holdback card appears after a promotion', !!(await p.$('#a-hold')));
 await click('#a-hold-all'); check('holdback plays out with a plain verdict', (await txt('body')).includes('Holdback finished'));
@@ -70,7 +68,7 @@ check('traffic map has one bar per running test', (await p.$$('.tmrow')).length 
 // ---- stopped / loss wording
 await go('#/live/demo_worse'); for (let i = 0; i < 6; i++) { if (await p.$('#a-adv')) await click('#a-adv'); }
 check('B worse stops early', (await txt('.banner')).startsWith('Stopped: B worse'));
-await go('#/settings'); check('settings shows the variable catalog with the pre-call flag', (await txt('body')).includes('Known before the call?') && (await p.$$('[data-pre]')).length === 3);
-await go('#/history'); check('history has a segment filter with the segment', (await p.$$eval('#h-seg option', e => e.map(x => x.innerText))).some(t => t.includes('NOB = Proprietor')));
+await go('#/settings'); check('settings shows the variable catalog with the pre-call flag', (await txt('body')).includes('Known before the call?') && (await p.$$('[data-pre]')).length === 8);
+await go('#/history'); check('history has a segment filter with the segment', (await p.$$eval('#h-seg option', e => e.map(x => x.innerText))).some(t => t.includes('Leads where Legal Status is Proprietorship')));
 check('no browser errors', errs.length === 0, errs.join(' | '));
 await b.close(); if (fails.length) { console.log('\n' + fails.length + ' check(s) failed'); process.exit(1); } console.log('\nall checks passed');

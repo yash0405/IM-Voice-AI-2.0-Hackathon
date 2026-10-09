@@ -138,6 +138,11 @@ function guardList(v) {
   if (c.guard_rate) out.push({ name: c.guard_rate.replace(/_/g, " ").replace(/^./, x => x.toUpperCase()), conf: confOf(c), st: guardStatus(cur && cur.guardrail2, c.guard_rate_margin, "pts", v), g: cur && cur.guardrail2 });
   return out;
 }
+function guardOverall(v) {
+  const l = guardList(v); if (!l.length) return { short: "n/a", cls: "plain" };
+  const worst = l.find(x => x.st.cls === "neg") || l.find(x => x.st.cls === "warn") || l.find(x => x.st.cls === "plain") || l[0];
+  return { short: l.length > 1 && worst.st.cls !== "pos" ? worst.name + ": " + worst.st.short : worst.st.short, cls: worst.st.cls };
+}
 /** Secondary metrics of a test: A against B with the 95% range of the difference. For insight only. */
 function secondaryList(v) { const c = v.config, cur = v.cur; return ((c && c.metrics) || []).filter(x => x.role === "secondary").map(x => ({ def: x.def, direction: x.def.direction, m: cur && (cur.metrics || []).find(y => y.key === x.def.key && y.role === "secondary") })); }
 function secondaryHtml(v) {

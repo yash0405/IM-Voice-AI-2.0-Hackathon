@@ -57,7 +57,11 @@ class HostedMode(unittest.TestCase):
 
     def test_wizard_runs_and_oversize_bodies_are_refused(self):
         hdr = {**self.auth, "Content-Type": "application/json"}
-        status, _ = self.req("POST", "/api/wizard", hdr, b'{"name":"t","window_days":7,"leads_per_day":500,"effect_rel":0.1}')
+        import json
+        from canary import variants
+        body = {"name": "t", "window_days": 7, "leads_per_day": 500, "effect_rel": 0.1, "prompt_b": variants.load_base()["text"],
+                "metrics": [{"role": "primary", "key": "buylead_created"}]}
+        status, _ = self.req("POST", "/api/wizard", hdr, json.dumps(body).encode())
         self.assertEqual(status, 200)
         big = b'{"name":"' + b"x" * 4_100_000 + b'"}'
         try:

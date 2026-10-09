@@ -20,7 +20,7 @@ Five experiments are already running, each paused on day 2 (simulated, with a kn
 3. Press **Decide**. You get a final report with the numbers, a range, the safety checks and a plain-words summary.
 
 ## Start a new test
-**New Experiment** walks six steps (hypothesis, prompt B, audience, goals, traffic and duration, review). In **Audience** you can describe who is in the test in plain English (for example *Mumbai proprietors on UA and PNS leads*): the exact rule is shown before you save. A calculator on the right tells you whether your traffic is enough to get a clear answer (green, amber or red). **Save Test** keeps an editable draft; **Launch Test** locks the setup with a version ID once the five-item checklist passes.
+**New Experiment** walks six steps (hypothesis, prompt B, audience, goals, duration, review). **Prompt B** is the full prompt, pre-filled with today's live prompt; a side-by-side diff and a template-variable check update as you type. **Audience** is a builder: pick a factor (HL Type, Legal Status, Vertical...) and its values; the rule is shown in plain words with the leads a day and today's rate. **Goals** has one primary goal, guardrails and secondary metrics, including custom ones built from the data's columns. **Duration** is recommended for you from the last 30 days; **At a glance** on the right shows the same numbers. **Save Test** keeps an editable draft; **Launch Test** locks the setup with a version ID once the six-item checklist passes.
 
 ## What to keep in mind
 - The demo results are **simulated** with a known injected effect, so we can check the decision is right. They say nothing about how a real prompt performs.

@@ -2134,25 +2134,29 @@
   {
    "share": 0.1,
    "n": 1000,
-   "segment": "All leads (neutral test)",
+   "segment": "All traffic (neutral test)",
    "reps": 60,
    "stratified": {
-    "mean_abs_err_pp": 0.14499999999999988,
-    "p95_abs_err_pp": 0.399999999999999,
-    "max_abs_err_pp": 0.5000000000000004,
-    "within_half_pp": 0.9666666666666667,
+    "mean_abs_err_pp": 0.0966666666666666,
+    "p95_abs_err_pp": 0.20000000000000018,
+    "max_abs_err_pp": 0.39999999999999897,
+    "within_half_pp": 1.0,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 1.623132530027884,
-      "p95": 2.827607291385827
+     "gst_nature_of_business": {
+      "mean": 6.108684617164988,
+      "p95": 9.907677088772576
      },
-     "nature_of_business": {
-      "mean": 1.2274738724199483,
-      "p95": 1.9458185584152143
+     "hl_type": {
+      "mean": 5.231335156159132,
+      "p95": 7.964501705362209
      },
-     "city": {
-      "mean": 5.957043650679745,
-      "p95": 10.37786549967791
+     "legal_status": {
+      "mean": 5.602334740059349,
+      "p95": 8.541768098925841
+     },
+     "vertical": {
+      "mean": 6.535854809514689,
+      "p95": 12.295624522202312
      }
     },
     "arm_changes_after_reask": 0
@@ -2163,17 +2167,21 @@
     "max_abs_err_pp": 2.3999999999999995,
     "within_half_pp": 0.35,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 6.29654701749431,
-      "p95": 10.887022020499804
+     "gst_nature_of_business": {
+      "mean": 6.967019237404599,
+      "p95": 11.94118589375985
      },
-     "nature_of_business": {
-      "mean": 6.212232990372917,
-      "p95": 10.469014990660426
+     "hl_type": {
+      "mean": 5.831123472022711,
+      "p95": 9.341403563258462
      },
-     "city": {
-      "mean": 6.255307115151521,
-      "p95": 10.69758196966077
+     "legal_status": {
+      "mean": 6.052559944948325,
+      "p95": 10.953104598187032
+     },
+     "vertical": {
+      "mean": 5.832591342681724,
+      "p95": 10.357495629507687
      }
     },
     "arm_changes_after_reask": 0
@@ -2182,25 +2190,29 @@
   {
    "share": 0.1,
    "n": 7000,
-   "segment": "All leads (neutral test)",
+   "segment": "All traffic (neutral test)",
    "reps": 30,
    "stratified": {
-    "mean_abs_err_pp": 0.014761904761904782,
-    "p95_abs_err_pp": 0.02857142857142919,
-    "max_abs_err_pp": 0.042857142857141706,
+    "mean_abs_err_pp": 0.03999999999999999,
+    "p95_abs_err_pp": 0.0857142857142848,
+    "max_abs_err_pp": 0.11428571428571399,
     "within_half_pp": 1.0,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 0.17229605115943755,
-      "p95": 0.2832717662822448
+     "gst_nature_of_business": {
+      "mean": 0.7480057839874086,
+      "p95": 1.2555551224171473
      },
-     "nature_of_business": {
-      "mean": 0.1404520203851753,
-      "p95": 0.21204528725142568
+     "hl_type": {
+      "mean": 0.6030834690219969,
+      "p95": 0.8047615557936293
      },
-     "city": {
-      "mean": 2.6346517291756246,
-      "p95": 4.998423746797259
+     "legal_status": {
+      "mean": 2.198664261155571,
+      "p95": 3.962859798265086
+     },
+     "vertical": {
+      "mean": 2.1265080779583174,
+      "p95": 3.6324284151414465
      }
     },
     "arm_changes_after_reask": 0
@@ -2211,17 +2223,21 @@
     "max_abs_err_pp": 1.0714285714285718,
     "within_half_pp": 0.9,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 2.454148907981828,
-      "p95": 3.665185428017362
+     "gst_nature_of_business": {
+      "mean": 2.2366304400182617,
+      "p95": 3.8912271492003936
      },
-     "nature_of_business": {
-      "mean": 2.2546222443682953,
-      "p95": 3.5903360769512345
+     "hl_type": {
+      "mean": 2.222854628153267,
+      "p95": 3.4947886442037834
      },
-     "city": {
-      "mean": 2.4579755456868058,
-      "p95": 4.040653669284212
+     "legal_status": {
+      "mean": 2.4939269226487863,
+      "p95": 4.4154134374128775
+     },
+     "vertical": {
+      "mean": 2.3385802953746175,
+      "p95": 4.228495876151627
      }
     },
     "arm_changes_after_reask": 0
@@ -2230,25 +2246,29 @@
   {
    "share": 0.3,
    "n": 1000,
-   "segment": "All leads (neutral test)",
+   "segment": "All traffic (neutral test)",
    "reps": 60,
    "stratified": {
-    "mean_abs_err_pp": 0.22166666666666685,
-    "p95_abs_err_pp": 0.5099999999999999,
-    "max_abs_err_pp": 0.7000000000000006,
-    "within_half_pp": 0.9,
+    "mean_abs_err_pp": 0.1716666666666668,
+    "p95_abs_err_pp": 0.4050000000000001,
+    "max_abs_err_pp": 0.6000000000000005,
+    "within_half_pp": 0.95,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 1.0425207638662797,
-      "p95": 1.9307321912372313
+     "gst_nature_of_business": {
+      "mean": 3.755990591019817,
+      "p95": 6.04469805073674
      },
-     "nature_of_business": {
-      "mean": 0.7659447040318746,
-      "p95": 1.276832955828305
+     "hl_type": {
+      "mean": 3.2856680585485067,
+      "p95": 4.571630594703224
      },
-     "city": {
-      "mean": 4.044782402956118,
-      "p95": 7.88799766099956
+     "legal_status": {
+      "mean": 3.8107632144961934,
+      "p95": 6.528512801883139
+     },
+     "vertical": {
+      "mean": 4.265976633797116,
+      "p95": 8.073382965632948
      }
     },
     "arm_changes_after_reask": 0
@@ -2259,17 +2279,21 @@
     "max_abs_err_pp": 3.1000000000000028,
     "within_half_pp": 0.3333333333333333,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 3.901867764372581,
-      "p95": 6.965268299301304
+     "gst_nature_of_business": {
+      "mean": 4.349816469661945,
+      "p95": 8.455473809697763
      },
-     "nature_of_business": {
-      "mean": 3.5848383959432377,
-      "p95": 6.5790031322392135
+     "hl_type": {
+      "mean": 3.7091008230289857,
+      "p95": 5.608035841729598
      },
-     "city": {
-      "mean": 3.9712830035804028,
-      "p95": 6.106730423718042
+     "legal_status": {
+      "mean": 4.253469784062575,
+      "p95": 8.163173102802345
+     },
+     "vertical": {
+      "mean": 4.250390309176895,
+      "p95": 6.556031505265349
      }
     },
     "arm_changes_after_reask": 0
@@ -2278,25 +2302,29 @@
   {
    "share": 0.3,
    "n": 7000,
-   "segment": "All leads (neutral test)",
+   "segment": "All traffic (neutral test)",
    "reps": 30,
    "stratified": {
-    "mean_abs_err_pp": 0.02761904761904706,
-    "p95_abs_err_pp": 0.05714285714285561,
-    "max_abs_err_pp": 0.08571428571428896,
+    "mean_abs_err_pp": 0.051904761904762085,
+    "p95_abs_err_pp": 0.15071428571428566,
+    "max_abs_err_pp": 0.17142857142857237,
     "within_half_pp": 1.0,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 0.10454805881410863,
-      "p95": 0.17137506907230876
+     "gst_nature_of_business": {
+      "mean": 0.4368681154398705,
+      "p95": 0.6478858256186583
      },
-     "nature_of_business": {
-      "mean": 0.1043362359710358,
-      "p95": 0.16778938709277597
+     "hl_type": {
+      "mean": 0.40584075362325794,
+      "p95": 0.6534535800189746
      },
-     "city": {
-      "mean": 1.4458504728931068,
-      "p95": 2.464323145820424
+     "legal_status": {
+      "mean": 1.6128156608346844,
+      "p95": 2.4635020561155243
+     },
+     "vertical": {
+      "mean": 1.5943253053107156,
+      "p95": 3.0129186196498328
      }
     },
     "arm_changes_after_reask": 0
@@ -2307,17 +2335,21 @@
     "max_abs_err_pp": 1.2285714285714289,
     "within_half_pp": 0.7333333333333333,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 1.4555483047225988,
-      "p95": 2.96203326318213
+     "gst_nature_of_business": {
+      "mean": 1.466785514426298,
+      "p95": 2.7589503085550144
      },
-     "nature_of_business": {
-      "mean": 1.2814354573890114,
-      "p95": 2.2292575905647274
+     "hl_type": {
+      "mean": 1.4868636850034576,
+      "p95": 1.9433552999804988
      },
-     "city": {
-      "mean": 1.5236212140332137,
-      "p95": 2.999879071938414
+     "legal_status": {
+      "mean": 1.5795992898151245,
+      "p95": 2.770782491698365
+     },
+     "vertical": {
+      "mean": 1.4831958736452036,
+      "p95": 2.673439610122687
      }
     },
     "arm_changes_after_reask": 0
@@ -2326,25 +2358,29 @@
   {
    "share": 0.3,
    "n": 3150,
-   "segment": "NOB = Proprietor",
+   "segment": "Leads where Legal Status is Proprietorship",
    "reps": 30,
    "stratified": {
-    "mean_abs_err_pp": 0.03492063492063491,
-    "p95_abs_err_pp": 0.09523809523809573,
-    "max_abs_err_pp": 0.09523809523809823,
+    "mean_abs_err_pp": 0.0730158730158727,
+    "p95_abs_err_pp": 0.1761904761904761,
+    "max_abs_err_pp": 0.22222222222222365,
     "within_half_pp": 1.0,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 0.15483507062199464,
-      "p95": 0.26147788772025116
+     "gst_nature_of_business": {
+      "mean": 0.997559109994977,
+      "p95": 1.797956551462702
      },
-     "nature_of_business": {
+     "hl_type": {
+      "mean": 1.0424010055214814,
+      "p95": 1.562630536541324
+     },
+     "legal_status": {
       "mean": 0.0,
       "p95": 0.0
      },
-     "city": {
-      "mean": 2.294624282334701,
-      "p95": 3.8480725623582765
+     "vertical": {
+      "mean": 2.2413534150680827,
+      "p95": 3.5233858796035107
      }
     },
     "arm_changes_after_reask": 0
@@ -2355,17 +2391,21 @@
     "max_abs_err_pp": 2.031746031746029,
     "within_half_pp": 0.5,
     "mix_gap_pp": {
-     "hot_lead_type": {
-      "mean": 2.2541845942731706,
-      "p95": 3.6485341853942277
+     "gst_nature_of_business": {
+      "mean": 2.432252291367472,
+      "p95": 4.784352103393087
      },
-     "nature_of_business": {
+     "hl_type": {
+      "mean": 1.858494975771484,
+      "p95": 2.704735520756736
+     },
+     "legal_status": {
       "mean": 0.0,
       "p95": 0.0
      },
-     "city": {
-      "mean": 2.1442289402173573,
-      "p95": 4.181875559125617
+     "vertical": {
+      "mean": 2.203364996634661,
+      "p95": 3.5760064749560083
      }
     },
     "arm_changes_after_reask": 0

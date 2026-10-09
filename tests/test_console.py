@@ -65,9 +65,9 @@ class ConsoleData(unittest.TestCase):
     def test_suggestions_say_when_a_source_has_no_data(self):
         cards = {c["id"]: c for c in console.suggestions()}
         self.assertTrue(cards["segments"]["disabled"])
-        self.assertIn("no segment data", cards["segments"]["patch_note"].lower())
-        self.assertIsNone(cards["gap"]["patch"])                                      # not drafted: that would cost credits
-        self.assertEqual(cards["lint"]["patch"], "reconcile_limits")
+        self.assertIn("no segment data", cards["segments"]["change_note"].lower())
+        self.assertIsNone(cards["gap"]["change"])                                     # not drafted: that would cost credits
+        self.assertEqual(cards["lint"]["change"], "reconcile_limits")
 
     def test_metric_list_matches_the_spec(self):
         m = {x["key"]: x for x in console.metrics()}
@@ -83,31 +83,38 @@ class ConsoleData(unittest.TestCase):
         self.assertEqual(len(re.findall(r"^\"use strict\";", js, re.M)), 1)
 
 
+def wizard_body(**over):
+    base = variants.load_base()["text"]
+    return {"name": "Test", "prompt_b": base.replace("buyer name = 3", "buyer name = 2"), "share_b": 0.3, "window_days": 7, "improvement": 0.05,
+            "leads_per_day": 1000, "metrics": [{"role": "primary", "key": "buylead_created"}], "effect_rel": 0.15, "seed": 6, **over}
+
+
 class Wizard(unittest.TestCase):
     def test_the_wizard_runs_the_engine_with_the_chosen_rules(self):
-        r = server.run_wizard({"name": "Test", "effect_rel": 0.15, "seed": 6, "window_days": 7, "leads_per_day": 1000, "share_b": 0.3, "rule_set": "final_look"})
+        r = server.run_wizard(wizard_body(rule_set="final_look"))
         rec = r["record"]
         self.assertEqual(rec["config"]["rule_set"], "final_look")
         self.assertEqual(rec["result"]["kind"], "PROMOTE")
         self.assertEqual(rec["config"]["version"], 1)
+        self.assertEqual(rec["config"]["min_per_arm"], 500)                          # the new default gate
         self.assertTrue(rec["ledger_ok"])
 
     def test_a_pasted_prompt_must_keep_its_template_variables(self):
         base = variants.load_base()["text"]
         with self.assertRaises(ValueError) as e:
-            server.run_wizard({"name": "Broken", "full_prompt": base.replace("buyer_name", "x"), "window_days": 7})
+            server.run_wizard(wizard_body(name="Broken", prompt_b=base.replace("buyer_name", "x")))
         self.assertIn("buyer_name", str(e.exception))
-        ok = server.run_wizard({"name": "Edited", "full_prompt": base.replace("buyer name = 3", "buyer name = 2"), "effect_rel": 0.0, "window_days": 7, "leads_per_day": 600, "share_b": 0.3})
+        ok = server.run_wizard(wizard_body(name="Edited", effect_rel=0.0, leads_per_day=600))
         self.assertTrue(ok["record"]["variants"]["B"]["diff"])
 
     def test_limits_protect_the_live_demo(self):
         with self.assertRaises(ValueError):
-            server.run_wizard({"window_days": 60, "leads_per_day": 5000})
+            server.run_wizard(wizard_body(window_days=28, leads_per_day=5000))
         with self.assertRaises(ValueError) as e:                                     # whole weeks only: 7, 14, 21 or 28 days
-            server.run_wizard({"window_days": 10, "leads_per_day": 1000})
+            server.run_wizard(wizard_body(window_days=10))
         self.assertIn("whole weeks", str(e.exception))
         with self.assertRaises(ValueError):
-            server.run_wizard({"effect_rel": 9})
+            server.run_wizard(wizard_body(effect_rel=9))
 
 
 if __name__ == "__main__":

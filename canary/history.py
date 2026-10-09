@@ -111,6 +111,19 @@ def calls() -> list:
     return [r for lead in leads() for r in lead_calls(lead)]
 
 
+def audience(segment=None) -> dict:
+    """Leads and connected leads of the last 30 days, all traffic or one audience (a segment), and the connected share of all traffic."""
+    seg = catalog.validate_segment(segment) if segment else None
+    n = c = n_all = c_all = 0
+    for L in leads():
+        n_all += 1
+        c_all += L["connected"]
+        if seg is None or catalog.matches(seg, L):
+            n += 1
+            c += L["connected"]
+    return {"leads": n, "connected": c, "days": DAYS, "connected_per_day": c / DAYS, "p_connected_all": c_all / n_all}
+
+
 # ---------------------------------------------------------------------------- the compact form the dashboard reads
 
 ALPH = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
