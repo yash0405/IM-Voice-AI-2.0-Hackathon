@@ -54,6 +54,7 @@ run() {
     case "$(uname -m)" in aarch64|arm64) arch=arm64 ;; *) arch=amd64 ;; esac
     curl -fsSL -o "$STATE/cloudflared" "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$arch" && chmod +x "$STATE/cloudflared" || { log "could not download cloudflared"; exit 1; }
   fi
+  rm -f "$STATE/url.txt"; : > "$STATE/tunnel.log"                # never report the link of an earlier run
   local first; first="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   deploy "$first" || log "current branch '$first' is not deployable; waiting for a branch that is"
   ( while true; do
