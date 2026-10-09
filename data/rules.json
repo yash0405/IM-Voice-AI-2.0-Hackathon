@@ -1,0 +1,11 @@
+{
+  "quantity":  ["quantity", "qty", "matra", "kitna", "kitne", "pieces", "piece", "pcs", "nos", "kg", "kgs", "ton", "tons", "tonne", "meter", "meters", "mtr", "units", "unit", "boxes", "bags", "litre", "liter", "sets", "dozen", "sqft", "hazaar", "lakh", "सौ", "हजार", "पीस", "किलो"],
+  "specification": ["size", "material", "grade", "brand", "model", "type", "specification", "specifications", "spec", "colour", "color", "mm", "inch", "steel", "stainless", "cotton", "plastic", "capacity", "thickness", "quality", "design", "watt", "isi", "साइज", "मटेरियल", "ब्रांड"],
+  "location":  ["delivery", "deliver", "city", "pincode", "pin code", "address", "location", "mumbai", "delhi", "pune", "bangalore", "bengaluru", "chennai", "kolkata", "hyderabad", "ahmedabad", "jaipur", "surat", "lucknow", "noida", "gurgaon", "indore", "nagpur", "डिलीवरी", "शहर", "मुंबई", "दिल्ली", "पुणे"],
+  "timeline":  ["urgent", "urgently", "immediately", "asap", "within", "days", "day", "week", "weeks", "month", "months", "tomorrow", "kal", "aaj", "parso", "hafte", "hafta", "mahine", "mahina", "jaldi", "आज", "कल", "हफ्ते", "महीने", "जल्दी"],
+  "interest":  ["yes", "haan", "han", "ji", "bilkul", "required", "chahiye", "need", "zaroorat hai", "looking for", "हाँ", "हां", "चाहिए", "जी"],
+  "callback":  ["call back", "callback", "baad mein", "baad me", "phir se call", "dobara call", "wapas call", "call kar lena", "call kijiye", "call me later", "later", "busy", "abhi time nahi", "meeting mein hoon", "बाद में", "बिज़ी", "व्यस्त", "कॉल बैक", "फिर से कॉल"],
+  "refuse":    ["not interested", "interested nahi", "interest nahi", "nahi chahiye", "nahi lena", "zaroorat nahi", "jarurat nahi", "requirement khatam", "need nahi", "mat karo", "mat kariye", "band karo", "don't call", "do not call", "no thanks", "no thank you", "रुचि नहीं", "नहीं चाहिए", "जरूरत नहीं", "मत करो"],
+  "voicemail": ["not reachable", "switched off", "number you have dialled", "voicemail", "after the beep", "call cannot be completed", "currently unavailable", "आप जिस नंबर"],
+  "negators":  ["nahi", "nahin", "nhi", "not", "no", "mat", "don't", "dont", "na", "नहीं", "मत"]
+}

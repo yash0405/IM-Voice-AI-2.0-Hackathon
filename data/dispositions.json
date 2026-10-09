@@ -1,0 +1,120 @@
+{
+ "dispositions": [
+  {
+   "key": "buylead_created",
+   "name": "BuyLead created",
+   "goal": true,
+   "noun": "BuyLead",
+   "hint": "Buyer still wants it AND gave the requirement (at least quantity and what exactly they need, plus location or timeline), so a verified BuyLead can be created"
+  },
+  {
+   "key": "partial",
+   "name": "Partial details",
+   "goal": false,
+   "hint": "Buyer talked but key details (quantity, specification, location, timeline) are still missing"
+  },
+  {
+   "key": "callback_fixed",
+   "name": "Callback requested",
+   "goal": false,
+   "hint": "Buyer is busy and asked to be called back later"
+  },
+  {
+   "key": "not_interested",
+   "name": "Not interested",
+   "goal": false,
+   "hint": "Buyer no longer needs it, refuses, or asks not to be called"
+  },
+  {
+   "key": "no_connect",
+   "name": "No conversation",
+   "goal": false,
+   "hint": "Voicemail, silence, wrong number, line cut at once"
+  },
+  {
+   "key": "other",
+   "name": "Other / unclear",
+   "goal": false,
+   "hint": "They talked, but none of the above fits, or you cannot tell"
+  }
+ ],
+ "fields": [
+  {
+   "key": "quantity",
+   "name": "Quantity"
+  },
+  {
+   "key": "specification",
+   "name": "Specification"
+  },
+  {
+   "key": "location",
+   "name": "Delivery location"
+  },
+  {
+   "key": "timeline",
+   "name": "Timeline"
+  }
+ ],
+ "flags": [
+  {
+   "key": "bot_error",
+   "name": "Bot made a mistake",
+   "hint": "looped, hallucinated, misheard badly or wrote down wrong details"
+  }
+ ],
+ "note": "VANI BuyLead qualification: the seller is unavailable, VANI calls the buyer and captures Quantity, Specification, Delivery location and Timeline so the lead is not lost. Add a disposition by adding it here and adding cue words in rules.json. Any disposition can be a test goal.",
+ "taxonomy": {
+  "bot_issues": {
+   "repeated_question": "bot asked again something the buyer already answered",
+   "ignored_answer": "bot did not use or acknowledge what the buyer said",
+   "wrong_detail_recorded": "bot repeated back or implied a detail different from what the buyer said",
+   "misheard_product_or_number": "speech recognition clearly misunderstood a product, quantity or city",
+   "hallucinated_info": "bot stated facts or promises it could not know (price, stock, seller details)",
+   "did_not_confirm_details": "no read-back of the captured details at the end",
+   "abrupt_end": "bot ended while the buyer was still talking or before capturing the details",
+   "language_mismatch": "bot kept a language the buyer struggled with",
+   "too_verbose": "long bot turns that lost the buyer's patience",
+   "stuck_loop": "conversation circled with no progress"
+  },
+  "fatal": {
+   "none": "no fatal failure",
+   "buylead_fatal": "the captured BuyLead data would be wrong or corrupt",
+   "oncall_fatal": "the bot flow broke down: looped, hallucinated or ended abruptly"
+  },
+  "call_end": [
+   "completed_with_readback",
+   "buyer_hung_up",
+   "bot_ended_early",
+   "buyer_declined",
+   "no_response",
+   "unclear"
+  ],
+  "sentiment": [
+   "positive",
+   "neutral",
+   "frustrated"
+  ],
+  "buyer_requests": [
+   "human_agent",
+   "seller_contact",
+   "price_quote",
+   "callback",
+   "stop_calling",
+   "other_product"
+  ],
+  "language": [
+   "hindi",
+   "english",
+   "hinglish",
+   "other"
+  ],
+  "captured": [
+   "product",
+   "quantity",
+   "specification",
+   "location",
+   "timeline"
+  ]
+ }
+}

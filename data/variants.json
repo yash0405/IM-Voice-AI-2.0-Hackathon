@@ -1,0 +1,29 @@
+{
+  "base": {"id": "vani-base", "version": "v1 (stand-in)", "file": "base_prompt.md"},
+  "candidates": {
+    "ask_together": {
+      "name": "Ask quantity and delivery location in one question",
+      "origin": "human",
+      "remove": ["3. Ask the quantity required.", "5. Ask the delivery location."],
+      "add": [{"after": "2. Confirm the buyer still needs the product.", "text": "3. Ask the quantity required and the delivery location together, in one short question."}]
+    },
+    "insist_specs": {
+      "name": "Keep asking until the specification is given",
+      "origin": "human",
+      "remove": ["4. Ask for the specifications (size, material, brand or grade)."],
+      "add": [{"after": "3. Ask the quantity required.", "text": "4. Ask for the specifications. If the buyer does not answer, ask again up to three times before moving on."}]
+    },
+    "warmer_greeting": {
+      "name": "Warmer greeting wording",
+      "origin": "human",
+      "remove": ["1. Greet the buyer by name and say you are calling from IndiaMART about their enquiry for the product."],
+      "add": [{"after": "## Flow", "text": "1. Greet the buyer warmly by name and say you are calling from IndiaMART about the enquiry they sent."}]
+    },
+    "long_intro": {
+      "name": "Explain how the seller will use the details before asking",
+      "origin": "llm-draft",
+      "remove": ["2. Confirm the buyer still needs the product."],
+      "add": [{"after": "1. Greet the buyer by name and say you are calling from IndiaMART about their enquiry for the product.", "text": "2. Explain why the details are needed and how the seller will use them, then confirm the buyer still needs the product."}]
+    }
+  }
+}

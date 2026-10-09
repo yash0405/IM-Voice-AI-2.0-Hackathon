@@ -1,0 +1,573 @@
+{
+ "cases": [
+  {
+   "key": "cooperative",
+   "title": "Cooperative buyer",
+   "brief": "Knows exactly what he wants and answers every question helpfully.",
+   "A": {
+    "audio": "arena/cooperative_A.mp3",
+    "lines": [
+     {
+      "speaker": "buyer",
+      "text": "हेलो?"
+     },
+     {
+      "speaker": "bot",
+      "text": "नमस्ते Rajesh Kumar, मैं IndiaMART से Vani बोल रही हूँ। आपने stainless steel pipes के लिए enquiry की थी, क्या आपको अभी भी इसकी ज़रूरत है?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, मुझे 20 mm size और grade 304 के 500 pieces चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 20 mm size और grade 304 के 500 pieces। आपको ये किस जगह पर deliver करवाने हैं?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "ये Pune में deliver होना चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, Pune में delivery। आपको ये pipes कब तक चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "मुझे ये 10 दिन के अंदर चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 10 दिन के अंदर। तो मैं एक बार details confirm कर लेती हूँ, आपको 20 mm size और grade 304 के 500 stainless steel pipes Pune में 10 दिन के अंदर चाहिए, क्या ये सही है?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, बिल्कुल सही है।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है Rajesh Kumar, मैंने आपकी सारी details note कर ली हैं। अब seller जल्दी ही आपसे contact कर लेंगे।"
+     }
+    ],
+    "chars": 686,
+    "tag": {
+     "idx": null,
+     "label": "buylead_created",
+     "fields": [
+      "quantity",
+      "specification",
+      "location",
+      "timeline"
+     ],
+     "captured": {
+      "product": "stainless steel pipes",
+      "quantity": "500 pieces",
+      "specification": "20 mm size and grade 304",
+      "location": "Pune",
+      "timeline": "10 days"
+     },
+     "language": "hinglish",
+     "call_end": "completed_with_readback",
+     "sentiment": "positive",
+     "buyer_requests": [],
+     "bot_issues": [],
+     "fatal": "none",
+     "bot_error": false,
+     "fix_hint": null,
+     "confidence": 0.99,
+     "evidence": "हाँ, मुझे 20 mm size और grade 304 के 500 pieces चाहिए।",
+     "valid": true,
+     "tokens": {
+      "in": 968,
+      "out": 214
+     },
+     "finish": "stop"
+    }
+   },
+   "B": {
+    "audio": "arena/cooperative_B.mp3",
+    "lines": [
+     {
+      "speaker": "buyer",
+      "text": "हेलो?"
+     },
+     {
+      "speaker": "bot",
+      "text": "नमस्ते Rajesh Kumar, मैं IndiaMART से VANI बोल रही हूँ। आपकी enquiry stainless steel pipes के लिए थी। क्या आपको अभी भी यह product चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, मुझे अभी भी 500 pieces 20 mm और grade 304 वाले stainless steel pipes चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 500 pieces 20 mm grade 304 वाले pipes। आप इसे कहाँ deliver करवाना चाहते हैं?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "इसे पुणे में deliver करवाना है।"
+     },
+     {
+      "speaker": "bot",
+      "text": "Pune में delivery, ठीक है। आपको यह pipes कब तक चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "मुझे ये 10 दिन के अंदर चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "तो 10 दिन में Pune के लिए 500 pieces 20 mm grade 304 वाले pipes चाहिए, है ना?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, बिल्कुल सही।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, मैंने आपकी requirement note कर ली है। Seller जल्दी ही आपसे contact करेंगे। धन्यवाद, आपका दिन शुभ हो।"
+     }
+    ],
+    "chars": 620,
+    "tag": {
+     "idx": null,
+     "label": "buylead_created",
+     "fields": [
+      "quantity",
+      "specification",
+      "location",
+      "timeline"
+     ],
+     "captured": {
+      "product": "stainless steel pipes",
+      "quantity": "500 pieces",
+      "specification": "20 mm grade 304",
+      "location": "Pune",
+      "timeline": "10 days"
+     },
+     "language": "hindi",
+     "call_end": "completed_with_readback",
+     "sentiment": "positive",
+     "buyer_requests": [],
+     "bot_issues": [],
+     "fatal": "none",
+     "bot_error": false,
+     "fix_hint": null,
+     "confidence": 1.0,
+     "evidence": "हाँ, बिल्कुल सही। ठीक है, मैंने आपकी requirement note कर ली है।",
+     "valid": true,
+     "tokens": {
+      "in": 945,
+      "out": 207
+     },
+     "finish": "stop"
+    }
+   },
+   "b_variant": "ai_fix"
+  },
+  {
+   "key": "busy",
+   "title": "Busy buyer",
+   "brief": "Short on time, gives one detail at a time, impatient with long questions.",
+   "A": {
+    "audio": "arena/busy_A.mp3",
+    "lines": [
+     {
+      "speaker": "buyer",
+      "text": "हेलो?"
+     },
+     {
+      "speaker": "bot",
+      "text": "नमस्ते Sunil Patel, मैं IndiaMART से VANI बोल रही हूँ। आपने LED street lights के लिए enquiry की थी, क्या आपको अभी भी ये product चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "बहुत अच्छा। आपको कितने units चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "200 units चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 200 units। आपको कौन सी specifications चाहिए, जैसे wattage या lumens?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "40 watt।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 40 watt। ये lights आपको किस location पर deliver करवानी हैं?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "सूरत।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, सूरत। आपको ये lights कब तक चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "अगले हफ्ते तक चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, अगले हफ्ते तक। तो मैं एक बार confirm कर लेती हूँ: आपको 200 units 40 watt की LED street lights चाहिए, जो सूरत में अगले हफ्ते तक deliver होंगी। क्या ये सही है?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, बिल्कुल सही है।"
+     },
+     {
+      "speaker": "bot",
+      "text": "बहुत अच्छा, मैंने आपकी सारी details note कर ली हैं। Seller जल्दी ही आपसे contact कर लेंगे। आपका दिन शुभ हो!"
+     }
+    ],
+    "chars": 710,
+    "tag": {
+     "idx": null,
+     "label": "buylead_created",
+     "fields": [
+      "quantity",
+      "specification",
+      "location",
+      "timeline"
+     ],
+     "captured": {
+      "product": "LED street lights",
+      "quantity": "200 units",
+      "specification": "40 watt",
+      "location": "Surat",
+      "timeline": "Next week"
+     },
+     "language": "hinglish",
+     "call_end": "completed_with_readback",
+     "sentiment": "positive",
+     "buyer_requests": [],
+     "bot_issues": [],
+     "fatal": "none",
+     "bot_error": false,
+     "fix_hint": null,
+     "confidence": 0.95,
+     "evidence": "हाँ, बिल्कुल सही है।",
+     "valid": true,
+     "tokens": {
+      "in": 984,
+      "out": 196
+     },
+     "finish": "stop"
+    }
+   },
+   "B": {
+    "audio": "arena/busy_B.mp3",
+    "lines": [
+     {
+      "speaker": "buyer",
+      "text": "हेलो?"
+     },
+     {
+      "speaker": "bot",
+      "text": "Hello Sunil Patel sir, मैं IndiaMART से VANI बोल रही हूँ। आपने LED street lights के लिए enquiry की थी, तो क्या आप आज भी इसे खरीदने का विचार कर रहे हैं?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, 200 पीस चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 200 पीस। आपको किस wattage या lumens की LED street lights चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "40 watt चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 40 watt। क्या आपके पास कोई specific brand या grade की preference है?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "कोई specific brand नहीं।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, कोई specific brand नहीं। आपको यह delivery कहाँ पर चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "सूरत में डिलीवरी चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, सूरत। आपको यह lights कब तक चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "अगले हफ्ते तक चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, अगले हफ्ते तक। तो मैं confirm कर लेती हूँ, आपको 200 pieces 40 watt LED street lights चाहिए, बिना किसी specific brand के, जो Surat में अगले हफ्ते तक deliver हो जाएँ। क्या यह सही है?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, सही है।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, मैंने आपकी सारी details note कर ली हैं। Seller जल्दी ही आपसे contact करेंगे। धन्यवाद, आपका दिन शुभ हो।"
+     }
+    ],
+    "chars": 818,
+    "tag": {
+     "idx": null,
+     "label": "buylead_created",
+     "fields": [
+      "quantity",
+      "specification",
+      "location",
+      "timeline"
+     ],
+     "captured": {
+      "product": "LED street lights",
+      "quantity": "200 pieces",
+      "specification": "40 watt",
+      "location": "Surat",
+      "timeline": "अगले हफ्ते तक"
+     },
+     "language": "hinglish",
+     "call_end": "completed_with_readback",
+     "sentiment": "neutral",
+     "buyer_requests": [],
+     "bot_issues": [],
+     "fatal": "none",
+     "bot_error": false,
+     "fix_hint": null,
+     "confidence": 1.0,
+     "evidence": "हाँ, 200 पीस चाहिए। 40 watt चाहिए। सूरत में डिलीवरी चाहिए। अगले हफ्ते तक चाहिए।",
+     "valid": true,
+     "tokens": {
+      "in": 1009,
+      "out": 209
+     },
+     "finish": "stop"
+    }
+   },
+   "b_variant": "ai_fix"
+  },
+  {
+   "key": "unsure",
+   "title": "Unsure buyer",
+   "brief": "Does not know the quantity yet and keeps asking about price.",
+   "A": {
+    "audio": "arena/unsure_A.mp3",
+    "lines": [
+     {
+      "speaker": "buyer",
+      "text": "हेलो?"
+     },
+     {
+      "speaker": "bot",
+      "text": "Hello Vikram Singh ji, मैं IndiaMART से Vani बोल रही हूँ। आपने packaging boxes की enquiry की थी, तो बस यह confirm करना था कि क्या आपको अभी भी ये boxes चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, मुझे अभी भी चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है। आपको कितने boxes चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "मुझे पक्का नहीं पता, शायद कुछ हज़ार के आसपास।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, कुछ हज़ार के आसपास। इसके लिए आप किस size और material के boxes देख रहे हैं?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "साइज 12x10x8 इंच का चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 12x10x8 इंच। क्या आप इसमें कोई specific brand या grade पसंद करेंगे?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "कोई specific brand नहीं, बस अच्छा quality वाला होना चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, अच्छा quality। आपको ये boxes कहाँ deliver करवाने हैं?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "डिलीवरी जयपुर में चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, जयपुर में delivery चाहिए। आपको ये boxes कब तक चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "कोई fixed date नहीं है, बाद में भी हो जाएगा।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, कोई fixed date नहीं है। तो एक बार मैं details confirm कर लेती हूँ। आपको लगभग कुछ हज़ार 12x10x8 इंच के packaging boxes चाहिए, अच्छे quality के, और delivery Jaipur में होगी। क्या यह सब सही है?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, बिल्कुल सही।"
+     }
+    ],
+    "chars": 906,
+    "tag": {
+     "idx": null,
+     "label": "buylead_created",
+     "fields": [
+      "quantity",
+      "specification",
+      "location",
+      "timeline"
+     ],
+     "captured": {
+      "product": "packaging boxes",
+      "quantity": "कुछ हज़ार के आसपास",
+      "specification": "12x10x8 इंच, अच्छे quality",
+      "location": "जयपुर",
+      "timeline": "कोई fixed date नहीं है, बाद में भी हो जाएगा"
+     },
+     "language": "hinglish",
+     "call_end": "completed_with_readback",
+     "sentiment": "neutral",
+     "buyer_requests": [],
+     "bot_issues": [],
+     "fatal": "none",
+     "bot_error": false,
+     "fix_hint": null,
+     "confidence": 0.95,
+     "evidence": "हाँ, बिल्कुल सही।",
+     "valid": true,
+     "tokens": {
+      "in": 1038,
+      "out": 205
+     },
+     "finish": "stop"
+    }
+   },
+   "B": {
+    "audio": "arena/unsure_B.mp3",
+    "lines": [
+     {
+      "speaker": "buyer",
+      "text": "हेलो?"
+     },
+     {
+      "speaker": "bot",
+      "text": "Hello Vikram Singh जी, मैं IndiaMART से VANI बात कर रही हूँ। आपने packaging boxes के लिए enquiry की थी, तो बस confirm करना था कि आपको अभी भी ये चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, मुझे ये boxes चाहिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, तो आपको कुल कितने packaging boxes चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "अभी पक्का नहीं पता, बस कुछ हज़ार के आसपास लगेंगे।"
+     },
+     {
+      "speaker": "bot",
+      "text": "समझ गई, तो आप लगभग कुछ हज़ार boxes की तलाश में हैं। क्या आप इनके लिए कोई specific size या material बता सकते हैं?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "हाँ, size 12x10x8 इंच चाहिए और material भी बता दीजिए।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, 12x10x8 इंच। आप cardboard का इस्तेमाल करना चाहेंगे या फिर corrugated material?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "कोरोडेड material ही ठीक रहेगा।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, corrugated material। क्या आपके मन में कोई specific brand या grade है, या फिर कोई standard grade चलेगा?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "कोई standard grade ही चलेगा।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, standard grade। आपको ये boxes किस location पर deliver करवाने हैं?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "ये boxes जयपुर में deliver होने हैं।"
+     },
+     {
+      "speaker": "bot",
+      "text": "ठीक है, Jaipur में। आपको ये boxes कब तक चाहिए?"
+     },
+     {
+      "speaker": "buyer",
+      "text": "अभी कोई fixed date नहीं है, थोड़ा time लग जाए तो चलेगा।"
+     }
+    ],
+    "chars": 903,
+    "tag": {
+     "idx": null,
+     "label": "buylead_created",
+     "fields": [
+      "quantity",
+      "specification",
+      "location",
+      "timeline"
+     ],
+     "captured": {
+      "product": "packaging boxes",
+      "quantity": "कुछ हज़ार (thousands)",
+      "specification": "12x10x8 इंच, corrugated, standard grade",
+      "location": "Jaipur",
+      "timeline": "थोड़ा time लग जाए तो चलेगा"
+     },
+     "language": "hinglish",
+     "call_end": "completed_with_readback",
+     "sentiment": "neutral",
+     "buyer_requests": [],
+     "bot_issues": [],
+     "fatal": "none",
+     "bot_error": false,
+     "fix_hint": null,
+     "confidence": 0.95,
+     "evidence": "हाँ, मुझे ये boxes चाहिए।",
+     "valid": true,
+     "tokens": {
+      "in": 1026,
+      "out": 211
+     },
+     "finish": "stop"
+    }
+   },
+   "b_variant": "ai_fix"
+  }
+ ],
+ "b_variant": "ai_fix",
+ "b_name": "Ask for missing details before closing",
+ "b_origin": "ai-mined",
+ "generated": "2026-10-09 05:19",
+ "note": "Illustrative: Sarvam chat model plays the buyer and VANI, Bulbul speaks both, the Sarvam tagger scores the call. Three buyers per prompt is a demonstration, not a statistical test."
+}

@@ -1,0 +1,23 @@
+.env
+data/transcripts/
+data/auto_labels/
+data/labels.jsonl
+data/sarvam_spend.json
+data/transcripts_raw/
+data/transcripts_failed.json
+data/sarvam_dl/
+data/sarvam_debug.json
+data/fix_backlog.json
+data/arena_spend.json
+
+# secrets (keep the template)
+.env.*
+!.env.example
+
+# python / editor noise
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.DS_Store

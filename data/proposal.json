@@ -1,0 +1,35 @@
+{
+ "key": "ai_fix",
+ "name": "Ask for missing details before closing",
+ "origin": "ai-mined",
+ "remove": [],
+ "add": [
+  {
+   "after": "- Never share another seller's or buyer's contact details.",
+   "text": "- Ask for the next missing requirement detail before ending the call."
+  }
+ ],
+ "why": "It forces the bot to capture all required fields before ending the call, reducing abrupt closures.",
+ "risk": "The bot might delay closing slightly if the buyer is in a hurry, but it will avoid losing incomplete leads.",
+ "evidence": {
+  "issue": "abrupt_end",
+  "issue_name": "Ended the call abruptly",
+  "calls_with_issue": 61,
+  "connected_calls": 271,
+  "converted_with": 0.377,
+  "converted_without": 0.5667,
+  "ceiling_pp": 3.9,
+  "hints_used": 40,
+  "call_ids_sha256": "53f81bb20ec9fc66",
+  "base_prompt_hash": "42b67f0d5c9b",
+  "labels_are_human_verified": false
+ },
+ "model": "sarvam-105b",
+ "tokens": {
+  "in": 1478,
+  "out": 132
+ },
+ "inr": 0.0529,
+ "generated": "2026-10-09 04:54",
+ "hash": "984be85accd6"
+}
