@@ -69,7 +69,7 @@ Status words: **Built** (as the BRD says), **Adapted** (same job, different mean
 | New Experiment | Built | six steps, sticky calculator, "Try it" chat shown switched off (it spends credits) |
 | Live Experiment | Built | header actions, banner, tiles, trend, harm monitor, Split health (by lead, call, day; chi-square; both = 0; balance table; segment check), progress, Advance 1 day, holdback |
 | History | Built | filters by decision, metric and segment; CSV; clone; learning tag; frozen report with segment rule and achieved lead mix |
-| Suggest A/B Tests | Adapted | cards with hypothesis, patch, metric, effect, days, priority; ideas come from the prompt lint, call scans and past tests; the weak-segment idea is disabled (synthetic lead data would make it up); no language model |
+| Suggest A/B Tests | Adapted | cards with hypothesis, proposed change, metric, effect, days, priority ("Create experiment" opens the full prompt B); ideas come from the prompt lint, call scans and past tests; the weak-segment idea is disabled (synthetic lead data would make it up); no language model |
 | Prompt Library, Decision Log, Settings | Built | Settings also holds the variable catalog and the overlap warning |
 
 ## Tech stack and data model

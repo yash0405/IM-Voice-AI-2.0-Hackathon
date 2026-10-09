@@ -145,22 +145,22 @@ The files are synthetic (outcomes from a known truth, real call durations); they
 | Halted by the split / log check | 0.38% | 0.28% to 0.51% | false alarm of the safety check |
 | A plain p < 0.05 check every day (from 50 leads per prompt) crowns a winner | 8.26% | 7.77% to 8.77% | the peeking trap |
 
-**Split accuracy and lead mix** (the BRD's router: shuffled blocks inside each Hot Lead type x Nature of Business group, against a plain coin flip per lead; the lead variables are synthetic, see the limitations). Error is in percentage points of B share; mix gap is the biggest difference between A's and B's share over the values of one variable.
+**Split accuracy and lead mix** (the BRD's router: shuffled blocks inside each GST Nature of Business x HL Type group, against a plain coin flip per lead; the lead factors are synthetic, see the limitations). Error is in percentage points of B share; mix gap is the biggest difference between A's and B's share over the values of one factor.
 
-| Leads | B share | Audience | Router | Mean error | 95th pct error | Within +/-0.5 pp | Mix gap HL / NOB / City (mean pp) | Leads that changed arm |
+| Leads | B share | Audience | Router | Mean error | 95th pct error | Within +/-0.5 pp | Mix gap GST NOB / HL Type / Legal / Vertical (mean pp) | Leads that changed arm |
 |---|---|---|---|---|---|---|---|---|
-| 1,000 | 10% | All leads (neutral test) | **Stratified blocks** | 0.14 | 0.40 | 97% | 1.6 / 1.2 / 6.0 | 0 |
-| 1,000 | 10% | All leads (neutral test) | Plain random | 0.81 | 1.90 | 35% | 6.3 / 6.2 / 6.3 | 0 |
-| 7,000 | 10% | All leads (neutral test) | **Stratified blocks** | 0.01 | 0.03 | 100% | 0.2 / 0.1 / 2.6 | 0 |
-| 7,000 | 10% | All leads (neutral test) | Plain random | 0.30 | 0.70 | 90% | 2.5 / 2.3 / 2.5 | 0 |
-| 1,000 | 30% | All leads (neutral test) | **Stratified blocks** | 0.22 | 0.51 | 90% | 1.0 / 0.8 / 4.0 | 0 |
-| 1,000 | 30% | All leads (neutral test) | Plain random | 1.03 | 2.71 | 33% | 3.9 / 3.6 / 4.0 | 0 |
-| 7,000 | 30% | All leads (neutral test) | **Stratified blocks** | 0.03 | 0.06 | 100% | 0.1 / 0.1 / 1.4 | 0 |
-| 7,000 | 30% | All leads (neutral test) | Plain random | 0.39 | 1.07 | 73% | 1.5 / 1.3 / 1.5 | 0 |
-| 3,150 | 30% | NOB = Proprietor | **Stratified blocks** | 0.03 | 0.10 | 100% | 0.2 / 0.0 / 2.3 | 0 |
-| 3,150 | 30% | NOB = Proprietor | Plain random | 0.68 | 1.60 | 50% | 2.3 / 0.0 / 2.1 | 0 |
+| 1,000 | 10% | All traffic (neutral test) | **Stratified blocks** | 0.10 | 0.20 | 100% | 6.1 / 5.2 / 5.6 / 6.5 | 0 |
+| 1,000 | 10% | All traffic (neutral test) | Plain random | 0.81 | 1.90 | 35% | 7.0 / 5.8 / 6.1 / 5.8 | 0 |
+| 7,000 | 10% | All traffic (neutral test) | **Stratified blocks** | 0.04 | 0.09 | 100% | 0.7 / 0.6 / 2.2 / 2.1 | 0 |
+| 7,000 | 10% | All traffic (neutral test) | Plain random | 0.30 | 0.70 | 90% | 2.2 / 2.2 / 2.5 / 2.3 | 0 |
+| 1,000 | 30% | All traffic (neutral test) | **Stratified blocks** | 0.17 | 0.41 | 95% | 3.8 / 3.3 / 3.8 / 4.3 | 0 |
+| 1,000 | 30% | All traffic (neutral test) | Plain random | 1.03 | 2.71 | 33% | 4.3 / 3.7 / 4.3 / 4.3 | 0 |
+| 7,000 | 30% | All traffic (neutral test) | **Stratified blocks** | 0.05 | 0.15 | 100% | 0.4 / 0.4 / 1.6 / 1.6 | 0 |
+| 7,000 | 30% | All traffic (neutral test) | Plain random | 0.39 | 1.07 | 73% | 1.5 / 1.5 / 1.6 / 1.5 | 0 |
+| 3,150 | 30% | Leads where Legal Status is Proprietorship | **Stratified blocks** | 0.07 | 0.18 | 100% | 1.0 / 1.0 / 0.0 / 2.2 | 0 |
+| 3,150 | 30% | Leads where Legal Status is Proprietorship | Plain random | 0.68 | 1.60 | 50% | 2.4 / 1.9 / 0.0 / 2.2 | 0 |
 
-Reading: with the blocks the achieved share is within 0.5 pp of the configured one in nearly every run from about 1,000 leads (at exactly 1,000 leads it holds in 90 to 97% of runs, depending on the share; at 3,000 leads or more in every run we drew), and A and B carry almost the same mix of lead type and firm type (the two blocked variables). City is not blocked, so its gaps are chance, as for a plain coin flip.
+Reading: with the blocks the achieved share is within 0.5 pp of the configured one in nearly every run from about 1,000 leads (at exactly 1,000 leads it holds in 95% to 100% of runs, depending on the share; at 3,000 leads or more in every run we drew). From about 3,000 leads A and B also carry a closer mix of GST Nature of Business and HL Type (the blocked factors) than a plain coin flip gives; at 1,000 leads most of the 85 strata expect fewer than 30 leads and are merged into one 'Other' stratum, so the mix is no better than chance. Legal Status and Vertical are not blocked, so their gaps are chance, as for a plain coin flip.
 
 **BRD claims we checked**
 
@@ -312,7 +312,7 @@ Primary goal is any disposition (`primary_goal`, direction `higher`/`lower`); th
 
 ```
 pip install -r requirements.txt
-python -m unittest discover -s tests   # tests: Ran 168 tests in 27.595s - OK
+python -m unittest discover -s tests   # tests: Ran 212 tests in 50.122s - OK
 python -m canary proof                  # ~10 s, writes out/proof.json
 python -m canary build                  # dist/canary_demo.html (offline)
 python -m canary qa                     # this report
