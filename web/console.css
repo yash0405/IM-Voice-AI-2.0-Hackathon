@@ -1,4 +1,4 @@
-/* Canary console. Follows the "Clean Slate" analytics theme (Resources/theme-description.txt) and the PS05 feature spec's screens.
+/* Picky console. Follows the "Clean Slate" analytics theme (Resources/theme-description.txt) and the PS05 feature spec's screens.
    Tokens are the theme's exactly. Spacing is in multiples of 4 and 8 px, corners 8-12 px, no shadows, no gradients.
    Semantic colours (teal, amber, red) are used only for meaning, and never alone: every status also carries a word or a symbol. */
 :root {

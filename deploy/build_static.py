@@ -27,7 +27,7 @@ def collect(src: Path) -> bytes:
         for p in sorted((src / "canary").glob("*.py")):
             z.write(p, f"canary/{p.name}")
         for p in sorted((src / "data").rglob("*")):
-            if p.is_file() and p.suffix not in SKIP_DATA and p.name not in SKIP_NAMES and not p.name.startswith("sarvam_agent"):
+            if p.is_file() and p.suffix not in SKIP_DATA and p.name not in SKIP_NAMES and not p.name.startswith(("sarvam_agent", "history.db")):   # history.db: the local server's own history, never shipped
                 z.write(p, "data/" + p.relative_to(src / "data").as_posix())
         z.write(src / "out" / "console_bundle.json", "out/console_bundle.json")
         z.write(src / "web" / "index.html", "web/index.html")

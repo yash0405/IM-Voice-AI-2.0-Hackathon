@@ -1,4 +1,4 @@
-# Render Blueprint: the live Canary app on Render's free plan. See DEPLOY.md.
+# Render Blueprint: the live Picky app on Render's free plan. See DEPLOY.md.
 services:
   - type: web
     name: canary

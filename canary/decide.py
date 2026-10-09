@@ -208,7 +208,7 @@ def _check_plan(o: Opts):
     miss = [n for n, v in (("baseline (the expected goal rate under A)", o.baseline), ("share_b (the share of traffic sent to B)", o.share_b),
                            ("window_days (the length of the test)", o.window_days)) if v is None]
     if miss:
-        raise DataError("Tell Canary the plan before it reads the results: " + "; ".join(miss) + ". "
+        raise DataError("Tell Picky the plan before it reads the results: " + "; ".join(miss) + ". "
                         "The plan fixes the decision boundaries, and a plan read off the results would make the decision depend on them.")
     if o.direction not in ("higher", "lower"):
         raise DataError("direction must be 'higher' or 'lower'")

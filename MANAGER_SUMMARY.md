@@ -89,7 +89,7 @@ What stayed: the engine, the decision rules, the results-file reader, the skill 
 | What | Why it matters | Proof |
 |---|---|---|
 | Whole percentages and a plain range on every verdict | Decimals the data cannot support mislead | Visible on every result |
-| Honest wording for results files: Canary **advises**, it does not claim to have rolled anything out | We do not control live traffic | Result text |
+| Honest wording for results files: Picky **advises**, it does not claim to have rolled anything out | We do not control live traffic | Result text |
 | Engine rule: a win is **never shipped on a peak that has since faded**; held for a person instead | A novelty effect cannot slip through | Unit test; headline proof numbers unchanged |
 | A reusable **skill** (`skill/ab-test-decision/SKILL.md`) | Plug-and-play for any AI assistant or team | 100% vs 88% of graded statements without it; see `skills.md` |
 | `START_HERE.md` and `start.sh` (one command) | Five minutes to a first result | Run it |
@@ -129,3 +129,18 @@ What stayed: the engine, the decision rules, the results-file reader, the skill 
 | Duration recommended from data by one formula, shared with At a glance | Built | 47 unit checks incl. the hand-computed example |
 
 **What we must say plainly:** there is no real lead table yet, so the 30-day history the page reads is a labelled placeholder (call lengths are real); the spec's own worked example (2,100 leads, 14 days) does not follow from its formula (862 leads, 7 days) and we follow the formula; the new 85-group split balances lead mix less well than the old 16 groups (about 0.4 pp vs 0.1 pp at 7,000 leads, still far better than random at 1.5 pp).
+
+## Prompt 7 - "Do the DB integration for the history" (10 Oct)
+**Verdict: built on branch `feature/history-db` (not committed, not pushed). The local live server now saves every test in one SQLite file, `data/history.db`; two browsers see the same history and it survives a restart.**
+
+| Asked | Done | Proof |
+|---|---|---|
+| A database for the history of tests | `canary/store.py`: tests, locked setup, daily results, hash-chained decision record, every click, drafts and settings | 20 new tests (`tests/test_store.py`) |
+| Pick the best option; Postgres if it can be used | SQLite: built into Python, one file, nothing to run; Postgres is not installed here, needs a server and a driver, and the hosted copy cannot reach any server | README "Where the test history is kept" |
+| Works in the app | Console loads from it on start and saves each change; Settings shows counts and a Download button; `python -m canary history` prints it | browser test: 14 of 14 (two browsers, a restart, a reset) |
+
+**Second check (asked: "is it tested properly?"):** a self-review found 3 real bugs, all fixed with tests: (1) the public ngrok tunnel could read, overwrite or reset the history: the database now answers this computer only (checked through the real tunnel: 403); (2) a stale browser could undo a newer approval: saves now carry a version and a stale one is refused; (3) one old broken test in a browser blocked every save: it is now skipped on its own. An independent reviewer then found 2 major and 6 minor issues (a browser closed during a reset broke on reopening; a browser from before the database could lose its progress; two timing races; a large cache warning; other local web pages could send a reset; odd pasted characters; a deleted file not refilled). All fixed, each with a test, and the reviewer's own reproductions now pass. Two more review passes found smaller, rarer cases (changes made while the server was out of reach, a first save cut off, two tabs of one browser, a rejected test after a reload); all fixed and re-checked with the reviewer's scripts. Hosted copy built and run locally: unchanged.
+
+**Rename (10 Oct):** the product is now **Picky - Test it, pick it, ship it** on every screen, page title, the password page, the slide, the QA report and the docs. The code package keeps its internal name `canary` (the commands stay `python -m canary ...`) so nothing breaks before submission.
+
+**Say plainly:** the hosted copy (GitHub Pages) has no server, so it still keeps state in each browser; the database holds simulated tests only; on the live server "Reset the demo" now clears the database for every browser (the click log keeps a "reset" entry).

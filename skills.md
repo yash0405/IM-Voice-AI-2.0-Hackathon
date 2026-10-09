@@ -1,4 +1,4 @@
-# skills.md - how Canary was built
+# skills.md - how Picky was built
 
 > **The reusable skill** is in `skill/ab-test-decision/SKILL.md`: the method in this journey (plan a test, check a results file, decide with pre-registered rules, report honestly) packaged so any AI assistant can use it. It was tested against a no-skill baseline on five realistic requests (see the end of this file).
 
@@ -7,7 +7,7 @@
 ## Journey
 1. **Read everything first.** PS05 and PS01, the deck's scoring slides; measured the 713 recordings with code. No labels, transcripts or prompt were provided at first, so every claim had to survive that.
 2. **Statistics first.** Lan-DeMets alpha-spending boundaries by recursive integration, checked against published values and a 200,000-run simulation before anything was built on top. One decision function (`Monitor.look`) serves the live engine, the scenarios and the proof lab.
-3. **Proof lab and honesty.** Simulated Canary against naive peeking, a fixed-horizon test and "higher rate wins" on identical data. It found our false-win rate slightly above nominal in small slices and a weak broken-test check at a 45% baseline (a 35% silent loss shipped 44% of the time); both are reported, and the second was fixed with a per-arm assigned-vs-logged check (0% shipped).
+3. **Proof lab and honesty.** Simulated Picky against naive peeking, a fixed-horizon test and "higher rate wins" on identical data. It found our false-win rate slightly above nominal in small slices and a weak broken-test check at a 45% baseline (a 35% silent loss shipped 44% of the time); both are reported, and the second was fixed with a per-arm assigned-vs-logged check (0% shipped).
 4. **Labels without a labeller.** Sarvam transcribed and tagged 299 real recordings under a spend cap; a person spot-checks about 40. Local code scans the transcripts for loops with no model, as an independent check on the tagger.
 5. **The real prompt arrived, and we corrected ourselves.** VANI's real prompt and IndiaMART's quality matrix contradicted four of our assumptions (the call is inbound, there is no timeline, reading values back is forbidden, live-seller connection is the top priority). We rebuilt the label schema, retired a "failure" our tagger invented, marked results made on our stand-in prompt as stale, and withdrew a claim that rested on that mistake. Nothing was hidden.
 6. **The fix loop (the PM's idea) on the real prompt.** A prompt lint finds contradictory ask limits (buyer name 2 vs 3, product 4 vs 5, enrichment slots 2 vs 3); a free candidate edit makes them agree; any edit that adds a contradiction is rejected automatically; the A/B engine decides whether it ships. We report that verbatim loops are rare (about 1.7% of calls), so the fix is a safety measure and a one-point effect needs about 83,000 calls to prove.

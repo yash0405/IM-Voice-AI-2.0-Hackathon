@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Ship / stop / hold / keep decision from results files, using the Canary engine (sequential test, guardrails, tamper-evident record).
+"""Ship / stop / hold / keep decision from results files, using the Picky engine (sequential test, guardrails, tamper-evident record).
 
-This is a thin launcher: it finds the Canary project and runs `python -m canary decide` with the same arguments. Run `--help` for them all.
+This is a thin launcher: it finds the Picky project and runs `python -m canary decide` with the same arguments. Run `--help` for them all.
 
-Where it looks for Canary (first match wins): the CANARY_HOME environment variable, then the folders above this script.
+Where it looks for Picky (first match wins): the CANARY_HOME environment variable, then the folders above this script.
 Needs Python 3.10+ with numpy and scipy (pip install numpy scipy jinja2).
 
 Typical use (the plan flags are required: the plan must be fixed BEFORE the results are read):
@@ -29,7 +29,7 @@ def find_root():
 def main():
     root = find_root()
     if root is None:
-        sys.exit("Canary was not found. Set CANARY_HOME to the folder that contains the 'canary' package "
+        sys.exit("Picky was not found. Set CANARY_HOME to the folder that contains the 'canary' package "
                  "(the project folder this skill ships in), or use check_results.py for a single-look check that needs no engine.")
     try:
         import numpy, scipy  # noqa: F401

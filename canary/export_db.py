@@ -1,4 +1,4 @@
-"""Export everything Canary knows into ONE SQLite file, so a judge can run SQL over it.
+"""Export everything Picky knows into ONE SQLite file, so a judge can run SQL over it.
 
     python -m canary.export_db                      # writes out/canary.db (demo experiments + past tests, with per-lead rows)
     python -m canary.export_db --out x.db --no-past --no-calls
@@ -52,7 +52,7 @@ TABLES = ["meta", "variable_catalog", "metrics", "prompts", "experiments", "expe
           "decision_log", "suggestions"]
 
 SCHEMA = """
--- Canary results database. Everything in it is synthetic (simulated calls). See the `meta` table for the notes.
+-- Picky results database. Everything in it is synthetic (simulated calls). See the `meta` table for the notes.
 CREATE TABLE meta (
   key   TEXT PRIMARY KEY,
   value TEXT

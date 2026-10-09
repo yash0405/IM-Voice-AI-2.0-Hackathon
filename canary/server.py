@@ -79,6 +79,18 @@ def console_live() -> dict:
     return b
 
 
+def store_ready():
+    """The history database (canary/store.py), with the demo tests and the History samples written into it once per process."""
+    from . import store
+    with _store_lock:
+        if not _cache.get("store_seeded") or not Path(store.DB).exists():      # also when the file was deleted while the server ran
+            _cache["store_seeded"] = store.seed(console_live())
+    return store
+
+
+_store_lock = threading.Lock()
+
+
 MAX_PROMPT = 400_000
 MIN_AUDIENCE_CONNECTED = 200       # fewer connected leads than this in the audience's 30 days: its own value is too noisy, the all-traffic value is used
 MIN_WINDOW_LEADS = 200             # fewer connected leads than this over the whole test window: refused
@@ -305,6 +317,31 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    FORWARDED = ("x-forwarded-", "forwarded", "via", "x-real-ip", "true-client-ip", "x-client-ip", "client-ip", "x-cluster-client-ip", "cf-",
+                 "fastly-", "x-original-forwarded", "ngrok-", "tailscale-", "fly-", "x-envoy-", "x-azure-", "x-appengine-", "akamai-", "cdn-loop",
+                 "x-amzn-", "x-vercel-", "x-arr-", "x-proxy", "x-host", "x-original-host")
+    LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+    def _local_only(self, write: bool = False) -> bool:
+        """The history database answers the browser on this computer only, opening this server's own page. Refused with 403:
+        a request from another computer or forwarded by a tunnel or proxy (ngrok, cloudflared, tailscale ... add one of FORWARDED), a page
+        from another site or another local port (Origin / Sec-Fetch-Site), and a write without the console's own header (X-Canary-Store: 1),
+        which a page from elsewhere cannot add without asking first. That browser then keeps its state to itself, as before. True: go on."""
+        h = {k.lower(): v for k, v in self.headers.items()}
+        host = (h.get("host") or "").rsplit(":", 1)[0].strip("[]").lower()
+        origin = urlparse(h.get("origin") or "")
+        try:
+            port = origin.port
+        except ValueError:                                               # "http://127.0.0.1:abc": not this server
+            port = None
+        same_origin = not h.get("origin") or (origin.scheme == "http" and (origin.hostname or "") in self.LOCAL_HOSTS and port == self.server.server_address[1])
+        ok = (self.client_address[0] in ("127.0.0.1", "::1") and host in self.LOCAL_HOSTS and same_origin
+              and not any(k.startswith(self.FORWARDED) for k in h) and h.get("sec-fetch-site", "same-origin") in ("same-origin", "none")
+              and (not write or h.get("x-canary-store") == "1"))
+        if not ok:
+            self._json({"error": "the history database answers this computer's own console only (open http://127.0.0.1 on the machine running the server)"}, 403)
+        return ok
+
     def _gate(self, path: str, allowed: tuple) -> bool:
         """Hosted mode only: password check, then the allowlist. Returns True when the request may go on (else it has answered)."""
         if not HOSTED["on"]:
@@ -322,7 +359,7 @@ class H(BaseHTTPRequestHandler):
                 ok = False
         if not ok:
             self.send_response(401)
-            self.send_header("WWW-Authenticate", 'Basic realm="Canary (team access)", charset="UTF-8"')
+            self.send_header("WWW-Authenticate", 'Basic realm="Picky (team access)", charset="UTF-8"')
             self.send_header("Content-Length", "0")
             self.end_headers()
             return False
@@ -354,6 +391,17 @@ class H(BaseHTTPRequestHandler):
                 self._json(bundle_live())
             elif u.path == "/api/console":
                 self._json(console_live())
+            elif u.path.startswith("/api/store") and not self._local_only():
+                return
+            elif u.path == "/api/store":
+                self._json(store_ready().load())
+            elif u.path == "/api/store/info":
+                self._json(store_ready().info())
+            elif u.path == "/api/store/download":
+                data = store_ready().snapshot()
+                self.send_response(200); self.send_header("Content-Type", "application/vnd.sqlite3")
+                self.send_header("Content-Disposition", 'attachment; filename="canary_history.db"')
+                self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
             elif u.path == "/api/samples":
                 from . import samples
                 self._json({k: {"title": v["title"], "note": v["note"], "lpd": v["lpd"], "days": v["days"]} for k, v in samples.SAMPLES.items()})
@@ -393,7 +441,7 @@ class H(BaseHTTPRequestHandler):
         if not self._gate(urlparse(self.path).path, HOSTED_POST):
             return
         n = int(self.headers.get("Content-Length", 0))
-        if n > (14_000_000 if self.path in ("/api/decide", "/api/inspect") else 1_000_000 if self.path == "/api/wizard" else 20000) or (HOSTED["on"] and n > HOSTED_MAX_BODY):
+        if n > (14_000_000 if self.path in ("/api/decide", "/api/inspect", "/api/store") else 1_000_000 if self.path == "/api/wizard" else 20000) or (HOSTED["on"] and n > HOSTED_MAX_BODY):
             return self._json({"error": "body too large"}, 413)
         if HOSTED["on"] and not _heavy.acquire(blocking=False):
             return self._json({"error": "The server is busy with other people's runs. Try again in a few seconds."}, 503)
@@ -414,6 +462,16 @@ class H(BaseHTTPRequestHandler):
             elif self.path == "/api/labels":
                 row = labels.add(body["idx"], body["labeler"], body["label"], body.get("note", ""), body.get("fields"), body.get("flags"))
                 self._json({"ok": True, "row": row, "summary": labels.summary()})
+            elif self.path.startswith("/api/store") and not self._local_only(write=True):
+                return
+            elif self.path == "/api/store":
+                st = store_ready()
+                try:
+                    self._json(st.apply(body))
+                except (st.EpochMismatch, st.Conflict) as e:
+                    self._json({"error": str(e), "reload": True, "reset": isinstance(e, st.EpochMismatch)}, 409)
+            elif self.path == "/api/store/reset":
+                self._json(store_ready().reset())
             else:
                 self.send_error(404)
         except (ValueError, KeyError, TypeError) as e:
@@ -433,11 +491,12 @@ def serve(port: int = 8765, host: str = "127.0.0.1", hosted: bool = False):
             sys.exit("Hosted mode needs CANARY_PASSWORD (at least 8 characters). Refusing to start an open server.")
         HOSTED.update(on=True, password=pw)
     build.assemble_console_js()
-    if not hosted:                                                  # hosted mode never touches labels, spend or audio
+    if not hosted:                                                  # hosted mode never touches labels, spend, audio or the history database
         threading.Thread(target=bundle_live, daemon=True).start()   # warm the caches
+        threading.Thread(target=store_ready, daemon=True).start()   # opens data/history.db (or CANARY_DB) and writes the demo tests into it
     threading.Thread(target=console_live, daemon=True).start()
     srv = ThreadingHTTPServer((host, port), H)
-    print(f"Canary live on http://{host}:{port}   (Ctrl+C to stop)" + ("   [hosted mode: password required, Label Lab/audio/transcripts off]" if hosted else ""))
+    print(f"Picky live on http://{host}:{port}   (Ctrl+C to stop)" + ("   [hosted mode: password required, Label Lab/audio/transcripts off]" if hosted else ""))
     if host != "127.0.0.1" and not hosted:
         print("WARNING: this serves call audio to anyone on your network. Use only on the office network and stop it when labelling is done.")
     try:

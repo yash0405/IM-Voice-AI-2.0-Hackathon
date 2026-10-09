@@ -49,17 +49,17 @@ def build_slide_fixloop() -> str:
                 f'<div><b>3 Pre-check</b> {pre}</div><i>&darr;</i>'
                 f'<div><b>4 Prove</b> {F["plan"]["n_max"]:,} calls to be sure of +{F["plan"]["mde"]*100:.0f}pp; ships only if it provably wins</div><i>&darr;</i>'
                 f'<div><b>Record</b> hash-chained, with the evidence behind the fix</div>')
-        title, sub = "Canary: the bot finds its weak spot, fixes it, and proves the fix", "On VANI\'s real prompt and 299 real calls. The A/B engine decides; every claim is computed by re-runnable code and says how sure we are."
+        title, sub = "Picky - Test it, pick it, ship it: the bot finds its weak spot, fixes it, and proves the fix", "On VANI\'s real prompt and 299 real calls. The A/B engine decides; every claim is computed by re-runnable code and says how sure we are."
         wf_h = "From the real prompt to a shipped fix"
         exp_h = f"Live test of the fix (simulated outcomes, known truth A {b['meta']['true_a']*100:.1f}% / B {b['meta']['true_b']*100:.1f}%)"
     else:
         flow = ('<div>Variants A / B (prompt + small patch, versioned)</div><i>&darr;</i><div>Router: sticky split</div><i>&darr;</i><div>VANI answers the buyer</div><i>&darr;</i>'
                 '<div>Auto-disposition tagger &rarr; BuyLead created? + handling time</div><i>&darr;</i><div>Monitor each look: SRM &middot; harm &middot; promote &middot; guardrail</div><i>&darr;</i><div>Hash-chained ledger</div>')
-        title, sub = "Canary: no prompt ships without proof", "Try a change on a small slice of calls, ship it only if it provably wins, stop it early if it is clearly worse."
+        title, sub = "Picky - Test it, pick it, ship it", "No prompt ships without proof. Try a change on a small slice of calls, ship it only if it provably wins, stop it early if it is clearly worse."
         wf_h = "Workflow"
         exp_h = f"Sample experiment (simulated, known truth A {b['meta']['true_a']*100:.0f}% / B {b['meta']['true_b']*100:.0f}%)"
     share = int(round(c["share_b"] * 100))
-    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Canary - one slide</title><style>
+    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Picky - one slide</title><style>
 @page {{ size: 1280px 720px; margin: 0 }} *{{box-sizing:border-box}} body{{margin:0;background:#e9e8e3;font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:#0b0b0b}}
 .s{{width:1280px;height:720px;margin:0 auto;background:#fcfcfb;padding:28px 36px;display:grid;grid-template-rows:auto 1fr auto;gap:14px}}
 h1{{margin:0;font-size:30px;letter-spacing:-.02em}} .sub{{color:#52514e;margin-top:2px}} .cols{{display:grid;grid-template-columns:1.05fr 1fr 1.05fr;gap:18px}}
@@ -82,10 +82,10 @@ ul{{margin:0;padding-left:18px}} li{{margin:3px 0}} .kpi{{display:grid;grid-temp
 <li><b>Split:</b> sticky per lead; balanced blocks or stateless hash; achieved vs configured reported.</li></ul></div>
 <div class="box"><h2>{wf_h}</h2><div class="flow">{flow}</div></div>
 </div>
-<div class="kpi"><div><b>{f('aa','canary'):.1f}% vs {f('aa','naive_peek'):.1f}%</b><span>false win when A = B: Canary vs naive peeking</span></div>
+<div class="kpi"><div><b>{f('aa','canary'):.1f}% vs {f('aa','naive_peek'):.1f}%</b><span>false win when A = B: Picky vs naive peeking</span></div>
 <div><b>{f('srm_bug','canary'):.1f}% vs {f('srm_bug','naive_peek'):.1f}%</b><span>ships B when the test is silently broken</span></div>
 <div><b>{mean('balanced'):.2f} vs {mean('naive_random'):.2f} pp</b><span>split error at ~1,000 leads: balanced vs coin flip</span></div>
-<div><b>0 vs {st['naive_random']['flip_rate']*100:.1f}%</b><span>repeat calls that switch arm: Canary vs coin flip</span></div></div>
+<div><b>0 vs {st['naive_random']['flip_rate']*100:.1f}%</b><span>repeat calls that switch arm: Picky vs coin flip</span></div></div>
 </div></body></html>"""
     DIST.mkdir(exist_ok=True)
     out = DIST / "one_slide_fixloop.html"
@@ -128,7 +128,7 @@ def build_slide() -> str:
           (pct(aa["plain_daily_check_false_winner"]["rate"]) if aa and "plain_daily_check_false_winner" in aa else "-", "false winners from a plain daily p&lt;0.05 check"),
           (f"{sb['stratified']['mean_abs_err_pp']:.2f} pp" if sb else "-", f"B-share error at 7,000 leads (plain random {sb['hash']['mean_abs_err_pp']:.2f} pp)" if sb else ""),
           ("0", "leads that saw both prompts; A and B carry the same lead-type mix")]
-    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Canary - one slide</title><style>
+    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Picky - one slide</title><style>
 @page {{ size: 1280px 720px; margin: 0 }} *{{box-sizing:border-box}} body{{margin:0;background:#f3f5f7;font:14px/1.4 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#263238}}
 .s{{width:1280px;height:720px;margin:0 auto;background:#fff;padding:26px 34px;display:grid;grid-template-rows:auto 1fr auto;gap:14px}}
 h1{{margin:0;font-size:30px;letter-spacing:-.02em;color:#243b53}} .sub{{color:#667085;margin-top:2px}} .cols{{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:16px}}
@@ -138,7 +138,7 @@ ul{{margin:0;padding-left:18px}} li{{margin:3px 0;font-size:12.5px}} .kpi{{displ
 .flow{{display:grid;gap:5px}} .flow div{{background:#f3f5f7;border-radius:8px;padding:6px 10px;font-size:12.5px}} .flow i{{display:block;text-align:center;color:#a0a7b1;line-height:1;font-style:normal}} .m{{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#667085}}
 table{{border-collapse:collapse;width:100%;font-size:11.5px;margin-top:6px}} td,th{{border-top:1px solid #e3e7ec;padding:3px 6px;text-align:left}} th{{color:#667085;font-weight:600}}
 </style></head><body><div class="s">
-<div><h1>Canary: no prompt change ships without proof</h1><div class="sub">An A/B router in front of the voice bot and a decision engine behind it: try a change on a slice, ship it only if it provably wins, stop it early if it is clearly worse.</div></div>
+<div><h1>Picky - Test it, pick it, ship it</h1><div class="sub">No prompt change ships without proof. An A/B router in front of the voice bot and a decision engine behind it: try a change on a slice, ship it only if it provably wins, stop it early if it is clearly worse.</div></div>
 <div class="cols">
 <div class="box"><h2>Sample result (simulated, known truth +15%)</h2>{_daily(rec)}
 <div style="margin-top:4px"><span class="pill">PROMOTED</span> at the final call, day {last['day']} of {c['window_days']}: z = {last['z']:.2f}, needed {last['eff']:.2f}</div>

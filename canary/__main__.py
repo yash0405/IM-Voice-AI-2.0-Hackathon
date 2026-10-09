@@ -6,6 +6,7 @@
   serve     live dashboard + Label Lab on http://127.0.0.1:8765
   qa        write QA_REPORT.md from out/proof.json
   export-db export every test, version, assignment, call and decision to one SQLite file (out/canary.db)
+  history   the history database the live server writes (data/history.db): every test, its status and the latest clicks
   slide     write dist/one_slide.html (the one-slide deliverable)
   eval      score a tagger on labelled calls (synthetic benchmark, or real labels + transcripts dir)
   arena     voice arena: Sarvam LLM + Bulbul voices play a buyer against prompt A and B (plan | run --yes --budget N)
@@ -21,7 +22,7 @@ import sys
 
 def main():
     ap = argparse.ArgumentParser(prog="canary", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "slide", "all", "autolabel", "arena", "fix", "decide", "samples", "export-db"])
+    ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "slide", "all", "autolabel", "arena", "fix", "decide", "samples", "export-db", "history"])
     ap.add_argument("action", nargs="?", default="plan", help="for autolabel: plan | run | status | queue | report | issues")
     ap.add_argument("--n", type=int, default=5, help="autolabel: how many calls (first N of a fixed random order)")
     ap.add_argument("--budget", type=float, default=10.0, help="autolabel: hard cap in rupees for everything spent so far")
@@ -61,6 +62,12 @@ def main():
     d.add_argument("--complete", action="store_true", help="the test window is over: treat the last day in the file as the final look")
     d.add_argument("--json", help="also write the full record (what the dashboard shows) to this file")
     a = ap.parse_args()
+    if a.cmd == "history":
+        from . import build, store
+        cached = build.OUT / "console_bundle.json"
+        store.seed(json.loads(cached.read_text()) if cached.exists() else build.build_console_bundle())
+        print(store.summary())
+        return
     if a.cmd == "export-db":
         from . import export_db
         export_db.main(["--out", a.out] + (["--no-past"] if a.no_past else []) + (["--no-calls"] if a.no_calls else []))

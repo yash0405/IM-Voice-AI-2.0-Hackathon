@@ -1,8 +1,10 @@
-# Canary - the bot finds its own weak spot, fixes it, and proves the fix
+# Picky - Test it, pick it, ship it
+
+A/B testing and auto-rollout for voice agents: the bot finds its own weak spot, fixes it, and proves the fix.
 
 Hackathon problem 5 (Agent A/B Testing & Auto-Rollout) for **VANI**, IndiaMART's buyer-side voice assistant. A buyer calls a seller from the IndiaMART app; if the seller is unavailable the call is redirected to the Help Desk, where VANI confirms the product, collects quantity, specifications, buyer name and city/state, and connects the buyer to a live seller (or promises seller details on WhatsApp).
 
-Canary closes the loop in four steps, on VANI's **real prompt** (Resources/Sarvam Prompt - Buyer Side VANI.docx.pdf) and real recordings:
+Picky closes the loop in four steps, on VANI's **real prompt** (Resources/Sarvam Prompt - Buyer Side VANI.docx.pdf) and real recordings:
 
 1. **Find** what could be losing leads, from three independent places: the prompt itself (a lint that finds contradictory ask limits), the real calls (a tagger-free loop scan), and Sarvam's machine labels.
 2. **Fix**: one small, reviewable edit. The free candidate is derived from the prompt's own contradictions; Sarvam can draft an alternative from the same evidence. Any edit that contradicts the prompt is rejected automatically.
@@ -22,7 +24,7 @@ Canary closes the loop in four steps, on VANI's **real prompt** (Resources/Sarva
 - **Engineers:** the technical tools (proof lab, label calls, hear it) are one click away under Settings > Tools (`dist/canary_tools.html` offline, `/tools.html` live).
 
 ## The second BRD (9 Oct, the final version for build): what it changed
-Scrutinised, not copied. **Adopted:** segments (a variable catalog and a segment builder that always shows the rule in plain words; only pre-call variables), the stratified router (blocks of 10 inside each lead-type x firm-type group), the split-health panel with a balance table and segment check, goal cards, whole-week durations (7 to 28 days) with a sticky calculator and a traffic light, the five-item pre-launch checklist, Save Test (draft) and Launch Test (locked), the scheduled start date, the full Overview (tiles, business impact, needs attention, traffic map, scorecard, top suggestion), the 5% holdback after a promotion, a variable catalog in Settings, and the end-of-test two-sided call ("significantly worse: keep A, logged as a loss"). **Adapted:** a segment is built from lists, never typed as code (the plain-English reader was replaced by the builder in the New Experiment overhaul); the LLM-written report is a template written from the numbers; SQLite is an export (`python -m canary export-db`) rather than the live store. **Kept:** our own router, engine and dashboard stack (no Streamlit): it needs no installation and runs offline. **Questioned with numbers (QA_REPORT 5d):** "false winner about 5%" is the two-sided total (2.5% promoted + 2.5% logged as a loss); a 1,000-lead minimum would stop the daily harm check from ever starting at a 10% share in a 7-day test, so the calculator now shows the day it starts; the lead variables do not exist in our data, so they are synthetic and labelled so.
+Scrutinised, not copied. **Adopted:** segments (a variable catalog and a segment builder that always shows the rule in plain words; only pre-call variables), the stratified router (blocks of 10 inside each lead-type x firm-type group), the split-health panel with a balance table and segment check, goal cards, whole-week durations (7 to 28 days) with a sticky calculator and a traffic light, the five-item pre-launch checklist, Save Test (draft) and Launch Test (locked), the scheduled start date, the full Overview (tiles, business impact, needs attention, traffic map, scorecard, top suggestion), the 5% holdback after a promotion, a variable catalog in Settings, and the end-of-test two-sided call ("significantly worse: keep A, logged as a loss"). **Adapted:** a segment is built from lists, never typed as code (the plain-English reader was replaced by the builder in the New Experiment overhaul); the LLM-written report is a template written from the numbers; SQLite is both the export (`python -m canary export-db`) and, since 10 Oct, the live history store of the local server (`data/history.db`, see below). **Kept:** our own router, engine and dashboard stack (no Streamlit): it needs no installation and runs offline. **Questioned with numbers (QA_REPORT 5d):** "false winner about 5%" is the two-sided total (2.5% promoted + 2.5% logged as a loss); a 1,000-lead minimum would stop the daily harm check from ever starting at a 10% share in a 7-day test, so the calculator now shows the day it starts; the lead variables do not exist in our data, so they are synthetic and labelled so.
 
 ## Scope: what is ours, what is not (checked against the documents)
 The PM's split: **before the test** (variants, traffic split, goals and rules locked), **the test itself** (the voice calls: not ours), **after / during** (watch the results, decide, early stop, roll out). Our reading of the documents:
@@ -37,6 +39,11 @@ python -m canary build            # or ./run.sh for everything (about 20 s)
 open dist/canary_demo.html        # fully offline; no internet, no server
 ```
 Then follow `USER_JOURNEY.md`. For the live engine and the labelling page: `python -m canary serve` -> http://127.0.0.1:8765.
+
+## Where the test history is kept
+The live server (`python -m canary serve`) saves every test in one SQLite file, `data/history.db` (move it with `CANARY_DB=/path/file.db`): the launched tests, their locked setup, day-by-day results, the hash-chained decision record, and every click (day played, approve, reject, roll back, pause, stop, reset). Every browser on that server sees the same history and it survives a restart. Settings shows the counts and has **Download the database**; `python -m canary history` prints it. A record whose hash chain does not verify is refused, and a launched test can never be changed. Two browsers cannot silently overwrite each other: a save based on an older version is refused and that browser reloads the latest. The database answers only the console on the computer running the server: a request through a tunnel or proxy (ngrok, cloudflared, tailscale), from another computer, or from another web page gets 403, and that browser keeps its state to itself. A browser used before the database existed keeps its drafts, custom metrics and progress when it first connects. The hosted copy (GitHub Pages) and the offline file have no server, so they keep their state in the browser, as before.
+
+Why SQLite and not Postgres: it is built into Python (nothing to install or run), the whole history is one file a judge can open, and our load is a few writes a minute from one server. Postgres is the right choice when several servers write at once, i.e. in production at IndiaMART; the tables are plain SQL, so moving them is a connection change plus a few type tweaks, not a redesign.
 
 ## Commands
 
@@ -56,6 +63,7 @@ Then follow `USER_JOURNEY.md`. For the live engine and the labelling page: `pyth
 | `python -m canary decide FILE --goal ... --share-b 0.3 --baseline ... --window-days ...` | **decide from results files** (A and B, per call or per day): ship, stop, hold for a person, or keep A | no |
 | `python -m canary samples` | write six synthetic sample results files to `data/samples/` | no |
 | `python -m canary export-db` | every test, version, assignment, call and decision into one SQLite file (`out/canary.db`) | no |
+| `python -m canary history` | the live history database (`data/history.db`): every test, its status and outcome, and the latest clicks | no |
 | `python -m canary demo\|proof\|build\|qa\|slide\|serve` | scenarios, proof lab, dashboards (`dist/canary_demo.html` and `dist/canary_tools.html`), QA report, slide, live server | no |
 | `python -m unittest discover -s tests` | the full suite (fake Sarvam client, no network) | no |
 

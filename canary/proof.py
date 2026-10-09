@@ -1,6 +1,6 @@
 """Monte Carlo proof lab. Every number in the QA report and the dashboard's Proof tab comes from here.
 
-Canary's decisions are made by the same `Monitor.look` used by the live engine; the typical
+Picky's decisions are made by the same `Monitor.look` used by the live engine; the typical
 approaches (baselines.py) see exactly the same simulated counts.
 Run:  python -m canary proof [--runs N]      (seeded, reproducible)
 """

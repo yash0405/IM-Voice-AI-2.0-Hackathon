@@ -1,5 +1,5 @@
 "use strict";
-/* Canary dashboard. Plain JS, no libraries, no network needed. Every number shown comes from the
+/* Picky dashboard. Plain JS, no libraries, no network needed. Every number shown comes from the
    bundle produced by the Python engine (dist/canary_demo.html embeds it; live mode fetches it). */
 
 let D = window.CANARY_DATA || null;
@@ -219,7 +219,7 @@ function actionBar(rec, tail) {
     return tail ? `<div class="act done">Logged in the record. ${btn("undo", "Undo the demo click")}</div>`
       : `<div class="act"><span><b>A person decides.</b> The click is logged in the tamper-evident record. Meanwhile callers are unaffected.</span><span class="actbtns">${btn("approve", "Approve: ship B", "okb")}${btn("reject", "Reject: keep A")}</span></div>`;
   }
-  if (res.kind === "PROMOTE" && t.rollback && !(rec.source && rec.source.type === "files")) {      // for results files Canary does not route traffic, so there is nothing to roll back here
+  if (res.kind === "PROMOTE" && t.rollback && !(rec.source && rec.source.type === "files")) {      // for results files Picky does not route traffic, so there is nothing to roll back here
     return tail ? `<div class="act done">Logged in the record. ${btn("undo", "Undo the demo click")}</div>`
       : `<div class="act"><span>Changed your mind? Rolling back is one click and is logged.</span><span class="actbtns">${btn("rollback", "Roll back")}</span></div>`;
   }
@@ -234,7 +234,7 @@ function moreLeadsHtml(res) {
 }
 function dataNotesHtml(rec) {
   const src = rec.source; if (!src || !src.warnings || !src.warnings.length) return "";
-  return `<details class="notes"><summary>${src.warnings.length} data note${src.warnings.length > 1 ? "s" : ""} (what Canary found in the files)</summary><ul>${src.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></details>`;
+  return `<details class="notes"><summary>${src.warnings.length} data note${src.warnings.length > 1 ? "s" : ""} (what Picky found in the files)</summary><ul>${src.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></details>`;
 }
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
@@ -480,7 +480,7 @@ function openCustom() {
 }
 
 /* ------------------------------------------------------------------ proof lab */
-const MNAME = { canary: "Canary (ours)", naive_peek: "Naive peeking (p<0.05 at every look)", fixed_horizon: "Fixed-horizon z-test", higher_rate: "Higher rate wins" };
+const MNAME = { canary: "Picky (ours)", naive_peek: "Naive peeking (p<0.05 at every look)", fixed_horizon: "Fixed-horizon z-test", higher_rate: "Higher rate wins" };
 const outc = (m, k) => (m.outcomes[k] ? m.outcomes[k].rate : 0);
 /* proof sections 6 and 7: the spec's single-look rule vs ours, and decisions from results files */
 function renderProofExtra(P) {
@@ -492,7 +492,7 @@ function renderProofExtra(P) {
   }).join("");
   const fl = Object.values(P.files).map(v => `<tr><td>${esc(v.label)}</td><td class="num">${nf(v.runs)}</td><td class="num">${pc1(oc(v, "PROMOTE"))}</td><td class="num">${pc1(oc(v, "STOP_HARM") + oc(v, "STOP_GUARDRAIL"))}</td><td class="num">${pc1(oc(v, "INCONCLUSIVE") + oc(v, "HOLD_FOR_APPROVAL"))}</td><td class="num">${v.ledger_ok} of ${v.runs}</td></tr>`).join("");
   return `
-  <div class="sec"><h2>6. The dashboard spec's rule, against ours</h2><p>The spec proposes one winner call at the end plus a very strict daily harm check. The BRD proposes daily checks on stricter-early boundaries. They are different rules, so Canary runs either one (a setting) and we measured both on identical simulated traffic: ${nf(P.rulesets.aa.sequential.canary.runs)} tests per case, 14 days, 300 leads a day, 30% to B.</p>
+  <div class="sec"><h2>6. The dashboard spec's rule, against ours</h2><p>The spec proposes one winner call at the end plus a very strict daily harm check. The BRD proposes daily checks on stricter-early boundaries. They are different rules, so Picky runs either one (a setting) and we measured both on identical simulated traffic: ${nf(P.rulesets.aa.sequential.canary.runs)} tests per case, 14 days, 300 leads a day, 30% to B.</p>
     <div class="card"><table class="t"><thead><tr><th>Rule</th><th class="num">Ships B</th><th class="num">Stops B</th><th class="num">Calls to promote</th><th class="num">B calls served</th></tr></thead><tbody>${rs}</tbody></table>
     <p class="sub" style="margin-top:8px">Both valid rules keep false wins near the 2.5% budget when nothing changed. The spec's single look is simpler to explain; it can never promote early and catches a clearly worse B less often (its daily bar is stricter). Ours promotes sooner and protects better, at the price of a slightly higher false-stop rate. Neither is free: that is the trade, shown with numbers.</p></div></div>
   <div class="sec"><h2>7. Decisions made from results files</h2><p>The voice test runs elsewhere; the files come to us. This is the whole file path (write a file, read it, check it, decide), repeated on synthetic files with a known answer. The planned power is 80% for a +7 point lift.</p>
@@ -525,16 +525,16 @@ function renderProof() {
   const spRows = sp.map(x => `<tr><td>${pct(x.share, 0)}</td><td class="num">${nf(x.n)}</td><td class="num">${x.hash.mean_abs_err_pp.toFixed(2)}</td><td class="num"><b>${x.balanced.mean_abs_err_pp.toFixed(2)}</b></td><td class="num">${x.naive_random.mean_abs_err_pp.toFixed(2)}</td><td class="num">${pct(x.hash.inside_95_band, 0)}</td><td class="num">${x.balanced.worst_prefix_pp ? x.balanced.worst_prefix_pp.toFixed(2) : "-"}</td></tr>`).join("");
   const st = P.stickiness;
   app.innerHTML = `
-  <div class="note info"><b>Everything on this page is computed, not claimed.</b> Re-run it with <code>python -m canary proof</code> (seed ${P.seed}, ${nf(P.runs)} tests per case, ${nf(P.aa_runs)} for no-difference cases, ${P.seconds}s). Canary's decisions come from the same function the live engine uses; the typical approaches see exactly the same simulated calls.</div>
+  <div class="note info"><b>Everything on this page is computed, not claimed.</b> Re-run it with <code>python -m canary proof</code> (seed ${P.seed}, ${nf(P.runs)} tests per case, ${nf(P.aa_runs)} for no-difference cases, ${P.seconds}s). Picky's decisions come from the same function the live engine uses; the typical approaches see exactly the same simulated calls.</div>
   <div class="proof-hero sec">
     ${tile("False win when nothing changed", pct(outc(aa.canary, "PROMOTE")), `vs <b>${pct(outc(aa.naive_peek, "PROMOTE"))}</b> naive peeking`, `A = B in truth. Fraction of ${nf(sc.aa.methods.canary.runs)} tests that crowned B anyway. Our error budget is 2.5%.`)}
-    ${tile("Broken test: bad B shipped", pct(outc(srm.canary, "PROMOTE")), `vs <b>${pct(outc(srm.naive_peek, "PROMOTE"))}</b> naive peeking`, `B silently loses 35% of its non-converting calls from the log. Canary halts the test (${pct(outc(srm.canary, "HALT_SRM"), 0)} of runs); typical tools ship.`)}
-    ${tile("Less traffic wasted on a bad B", "-" + (exposure * 100).toFixed(0) + "%", `B calls served, vs a fixed-horizon test`, `${esc(sc.harm.label)}. Canary stops it in ${pct(outc(hm.canary, "STOP_HARM"), 0)} of runs, serving ${nf(hm.canary.mean_exposure_b)} instead of ${nf(hm.fixed_horizon.mean_exposure_b)} calls to B on average.`)}
+    ${tile("Broken test: bad B shipped", pct(outc(srm.canary, "PROMOTE")), `vs <b>${pct(outc(srm.naive_peek, "PROMOTE"))}</b> naive peeking`, `B silently loses 35% of its non-converting calls from the log. Picky halts the test (${pct(outc(srm.canary, "HALT_SRM"), 0)} of runs); typical tools ship.`)}
+    ${tile("Less traffic wasted on a bad B", "-" + (exposure * 100).toFixed(0) + "%", `B calls served, vs a fixed-horizon test`, `${esc(sc.harm.label)}. Picky stops it in ${pct(outc(hm.canary, "STOP_HARM"), 0)} of runs, serving ${nf(hm.canary.mean_exposure_b)} instead of ${nf(hm.fixed_horizon.mean_exposure_b)} calls to B on average.`)}
   </div>
-  <div class="sec"><h2>1. Why repeated checks need a correction</h2><p>Checking a p-value at every look and stopping the first time it dips below 0.05 declares false winners far more often than 5%. The more you look, the worse it gets. Canary spends its error budget across looks, so it stays near 2.5% (one-sided) however often you peek.</p>
-    <div class="card"><div class="legend"><span><i style="border-color:var(--ink)"></i>Naive peeking</span><span><i style="border-color:var(--accent)"></i>Canary</span><span><i style="border-color:var(--ink-3)"></i>2.5% error budget</span></div><div class="cv" id="c-sweep"></div><div class="sub">False-win rate when A = B, by number of looks. ${nf(P.aa_runs / 2)} simulated tests per point.</div></div></div>
+  <div class="sec"><h2>1. Why repeated checks need a correction</h2><p>Checking a p-value at every look and stopping the first time it dips below 0.05 declares false winners far more often than 5%. The more you look, the worse it gets. Picky spends its error budget across looks, so it stays near 2.5% (one-sided) however often you peek.</p>
+    <div class="card"><div class="legend"><span><i style="border-color:var(--ink)"></i>Naive peeking</span><span><i style="border-color:var(--accent)"></i>Picky</span><span><i style="border-color:var(--ink-3)"></i>2.5% error budget</span></div><div class="cv" id="c-sweep"></div><div class="sub">False-win rate when A = B, by number of looks. ${nf(P.aa_runs / 2)} simulated tests per point.</div></div></div>
   <div class="sec"><h2>2. Six truths, four methods</h2><p>Same simulated calls for every method. "Ships B" is red when shipping would be a mistake, green when it is right. Calls to promote is the median over runs that promoted.</p><div class="mx">${matrix}</div></div>
-  <div class="sec"><h2>3. Does it hold at other base rates and traffic shares?</h2><p>False-win rate of Canary when A = B, for rare, typical and common outcomes and small to large test slices. Naive peeking in small print.</p>
+  <div class="sec"><h2>3. Does it hold at other base rates and traffic shares?</h2><p>False-win rate of Picky when A = B, for rare, typical and common outcomes and small to large test slices. Naive peeking in small print.</p>
     <div class="card"><table class="t heat"><thead><tr><th>Baseline rate</th>${gridCols.map(s => `<th style="text-align:center">${pct(s, 0)} to B</th>`).join("")}</tr></thead><tbody>${gridRows.map(b => `<tr><td><b>${pct(b, 0)}</b></td>${gridCols.map(s => { const g = gcell(b, s); const v = g.canary_false_promote; return `<td class="cell" style="background:${v > 0.032 ? "var(--warn-wash)" : "var(--good-wash)"}" title="MDE ${pp(g.mde, 0)}, n_max ${nf(g.n_max)}, ${nf(g.runs)} runs"><b>${pct(v)}</b><div class="muted" style="font-size:11px">naive ${pct(g.naive_false_promote)}</div></td>`; }).join("")}</tr>`).join("")}</tbody></table>
     <div class="sub" style="margin-top:8px">${nf(P.runs)} tests per cell. Anything above ~3.2% is shaded: the normal approximation is slightly liberal when the test slice is tiny and the outcome is rare. We report it instead of hiding it.</div></div></div>
   <div class="sec"><h2>4. Traffic split accuracy and stickiness</h2><p>Mean absolute error between configured and achieved B share, in percentage points, over repeated assignments. "Balanced" uses permuted blocks, so it stays tight to the target at every moment, not just at round numbers; "hash" is stateless and binomial; "coin flip" is the typical per-call random.</p>
@@ -542,7 +542,7 @@ function renderProof() {
     <section class="card"><h3>Stickiness</h3><div class="sub">${nf(st.calls)} calls, ${nf(st.distinct_leads)} leads, ${nf(st.repeat_calls)} repeat calls (30% repeat rate).</div>
       <table class="t" style="margin-top:8px"><thead><tr><th>Router</th><th class="num">Repeat calls that changed arm</th></tr></thead><tbody>
       <tr><td>Coin flip per call (typical)</td><td class="num">${nf(st.naive_random.arm_flips)} (${pct(st.naive_random.flip_rate, 1)})</td></tr>
-      <tr class="ours"><td>Hash (Canary)</td><td class="num">${st.hash.arm_flips}</td></tr><tr class="ours"><td>Balanced (Canary)</td><td class="num">${st.balanced.arm_flips}</td></tr></tbody></table>
+      <tr class="ours"><td>Hash (Picky)</td><td class="num">${st.hash.arm_flips}</td></tr><tr class="ours"><td>Balanced (Picky)</td><td class="num">${st.balanced.arm_flips}</td></tr></tbody></table>
       <p class="sub" style="margin-top:8px">A second, independent hash router with no shared state disagreed on ${st.hash.independent_server_disagreements} of ${nf(st.distinct_leads)} leads, so two servers can route the same lead without talking to each other. Balanced mode remembers each lead in a ledger.</p></section></div></div>
   <div class="sec"><h2>5. When the auto-tagger is imperfect</h2><p>Outcomes are tagged by an evaluator, and evaluators make mistakes. This table is a model: it shows what a tagger of a given quality does to a test planned for a ${pp(P.config.mde, 0)} lift from ${pct(P.config.baseline, 0)}. Plug in the measured sensitivity and specificity once real labels exist.</p>
     <div class="card"><table class="t"><thead><tr><th>Tagger</th><th class="num">Sensitivity</th><th class="num">Specificity</th><th class="num">Observed lift</th><th class="num">Power</th><th class="num">Calls for 80% power</th></tr></thead><tbody>${P.evaluator_error.map(e => `<tr><td>${esc(e.tagger)}</td><td class="num">${pct(e.sensitivity, 0)}</td><td class="num">${pct(e.specificity, 0)}</td><td class="num">${e.observed_lift_pp.toFixed(1)} pp</td><td class="num">${pct(e.power, 0)}</td><td class="num">${nf(e.calls_needed_for_80pct_power)} (&times;${e.extra_calls_factor.toFixed(2)})</td></tr>`).join("")}</tbody></table></div></div>
@@ -555,7 +555,7 @@ function renderProof() {
       <path d="${path(rowsK.map(r => [r.n, r.c.false_promote]), sx, sy)}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>
       ${rowsK.map(r => dotSvg(sx(r.n).toFixed(1), sy(r.nv.false_promote).toFixed(1), "var(--ink)") + dotSvg(sx(r.n).toFixed(1), sy(r.c.false_promote).toFixed(1), "var(--accent)")).join("")}
       <text x="${sx(nmax) - 2}" y="${sy(rowsK[nmax].nv.false_promote) - 12}" text-anchor="end" class="lbl">${pct(rowsK[nmax].nv.false_promote)}</text><text x="${sx(nmax) - 2}" y="${sy(rowsK[nmax].c.false_promote) + 22}" text-anchor="end" class="lbl">${pct(rowsK[nmax].c.false_promote)}</text>`,
-    tip: r => `<b>${ks[r.n]} look${ks[r.n] === 1 ? "" : "s"}</b><div class="r"><span>naive peeking</span><span>${pct(r.nv.false_promote)}</span></div><div class="r"><span>Canary</span><span>${pct(r.c.false_promote)}</span></div>`
+    tip: r => `<b>${ks[r.n]} look${ks[r.n] === 1 ? "" : "s"}</b><div class="r"><span>naive peeking</span><span>${pct(r.nv.false_promote)}</span></div><div class="r"><span>Picky</span><span>${pct(r.c.false_promote)}</span></div>`
   }, rowsK);
 }
 

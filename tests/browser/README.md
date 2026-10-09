@@ -8,5 +8,6 @@ node tests/browser/console_flow.mjs  "file://$PWD/dist/canary_demo.html"     # o
 node tests/browser/console_mobile.mjs "file://$PWD/dist/canary_demo.html"
 ./start.sh                                                                  # then, with the live server on port 8801: python -m canary serve --port 8801
 node tests/browser/console_live.mjs                                          # new experiment, pasted prompt, file import
+node tests/browser/store_e2e.mjs "$(command -v python3)"                       # history database: two browsers, a restart, a reset (starts its own server on port 8797, throw-away database)
 ```
 Screenshots go to `/tmp/canary_shots`. The Python tests (`python -m unittest discover -s tests`) do not need any of this.

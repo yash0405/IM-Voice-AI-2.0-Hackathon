@@ -1,13 +1,13 @@
 "use strict";
-/* Canary - the simple front door. Plain words, one question per screen, big pictures.
+/* Picky - the simple front door. Plain words, one question per screen, big pictures.
    Everything technical lives under "Advanced". Uses the same engine data as the advanced views. */
 
 const V = { key: null, rec: null, meta: null, k: 1, timer: null, playing: false, tail: null, back: null,
             plan: { lpd: 600, b: 0.45, m: 0.07, days: 14, s: 0.10 } };
 
 const PICK = {
-  fix_ships:      { title: "The fix works, so it ships", blurb: "The edit really helps. Canary proves it and rolls it out.", tone: "good", ic: "check" },
-  fix_harms:      { title: "The fix backfires, so it is stopped", blurb: "The edit makes things worse. Canary pulls it early.", tone: "bad", ic: "x" },
+  fix_ships:      { title: "The fix works, so it ships", blurb: "The edit really helps. Picky proves it and rolls it out.", tone: "good", ic: "check" },
+  fix_harms:      { title: "The fix backfires, so it is stopped", blurb: "The edit makes things worse. Picky pulls it early.", tone: "bad", ic: "x" },
   fix_flat:       { title: "The fix does almost nothing", blurb: "Too small to prove, so nothing changes.", tone: "neutral", ic: "approx" },
   b_wins:         { title: "The new prompt is better", blurb: "More buyers give their requirement.", tone: "good", ic: "check" },
   b_harmful:      { title: "The new prompt is worse", blurb: "Fewer buyers give their requirement.", tone: "bad", ic: "x" },
@@ -21,7 +21,7 @@ const PICK = {
   file_b_flat:        { title: "No real difference", blurb: "Results file: nothing to find. It says how much more data would settle it.", tone: "neutral", ic: "approx" },
   file_guardrail_hold:{ title: "B wins, but calls run longer", blurb: "Results file: held for a person to approve or reject.", tone: "warn", ic: "alert" },
   file_early_hangup:  { title: "B wins, but more early hang-ups", blurb: "Results file: stopped by a second guardrail.", tone: "bad", ic: "clock" },
-  file_messy:         { title: "A messy export", blurb: "Results file: duplicates, other names, leads served both prompts. Canary lists what it found.", tone: "warn", ic: "link" }
+  file_messy:         { title: "A messy export", blurb: "Results file: duplicates, other names, leads served both prompts. Picky lists what it found.", tone: "warn", ic: "link" }
 };
 
 const stopV = () => { V.playing = false; clearInterval(V.timer); V.timer = null; };
@@ -115,11 +115,11 @@ function fixProve(F) {
   const P = F.plan, fx = D.scenarios.filter(s => s.meta.key.startsWith("fix_")), rest = D.scenarios.filter(s => !s.meta.key.startsWith("fix_"));
   const tbl = P && P.table ? `<table class="t fx-cost"><thead><tr><th>A lift of</th><th>needs about</th><th>which is</th></tr></thead><tbody>${P.table.map(r => `<tr class="${r.mde === P.mde ? "hit" : ""}"><td>${(r.mde * 100).toFixed(0)} point${r.mde > 0.015 ? "s" : ""}</td><td>${nf(r.n_max)} calls</td><td>${r.days >= 60 ? "about " + Math.round(r.days) + " days" : Math.ceil(r.days) + " days"}</td></tr>`).join("")}</tbody></table>` : "";
   return fixStep(4, "Prove it on live traffic, then roll it out", `
-    ${P ? `<p class="s-lead" style="margin-bottom:14px">At ${nf(P.leads_per_day)} calls a day with half on the fix, being sure of a <b>${(P.mde * 100).toFixed(0)}-point</b> lift (${rate1(P.baseline)} to ${rate1(P.baseline + P.mde)}) takes about <b>${nf(P.n_max)} calls, roughly ${Math.ceil(P.days_needed)} days</b>. Canary checks after every batch and acts the moment the evidence is strong, so it can finish sooner.</p>
+    ${P ? `<p class="s-lead" style="margin-bottom:14px">At ${nf(P.leads_per_day)} calls a day with half on the fix, being sure of a <b>${(P.mde * 100).toFixed(0)}-point</b> lift (${rate1(P.baseline)} to ${rate1(P.baseline + P.mde)}) takes about <b>${nf(P.n_max)} calls, roughly ${Math.ceil(P.days_needed)} days</b>. Picky checks after every batch and acts the moment the evidence is strong, so it can finish sooner.</p>
     ${tbl}<p class="s-sm" style="margin:8px 0 14px">Small lifts are expensive to prove. Verbatim loops are rare in the real calls, so a consistency fix like this one is unlikely to move conversion by more than a point or so. That is why it is judged mainly on safety (no harm, no longer calls) and not on a conversion win.</p>` : ""}
-    <p class="s-sm" style="margin:0 0 14px">Pick what the fix really does and watch Canary find out. These are simulations with a known answer, so you can see it get each one right.</p>
+    <p class="s-sm" style="margin:0 0 14px">Pick what the fix really does and watch Picky find out. These are simulations with a known answer, so you can see it get each one right.</p>
     <div class="s-cards">${cards(fx)}</div>
-    <details class="s-how"><summary>More situations Canary handles</summary><div class="s-cards" style="margin-top:14px">${cards(rest)}</div></details>`);
+    <details class="s-how"><summary>More situations Picky handles</summary><div class="s-cards" style="margin-top:14px">${cards(rest)}</div></details>`);
 }
 
 function renderTry() {
@@ -127,7 +127,7 @@ function renderTry() {
   if (V.key) return renderRun();
   const F = D.fix;
   if (!F || !F.mine || !F.mine.issues.length) {                         // no labels yet: the plain scenario picker
-    $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">Test a prompt change safely</h1><p class="s-lead">Canary tries a new prompt on a few buyers and tells you, in plain words, whether to roll it out. Pick a situation to watch it work.</p><div class="s-cards">${cards(D.scenarios)}</div></div>`;
+    $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">Test a prompt change safely</h1><p class="s-lead">Picky tries a new prompt on a few buyers and tells you, in plain words, whether to roll it out. Pick a situation to watch it work.</p><div class="s-cards">${cards(D.scenarios)}</div></div>`;
     return wire();
   }
   $("#app").innerHTML = `<div class="s-wrap">
@@ -169,7 +169,7 @@ function renderRun() {
     </div>
     <div id="result"></div>
     <div class="s-actions"><button class="s-btn" id="sp"></button><button class="s-link" id="ss">Skip to the result</button></div>
-    <details class="s-how" id="how"><summary>How did Canary decide?</summary><div id="howbody"></div></details>
+    <details class="s-how" id="how"><summary>How did Picky decide?</summary><div id="howbody"></div></details>
   </div>`;
   $("#sb").onclick = () => { V.key = null; if (V.back === "files") { stopV(); go("files"); } else renderTry(); };
   $("#sp").onclick = () => { if (V.k >= V.rec.looks.length) { V.k = 1; playV(); } else if (V.playing) { stopV(); updateRun(); } else playV(); };
@@ -217,10 +217,10 @@ function updateRun() {
   $("#plabel").textContent = `${nf(row.n)} of ${nf(rec.design.n_max)} planned ${V.back === "files" ? "leads" : "calls"}`;
   let st;
   if (final && res.status === "running") st = `Results so far cover ${res.days_seen} of ${res.window_days} days. No decision yet: the evidence has not crossed a line.`;
-  else if (final) st = "Canary has made its decision.";
+  else if (final) st = "Picky has made its decision.";
   else if (row.z > 1.2) st = "Leaning towards the new prompt, but not sure yet. Keep collecting calls.";
   else if (row.z < -1.2) st = "Leaning against the new prompt, but not sure yet. Keep collecting calls.";
-  else st = "No clear difference yet. Too early to say, so Canary keeps collecting calls.";
+  else st = "No clear difference yet. Too early to say, so Picky keeps collecting calls.";
   $("#status").textContent = st;
   const sp = $("#sp"); sp.innerHTML = final ? `${icon("play", 14)} Watch again` : (V.playing ? `${icon("pause", 14)} Pause` : `${icon("play", 14)} Continue`);
   $("#ss").hidden = final;
@@ -234,17 +234,17 @@ function usualTool() {
   const naive = V.rec.looks.find(r => r.naive_cross && r.z > 0);
   if (k.startsWith("fix_")) {
     const rec = V.rec, d = rec.design, r = rec.result, planB = Math.round(d.n_max * rec.config.share_b);
-    if (k === "fix_ships") return `A test that runs for a fixed length would wait for all <b>${nf(d.n_max)}</b> calls before deciding. Canary was sure after <b>${nf(r.calls_analysed)}</b>, so the fix reached everyone about <b>${Math.round((1 - r.calls_analysed / d.n_max) * 100)}%</b> sooner, without raising the chance of a false win.`;
-    if (k === "fix_harms") return `A fixed-length test would have kept about <b>${nf(planB)}</b> buyers on the worse prompt until the end. Canary stopped after <b>${nf(r.exposed_b_calls)}</b>.`;
+    if (k === "fix_ships") return `A test that runs for a fixed length would wait for all <b>${nf(d.n_max)}</b> calls before deciding. Picky was sure after <b>${nf(r.calls_analysed)}</b>, so the fix reached everyone about <b>${Math.round((1 - r.calls_analysed / d.n_max) * 100)}%</b> sooner, without raising the chance of a false win.`;
+    if (k === "fix_harms") return `A fixed-length test would have kept about <b>${nf(planB)}</b> buyers on the worse prompt until the end. Picky stopped after <b>${nf(r.exposed_b_calls)}</b>.`;
     return `With an effect this small, a tool that peeks every day would still announce a winner <b>${pc(o("aa", "naive_peek", "PROMOTE"))}</b> of the time even when nothing changed (in our tests). Saying &ldquo;we cannot tell&rdquo; is the honest answer, and the next edit gets its turn.`;
   }
-  if (k === "guardrail_hold") return `A tool that only watches the goal would have rolled this out; one that only watches handling time would have thrown it away. Canary does neither: it holds the win for a person and logs the decision either way.`;
+  if (k === "guardrail_hold") return `A tool that only watches the goal would have rolled this out; one that only watches handling time would have thrown it away. Picky does neither: it holds the win for a person and logs the decision either way.`;
   if (k.startsWith("file_") && P.files) return `We tested the file path on <b>${nf(P.files.aa.runs)}</b> synthetic files where A and B were identical: it crowned a winner <b>${pc(P.files.aa.outcomes.PROMOTE.rate)}</b> of the time (budget 2.5%). A plain "p &lt; 0.05 every day" rule crowns a false winner about 1 time in ${Math.round(1 / (P.rulesets ? P.rulesets.aa.final_look.naive_peek.outcomes.PROMOTE.rate : 0.11))}.`;
-  if (k === "peeking_trap") return `A usual tool that checks the numbers every day would have announced a winner after ${naive ? nf(naive.n) : "about 1,400"} calls and rolled it out. That would have been a mistake: there is no real difference. In our tests, usual tools make this mistake <b>${pc(o("aa", "naive_peek", "PROMOTE"))}</b> of the time. Canary: <b>${pc(o("aa", "canary", "PROMOTE"))}</b>.`;
-  if (k === "srm_broken") return `A usual tool would have rolled this out, because the new prompt looked ${((V.rec.looks[V.rec.looks.length - 1].diff) * 100).toFixed(1)} points better. In our tests it does so <b>${pc(o("srm_bug", "naive_peek", "PROMOTE"))}</b> of the time. Canary caught the problem and stopped: it rolls out a broken test only <b>${pc(o("srm_bug", "canary", "PROMOTE"))}</b> of the time.`;
-  if (k === "guardrail_veto") return `A tool that only watches BuyLead conversion would have rolled this out (<b>${pc(o("guardrail", "naive_peek", "PROMOTE"))}</b> of the time in our tests). Canary also checks average handling time, so it did not.`;
-  if (k === "b_harmful") return `A test that runs for a fixed length keeps sending buyers to a worse prompt until the end: about <b>${nf(S.harm.methods.fixed_horizon.mean_exposure_b)}</b> buyers on average, against <b>${nf(S.harm.methods.canary.mean_exposure_b)}</b> with Canary.`;
-  if (k === "b_wins") return `A fixed-length test needs about <b>${nf(S.win.methods.fixed_horizon.median_n_when_promoted)}</b> calls before it can decide. Canary typically decides after <b>${nf(S.win.methods.canary.median_n_when_promoted)}</b>.`;
+  if (k === "peeking_trap") return `A usual tool that checks the numbers every day would have announced a winner after ${naive ? nf(naive.n) : "about 1,400"} calls and rolled it out. That would have been a mistake: there is no real difference. In our tests, usual tools make this mistake <b>${pc(o("aa", "naive_peek", "PROMOTE"))}</b> of the time. Picky: <b>${pc(o("aa", "canary", "PROMOTE"))}</b>.`;
+  if (k === "srm_broken") return `A usual tool would have rolled this out, because the new prompt looked ${((V.rec.looks[V.rec.looks.length - 1].diff) * 100).toFixed(1)} points better. In our tests it does so <b>${pc(o("srm_bug", "naive_peek", "PROMOTE"))}</b> of the time. Picky caught the problem and stopped: it rolls out a broken test only <b>${pc(o("srm_bug", "canary", "PROMOTE"))}</b> of the time.`;
+  if (k === "guardrail_veto") return `A tool that only watches BuyLead conversion would have rolled this out (<b>${pc(o("guardrail", "naive_peek", "PROMOTE"))}</b> of the time in our tests). Picky also checks average handling time, so it did not.`;
+  if (k === "b_harmful") return `A test that runs for a fixed length keeps sending buyers to a worse prompt until the end: about <b>${nf(S.harm.methods.fixed_horizon.mean_exposure_b)}</b> buyers on average, against <b>${nf(S.harm.methods.canary.mean_exposure_b)}</b> with Picky.`;
+  if (k === "b_wins") return `A fixed-length test needs about <b>${nf(S.win.methods.fixed_horizon.median_n_when_promoted)}</b> calls before it can decide. Picky typically decides after <b>${nf(S.win.methods.canary.median_n_when_promoted)}</b>.`;
   if (k === "inconclusive") return `With an effect this small, some tools would still announce a winner (<b>${pc(o("small", "naive_peek", "PROMOTE"))}</b> of the time in our tests). Saying &ldquo;we cannot tell&rdquo; is the honest answer.`;
   return "";
 }
@@ -260,16 +260,16 @@ function B_origin() {
 }
 
 function resultCard() {
-  const ext = V.back === "files";            // results from files: Canary advises, it does not control the live traffic
+  const ext = V.back === "files";            // results from files: Picky advises, it does not control the live traffic
   const rec = V.rec, res = rec.result, last = rec.looks[rec.looks.length - 1], c = rec.config, g = last.guardrail;
   const pts = ((last.rateB - last.rateA) * 100), exp = res.exposed_b_calls, days = Math.max(1, Math.ceil((new Date(last.time) - new Date(c.start)) / 86400000));
   const T = {
     PROMOTE: ["good", "check", ext ? "The new prompt is better: the evidence supports shipping it." : "The new prompt is better. It is now rolled out to everyone.",
-      `It turns ${rate1(last.rateB)} of calls into BuyLeads against ${rate1(last.rateA)} today (${pts0(pts)} points)${g ? ", and average handling time stayed within the safe limit" : ""}. The evidence was strong enough to be sure it is not luck.`, ext ? "Canary does not control your live traffic: switch everyone to the new prompt yourself and keep a rollback path." : "All buyers now get the new prompt."],
-    STOP_HARM: ["bad", "x", ext ? "The new prompt is worse: the evidence says stop it." : "The new prompt is worse, so Canary stopped it early.",
+      `It turns ${rate1(last.rateB)} of calls into BuyLeads against ${rate1(last.rateA)} today (${pts0(pts)} points)${g ? ", and average handling time stayed within the safe limit" : ""}. The evidence was strong enough to be sure it is not luck.`, ext ? "Picky does not control your live traffic: switch everyone to the new prompt yourself and keep a rollback path." : "All buyers now get the new prompt."],
+    STOP_HARM: ["bad", "x", ext ? "The new prompt is worse: the evidence says stop it." : "The new prompt is worse, so Picky stopped it early.",
       `It turned only ${rate1(last.rateB)} of calls into BuyLeads against ${rate1(last.rateA)} today. Only ${nf(exp)} buyers ever heard it.`, ext ? "Send everyone back to today's prompt." : "Everyone is back on today's prompt."],
     INCONCLUSIVE: ["neutral", "approx", "No real difference was found, so nothing changes.",
-      `After the full test the two prompts look the same (${rate1(last.rateB)} vs ${rate1(last.rateA)}). Canary will not roll out a change it cannot prove.`, "Today's prompt stays."],
+      `After the full test the two prompts look the same (${rate1(last.rateB)} vs ${rate1(last.rateA)}). Picky will not roll out a change it cannot prove.`, "Today's prompt stays."],
     HALT_SRM: ["warn", "link", "The test itself broke, so nothing was rolled out.",
       `The new prompt looked about ${Math.abs(Math.round(pts))} points better, but calls from one group were going missing from the records, so the numbers cannot be trusted. Fix the tracking, then run the test again.`, "Everyone is on today's prompt."],
     STOP_GUARDRAIL: (c.guard_rate && res.reason.indexOf(c.guard_rate) >= 0)
@@ -281,7 +281,7 @@ function resultCard() {
       res.hold_cause === "manual_approval" ? `The new prompt beat today's (${rate1(last.rateB)} vs ${rate1(last.rateA)}) and approval mode is manual.` :
       `The new prompt makes more of the goal (${rate1(last.rateB)} vs ${rate1(last.rateA)}), but a guardrail could not be proven within its limit${g ? `: handling time is ${(g.worse * 100).toFixed(0)}% longer, the limit is ${(c.guardrail_margin * 100).toFixed(0)}%` : ""}. A clear win is not thrown away, and it is not shipped on its own.`,
       "Nothing changes for callers until a person approves or rejects. Either click is saved in the record."],
-    CONTINUE: ["run", "play", "Still running: no decision yet.", `The results so far cover ${res.days_seen} of ${res.window_days} days. The evidence has not crossed a line in either direction.`, "Add the next day's results and Canary looks again."]
+    CONTINUE: ["run", "play", "Still running: no decision yet.", `The results so far cover ${res.days_seen} of ${res.window_days} days. The evidence has not crossed a line in either direction.`, "Add the next day's results and Picky looks again."]
   }[res.kind] || ["neutral", "approx", res.kind, res.reason, ""];
   const ut = usualTool();
   const lenTxt = g ? `${g.worse >= 0 ? "+" : ""}${(g.worse * 100).toFixed(0)}% (limit +${(c.guardrail_margin * 100).toFixed(0)}%)` : "";
@@ -310,8 +310,8 @@ function renderHow() {
   const c = V.rec.config;
   $("#howbody").innerHTML = `<ol class="s-steps">
     <li><b>Fair split.</b> ${pct(c.share_b, 0)} of buyers hear the new prompt. A buyer always gets the same prompt, every time they phone, so the test is not muddied.</li>
-    <li><b>Check as we go.</b> After every batch of calls, Canary asks: is the new prompt clearly better, clearly worse, or still unclear? The coloured zones on the gauge are those answers.</li>
-    <li><b>Be sure before acting.</b> Canary only acts when luck is very unlikely to explain the result. Because it plans for repeated checking, it cannot be fooled by a lucky streak.</li>
+    <li><b>Check as we go.</b> After every batch of calls, Picky asks: is the new prompt clearly better, clearly worse, or still unclear? The coloured zones on the gauge are those answers.</li>
+    <li><b>Be sure before acting.</b> Picky only acts when luck is very unlikely to explain the result. Because it plans for repeated checking, it cannot be fooled by a lucky streak.</li>
     <li><b>Safety checks.</b> It also watches average handling time and whether call tracking is healthy. Any problem stops the rollout.</li></ol>
     <button class="s-link" id="tech">See the technical view of this test</button>`;
   $("#tech").onclick = () => {
@@ -330,7 +330,7 @@ function renderPlan() {
   if (!c) { $("#app").innerHTML = `<div class="s-wrap"><p class="s-lead">Please pick a smaller improvement: today's rate plus the improvement must stay below 95%.</p></div>`; return; }
   const cap = p.lpd * p.days, f = Math.min(1, cap / c.n_max), fk = fkey(f), power = fk ? c.power_at[fk] : 0, days = Math.ceil(c.n_max / p.lpd);
   let tone, head, body;
-  if (f >= 1) { tone = "good"; head = "Yes, this test can give you a clear answer."; body = `You need about ${nf(c.n_max)} calls, which is roughly ${days} day${days > 1 ? "s" : ""} of your traffic. If the new prompt really is ${(p.m * 100).toFixed(0)} points better, there is about a ${Math.round(power * 100)}% chance Canary will spot it.`; }
+  if (f >= 1) { tone = "good"; head = "Yes, this test can give you a clear answer."; body = `You need about ${nf(c.n_max)} calls, which is roughly ${days} day${days > 1 ? "s" : ""} of your traffic. If the new prompt really is ${(p.m * 100).toFixed(0)} points better, there is about a ${Math.round(power * 100)}% chance Picky will spot it.`; }
   else if (power >= 0.65) { tone = "warn"; head = "Maybe. It could work, but it is tight."; body = `You need about ${nf(c.n_max)} calls (${days} days). In ${p.days} days you would have ${Math.round(f * 100)}% of that, so the chance of spotting a real improvement drops to about ${Math.round(power * 100)}%.`; }
   else { tone = "bad"; head = "Not as set. This test would probably end with no answer."; body = `You need about ${nf(c.n_max)} calls (${days} days at your traffic), but ${p.days} days only gives ${Math.round(f * 100)}% of that. The chance of spotting a real improvement would be just ${Math.round(power * 100)}%.`; }
   let tip = "";
@@ -340,7 +340,7 @@ function renderPlan() {
   }
   const pills = (arr, key, fmt) => `<span class="s-pills">${arr.map(x => `<button data-k="${key}" data-v="${x}" aria-pressed="${x === p[key]}">${fmt(x)}</button>`).join("")}</span>`;
   $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">Can this test give a clear answer?</h1>
-    <p class="s-lead">Fill in the sentence. Canary tells you before you start whether the test can work.</p>
+    <p class="s-lead">Fill in the sentence. Picky tells you before you start whether the test can work.</p>
     <div class="s-sentence">We handle <input type="number" id="lpd" value="${p.lpd}" min="10" step="50"> calls a day. Today, <span class="s-pills">${G.baselines.map(x => `<button data-k="b" data-v="${x}" aria-pressed="${x === p.b}">${Math.round(x * 100)}%</button>`).join("")}</span> of calls become a BuyLead. We care about an improvement of ${pills(G.mdes, "m", x => "+" + Math.round(x * 100) + (Math.round(x * 100) === 1 ? " point" : " points"))}. We can test for <input type="number" id="days" value="${p.days}" min="1" max="120"> days.</div>
     <div class="s-result ${tone}" style="margin-top:20px"><div><div class="s-rt">${head}</div><p class="s-rd">${body}</p>${tip ? `<p class="s-next"><b>${esc(tip)}</b></p>` : ""}</div></div>
     <details class="s-how"><summary>More options</summary><div style="padding-top:8px">Share of buyers who try the new prompt: ${pills(G.shares, "s", x => Math.round(x * 100) + "%")}</div></details></div>`;
@@ -357,14 +357,14 @@ function renderHome() {
   const card = (key, ic, tone, t, b, go) => `<button class="s-card" data-go="${go}"><span class="s-ic ${tone}">${icon(ic, 26)}</span><span class="s-ct">${t}</span><span class="s-cb">${b}</span><span class="s-go">Open ${icon("fwd", 14)}</span></button>`;
   $("#app").innerHTML = `<div class="s-wrap">
     <h1 class="s-h1">Did your test really win?</h1>
-    <p class="s-lead">Canary judges an A/B test of two prompts (or any change) and answers in plain words: <b>ship it</b>, <b>stop it</b>, <b>let a person decide</b>, or <b>keep what you have</b>. It always says how sure it is, and it says so when it cannot tell.</p>
+    <p class="s-lead">Picky judges an A/B test of two prompts (or any change) and answers in plain words: <b>ship it</b>, <b>stop it</b>, <b>let a person decide</b>, or <b>keep what you have</b>. It always says how sure it is, and it says so when it cannot tell.</p>
     <div class="f-grid" style="grid-template-columns:repeat(auto-fit,minmax(380px,1fr))">
-      ${card("files", "check", "good", "Judge a test's results", "You have results from the voice platform. Canary checks the data and decides.", "files")}
+      ${card("files", "check", "good", "Judge a test's results", "You have results from the voice platform. Picky checks the data and decides.", "files")}
       ${card("plan", "clock", "neutral", "Can my test finish?", "Before you start: how many leads and how many days you really need.", "plan")}
       ${card("try", "up", "warn", "Suggest a change worth testing", "Find a weak spot in the prompt, draft one small edit, and prove it.", "try")}
       ${card("trust", "link", "neutral", "Why trust it?", "What we measured against the usual shortcuts, and what is only simulated.", "trust")}
     </div>
-    <div class="s-honest"><b>What is real, what is not.</b> The demos use <b>simulated</b> results with a known answer, so we can check the decision is right; call lengths come from 713 real recordings. The decision rules were tested on thousands of simulated tests. Machine labels of the real calls are provisional until a person checks a sample. Canary never claims that a real prompt is better without real results.</div>
+    <div class="s-honest"><b>What is real, what is not.</b> The demos use <b>simulated</b> results with a known answer, so we can check the decision is right; call lengths come from 713 real recordings. The decision rules were tested on thousands of simulated tests. Machine labels of the real calls are provisional until a person checks a sample. Picky never claims that a real prompt is better without real results.</div>
     <p class="s-foot">More: <button class="s-link" data-go="hear">Hear it</button> &middot; <button class="s-link" data-go="label">Label calls</button> &middot; <button class="s-link" data-go="exp">Technical view</button></p>
   </div>`;
   $$("#app [data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
@@ -381,7 +381,7 @@ function renderFiles() {
     return `<button class="s-card" data-fkey="${x.key}"><span class="s-ic ${p.tone}">${icon(p.ic, 26)}</span><span class="s-ct">${esc(p.title)}</span><span class="s-cb">${esc(p.blurb)}</span><span class="s-go">Decide from this file ${icon("fwd", 14)}</span></button>`; }).join("");
   $("#app").innerHTML = `<div class="s-wrap">
     <h1 class="s-h1">Judge a test that ran somewhere else</h1>
-    <p class="s-lead">The voice calls themselves are made by the voice platform, not by Canary. Give Canary the <b>results</b>: one row per call, saying which prompt served it and what happened. Canary checks the files, then decides with the rules we proved: <b>ship B, stop B, hold for a person, or keep A</b>.</p>
+    <p class="s-lead">The voice calls themselves are made by the voice platform, not by Picky. Give Picky the <b>results</b>: one row per call, saying which prompt served it and what happened. Picky checks the files, then decides with the rules we proved: <b>ship B, stop B, hold for a person, or keep A</b>.</p>
     <div class="s-honest" style="margin-top:0"><b>These example files are synthetic.</b> They were generated from a known truth, with real call lengths, so we can check that the decision is right. They say nothing about how a real prompt performs.</div>
     <div class="f-grid">${cardsF}</div>
     <div class="s-panel" style="margin-top:22px"><h2 class="s-h2">Use your own files</h2>
@@ -449,12 +449,12 @@ function renderTrust() {
   const sp = P.split_accuracy.filter(x => x.n === 1037), st = P.stickiness;
   const card = (title, a, aLbl, b, bLbl, text) => `<div class="s-trust"><h3>${title}</h3><div class="s-vs"><div class="ours"><b>${a}</b><span>${aLbl}</span></div><div class="usual"><b>${b}</b><span>${bLbl}</span></div></div><p>${text}</p></div>`;
   $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">Why you can trust it</h1>
-    <p class="s-lead">We tried Canary and the usual approaches on thousands of simulated tests where we know the right answer. Here is how often each gets it wrong.</p>
+    <p class="s-lead">We tried Picky and the usual approaches on thousands of simulated tests where we know the right answer. Here is how often each gets it wrong.</p>
     <div class="s-trustgrid">
-      ${card("It does not fall for lucky streaks", pc1(o("aa", "canary", "PROMOTE")), "Canary", pc(o("aa", "naive_peek", "PROMOTE")), "usual tools", "When nothing really changed, how often a fake winner is announced.")}
-      ${card("It notices when the test is broken", pc(o("srm_bug", "canary", "PROMOTE")), "Canary", pc(o("srm_bug", "naive_peek", "PROMOTE")), "usual tools", "How often a prompt is rolled out even though call tracking was losing calls.")}
+      ${card("It does not fall for lucky streaks", pc1(o("aa", "canary", "PROMOTE")), "Picky", pc(o("aa", "naive_peek", "PROMOTE")), "usual tools", "When nothing really changed, how often a fake winner is announced.")}
+      ${card("It notices when the test is broken", pc(o("srm_bug", "canary", "PROMOTE")), "Picky", pc(o("srm_bug", "naive_peek", "PROMOTE")), "usual tools", "How often a prompt is rolled out even though call tracking was losing calls.")}
       ${card("It protects buyers from a bad prompt", nf(S.harm.methods.canary.mean_exposure_b), "buyers", nf(S.harm.methods.fixed_horizon.mean_exposure_b), "fixed-length test", `Buyers who hear a worse prompt before it is stopped: ${pc(expo)} fewer.`)}
-      ${card("A buyer always gets the same prompt", "0", "Canary", pc(st.naive_random.flip_rate), "random per call", "Buyers who heard a different prompt on a repeat call.")}
+      ${card("A buyer always gets the same prompt", "0", "Picky", pc(st.naive_random.flip_rate), "random per call", "Buyers who heard a different prompt on a repeat call.")}
     </div>
     <div class="s-honest"><b>Be clear about what is simulated.</b> These tests use simulated call outcomes with a known answer. Call lengths come from your 713 real recordings. The real-call numbers on the first tab come from Sarvam's tagging of ${nf((D.fix && D.fix.mine && D.fix.mine.n_calls) || 0)} recordings; those labels have not all been checked by a person yet, so how accurate they are is measured only once the 40-call spot-check is done.</div>
     <p class="s-foot">Every number comes from code you can re-run with one command. <button class="s-link" id="adv">Technical details</button></p></div>`;

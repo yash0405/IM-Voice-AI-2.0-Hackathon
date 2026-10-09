@@ -13,6 +13,7 @@
 - Factor catalog: `canary/catalog.py` (display name, data column, allowed values). The router, segment builder, balance check and the dashboard all read it (the dashboard through the bundle).
 - Metric catalog: `canary/metriclib.py` (built-in metric definitions); custom metrics are saved in Settings > Metrics and use the same definition format.
 - Duration and stat function: `durationPlan` in `web/console/05-plan.js`. Step 5 and the "At a glance" panel both call it. No hard-coded numbers: every number shown comes from state and data.
+- Test history (launched tests, their state, every click, the decision record): `canary/store.py`, one SQLite file `data/history.db` written by the live server. The browser's localStorage is only a cache there; the hosted copy and the offline file keep state in the browser.
 - The 30-day history the previews use: `canary/history.py` (a labelled synthetic placeholder: no real lead table was provided). Replace it with the real table and nothing else changes.
 
 ## House rules

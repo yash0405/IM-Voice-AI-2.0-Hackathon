@@ -1,6 +1,6 @@
 # Start here (5 minutes, no technical knowledge needed)
 
-**What Canary does.** You changed something about a bot (a new prompt, a new flow) and ran it next to the old one. Canary reads the results and tells you in plain words whether to **ship it**, **stop it**, **let a person decide**, or **keep what you have**. It always says how sure it is, and says so when it cannot tell.
+**What Picky does.** You changed something about a bot (a new prompt, a new flow) and ran it next to the old one. Picky reads the results and tells you in plain words whether to **ship it**, **stop it**, **let a person decide**, or **keep what you have**. It always says how sure it is, and says so when it cannot tell.
 
 ## Open it
 - **Double-click `dist/canary_demo.html`** (works offline), or run **`./start.sh`** for the live version (it can also run new experiments and read your own files).
@@ -25,7 +25,7 @@ Five experiments are already running, each paused on day 2 (simulated, with a kn
 ## What to keep in mind
 - The demo results are **simulated** with a known injected effect, so we can check the decision is right. They say nothing about how a real prompt performs.
 - "No clear difference" is an honest answer. It does not mean the change is useless; it says how many more leads would settle it.
-- Canary advises. It does not change your live traffic.
+- Picky advises. It does not change your live traffic.
 - Technical extras (proof tables, label calls, hear it) are under **Settings** > Tools.
 
 More: `USER_JOURNEY.md` (a guided tour), `QA_REPORT.md` (the evidence), `skill/ab-test-decision/SKILL.md` (the same method as a reusable skill for AI assistants).

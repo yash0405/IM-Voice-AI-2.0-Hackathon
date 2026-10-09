@@ -1,4 +1,4 @@
-# Canary - 5-minute demo script and hard questions
+# Picky - Test it, pick it, ship it: 5-minute demo script and hard questions
 
 Open `dist/canary_demo.html` (works with no internet). Live engine (new experiments, your own files) and the labelling page: `./start.sh`, then http://127.0.0.1:8765. One slide: `dist/one_slide.html`. A step-by-step walkthrough: `USER_JOURNEY.md`.
 
@@ -10,7 +10,7 @@ Open `dist/canary_demo.html` (works with no internet). Live engine (new experime
 
 Before the demo: open `dist/canary_demo.html`, press **Reset** in Settings once so every test is on day 2. Five tests are set up and paused on day 2: B wins, B worse, flat, a win in one segment (Proprietors) and the bonus scenario (a win with longer calls).
 
-**0:00 - The problem (30 s).** "A prompt edit can quietly cut leads, and a good edit can never be proven. Canary sits in front of the voice bot: before each call the router decides which prompt this lead gets, and behind it an engine decides, once, whether B wins. The voice test itself is replayed from history: there is no live traffic here." Show **Overview**: tiles, the live prompt (the real VANI prompt), the traffic map.
+**0:00 - The problem (30 s).** "A prompt edit can quietly cut leads, and a good edit can never be proven. Picky sits in front of the voice bot: before each call the router decides which prompt this lead gets, and behind it an engine decides, once, whether B wins. The voice test itself is replayed from history: there is no live traffic here." Show **Overview**: tiles, the live prompt (the real VANI prompt), the traffic map.
 
 **0:30 - Set up a test live (90 s).** **New Experiment**. Step 2: "Prompt B is the full prompt, pre-filled with today's live prompt." Change one ask limit: the side-by-side diff shows the red and green line, and the check says every template variable is kept (rename one and Next is blocked). Step 3: **+ Add condition** HL Type is UA or PNSM, **+ Add condition** Legal Status is Proprietorship: "The rule in plain words, and the leads a day and today's rate from the last 30 days, update as I click." Step 4: the primary goal starts empty; call duration is already a guardrail; **+ Add metric** > **Create custom metric** (for example *Busy share of unanswered calls*): the preview computes it on the last 30 days. Step 5: "The length is recommended for me: the card shows the arithmetic, and At a glance shows the same numbers." Step 6: the review and the six-item checklist, then **Save Test** (an editable draft) and **Launch Test** (locks it with a version ID).
 

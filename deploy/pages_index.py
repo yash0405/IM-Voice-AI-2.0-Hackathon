@@ -16,7 +16,7 @@ reg_path.write_text(json.dumps(reg, indent=1))
 rows = "".join(f'<li><a href="./{html.escape(k)}/">{html.escape(v["branch"])}</a> &middot; {html.escape(v["commit"])} &middot; {html.escape(v["at"])}</li>'
                for k, v in sorted(reg.items(), key=lambda kv: kv[1]["at"], reverse=True))
 (site / "index.html").write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow"><meta http-equiv="refresh" content="0; url=./{html.escape(slug)}/"><title>Canary</title>
+<meta name="robots" content="noindex, nofollow"><meta http-equiv="refresh" content="0; url=./{html.escape(slug)}/"><title>Picky</title>
 <style>body{{font:15px/1.6 system-ui,sans-serif;color:#243b53;background:#f3f5f7;margin:0;padding:32px 16px}}main{{max-width:560px;margin:auto}}a{{color:#4c7cf3}}</style></head>
-<body><main><h1>Canary</h1><p>Opening the latest deploy (<b>{html.escape(branch)}</b> &middot; {html.escape(commit)})...</p><p>Other branches:</p><ul>{rows}</ul></main></body></html>""")
+<body><main><h1>Picky</h1><p>Opening the latest deploy (<b>{html.escape(branch)}</b> &middot; {html.escape(commit)})...</p><p>Other branches:</p><ul>{rows}</ul></main></body></html>""")
 print("index ->", slug)

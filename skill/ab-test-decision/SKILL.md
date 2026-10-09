@@ -2,7 +2,7 @@
 name: ab-test-decision
 description: Decides whether to ship, stop, hold or keep a change after an A/B test, and plans tests that can actually finish. Use it whenever someone has results for a control (A) and a candidate (B) - a new bot or agent prompt, voice or chat flow, model, message, feature or setting - and asks "did B win?", "is it safe to roll out?", "is this significant?", "can we stop early?", "how long should the test run?", "how much traffic does B need?", or shares a results file or dashboard numbers from a split test. Also use it when a manager wants to act on early numbers, when a test looks too good or too flat, or when someone wants a plain-language verdict on a test. Reads messy per-call or per-day result files, counts each lead once, checks the split and the data, applies pre-registered sequential rules with guardrails such as call length, and writes an honest verdict with ranges. Never runs the test itself and never decides from a plan read off the results.
 license: MIT
-compatibility: Python 3.10+. check_results.py and plan_test.py use only the standard library. decide.py needs numpy and scipy and the Canary engine (the project folder this skill ships in, or CANARY_HOME).
+compatibility: Python 3.10+. check_results.py and plan_test.py use only the standard library. decide.py needs numpy and scipy and the Picky engine (the project folder this skill ships in, or CANARY_HOME).
 metadata:
   version: "1.0"
   domain: experimentation
@@ -121,7 +121,7 @@ Read `references/pitfalls.md` when the user shows interim results, when the spli
 ## Bundled resources
 - `scripts/plan_test.py`: sample size, days, smallest detectable lift (stdlib).
 - `scripts/check_results.py`: data check plus single-look comparison (stdlib).
-- `scripts/decide.py`: the sequential engine verdict (numpy, scipy, Canary).
+- `scripts/decide.py`: the sequential engine verdict (numpy, scipy, Picky).
 - `references/decision-rules.md`: the rules in plain words, defaults, rule sets.
 - `references/file-formats.md`: accepted columns and layouts, what gets dropped.
 - `references/pitfalls.md`: the traps above, with how to explain them.

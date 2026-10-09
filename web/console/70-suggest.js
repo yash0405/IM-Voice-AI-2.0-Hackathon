@@ -35,7 +35,7 @@ ROUTES.suggest = (el) => {
 let IM = { files: [], info: null, err: "" };
 ROUTES.import = (el) => {
   const plan = { baseline: 0.45, share_b: 0.30, mde: 0.05, window_days: 14, rule_set: "sequential", ...(DYN.ui.importPlan || {}) };
-  el.innerHTML = head("Import results files", "The voice test ran somewhere else. Give Canary the results (one row per call: lead, which prompt, what happened, call length, when) and it decides with the plan you fix here. It advises: it does not change live traffic.", `<a class="btn" href="#/new">Back to New Experiment</a>`) +
+  el.innerHTML = head("Import results files", "The voice test ran somewhere else. Give Picky the results (one row per call: lead, which prompt, what happened, call length, when) and it decides with the plan you fix here. It advises: it does not change live traffic.", `<a class="btn" href="#/new">Back to New Experiment</a>`) +
     (!LIVE ? `<div class="banner warn"><div><b>Reading your own files needs the live version.</b> Run <span class="mono">./start.sh</span>. Meanwhile, History already holds six decisions made from sample result files.</div></div>` : "") +
     `<div class="g-main grid"><div class="card"><h2>1. Choose the files</h2><div class="sub">One file with a variant column, or two files (A's results, then B's). CSV, tab-separated or JSON; column names are matched flexibly.</div>
       <div class="form-grid" style="margin-top:16px"><div class="field wide"><label for="i-files">Results file(s)</label><input type="file" id="i-files" multiple accept=".csv,.tsv,.txt,.json,.jsonl" ${LIVE ? "" : "disabled"}></div>
@@ -77,7 +77,9 @@ ROUTES.import = (el) => {
 /* ------------------------------------------------------------------ start */
 async function init() {
   if (LIVE) { try { C = await (await fetch("/api/console")).json(); } catch (e) { $("#page").innerHTML = `<div class="empty">Could not reach the engine.</div>`; return; } }
+  await storeLoad();
   $("#mode").textContent = LIVE ? "Live engine" : "Offline demo"; $("#mode").className = "pill " + (LIVE ? "pos" : "plain");
+  if (STORE.on) $("#state-note").textContent = "Tests, days played, approvals and rollbacks are saved in the history database on this server: every browser here sees the same history.";
   $("#reset-link").onclick = () => go("settings");
   window.addEventListener("hashchange", route); route();
 }

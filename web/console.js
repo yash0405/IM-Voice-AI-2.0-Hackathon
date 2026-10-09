@@ -1,8 +1,9 @@
 /* GENERATED from web/console/*.js by canary.build.assemble_console_js: edit the parts, not this file. */
 "use strict";
-/* Canary console. Plain JS, no libraries, works offline. Every number shown comes from the bundle the Python engine produced
-   (dist/canary_demo.html embeds it; live mode fetches /api/console). Demo state (how many days have been played, approvals, rollbacks)
-   lives in this browser only and is reset from Settings. */
+/* Picky console. Plain JS, no libraries, works offline. Every number shown comes from the bundle the Python engine produced
+   (dist/canary_demo.html embeds it; live mode fetches /api/console). Demo state (launched tests, how many days have been played, approvals,
+   rollbacks) is saved in the history database on the local live server (canary/store.py) and cached in this browser; the hosted copy and the
+   offline file keep it in this browser only. It is reset from Settings. */
 
 const LIVE = !!window.CANARY_LIVE;
 const HOSTED = !!window.CANARY_HOSTED;
@@ -77,8 +78,107 @@ const BIG_TEXT = 20000, fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.l
 function loadDyn() { try { const raw = localStorage.getItem(SK); if (!raw) return null; const o = JSON.parse(raw); return o && o.packed === 2 ? JSON.parse(o.body, (k, v) => typeof v === "string" && v[0] === "\u0001" ? o.texts[v.slice(1)] : v) : o; } catch { return null; } }
 const DYN = loadDyn() || { dyn: {}, launched: [], settings: {}, libLog: [], ui: {} };
 let saveWarned = false;
-const saveDyn = () => { try { const texts = {}, body = JSON.stringify(DYN, (k, v) => { if (typeof v === "string" && v.length > BIG_TEXT) { const h = fnv(v); texts[h] = v; return "\u0001" + h; } return v; }); localStorage.setItem(SK, JSON.stringify({ packed: 2, texts, body })); }
-  catch (e) { if (!saveWarned) { saveWarned = true; toast("This browser could not save the demo state (its storage is full). Delete old drafts, or reset the demo in Settings.", 6000); } } };
+const packDyn = obj => { const texts = {}, body = JSON.stringify(obj, (k, v) => { if (typeof v === "string" && v.length > BIG_TEXT) { const h = fnv(v); texts[h] = v; return "\u0001" + h; } return v; }); return JSON.stringify({ packed: 2, texts, body }); };
+/* This browser's cache. With the history database on, a launched test the database holds is not cached a second time (a prompt is ~170 KB); and
+   every change that has not reached the database yet is listed (storePending) with the version it was based on (storeRev), so a reload before
+   the next save, or a server that was briefly out of reach, does not lose it. */
+const storeCache = () => { const items = storeItems(); return { ...DYN, launched: DYN.launched.filter(e => !STORE.held.has(e.id)),
+  storePending: Object.keys(items).filter(k => k[0] !== "t" && STORE.sent[k] !== fnv(JSON.stringify(items[k]))), storeRev: STORE.rev }; };
+/** Another tab of this browser shares the cache: its changes still waiting for the database are carried over, not overwritten (unless this tab
+    changed the same item too, or has seen a newer save of it). */
+function withOtherTabs(c) {
+  const o = loadDyn(); if (!o || o.storeEpoch !== DYN.storeEpoch || !(o.storePending || []).length) return c;
+  const out = { ...c, dyn: { ...c.dyn }, storePending: [...c.storePending], storeRev: { ...c.storeRev } }, mine = new Set(c.storePending);
+  for (const k of o.storePending) { const id = k.slice(2), rev = (o.storeRev || {})[k] || 0, val = k[0] === "s" ? (o.dyn || {})[id] : o[id];
+    if (mine.has(k) || (STORE.rev[k] || 0) !== rev || val === undefined || JSON.stringify(val) === JSON.stringify(k[0] === "s" ? c.dyn[id] : c[id])) continue;   // nothing of theirs to keep
+    if (k[0] === "s") out.dyn[id] = val; else out[id] = val; out.storePending.push(k); out.storeRev[k] = rev; }
+  return out;
+}
+const writeCache = () => { const db = (STORE.on && STORE.epoch) || STORE.track, put = o => { try { localStorage.setItem(SK, packDyn(o)); return true; } catch { return false; } };
+  if (put(db ? withOtherTabs(storeCache()) : DYN)) return;
+  if (db) { const c = withOtherTabs(storeCache()), unsaved = c.launched.filter(e => !STORE.held.has(e.id) && !(DYN.storeRejected || []).includes(e.id));
+    if (put({ ...c, launched: c.launched.filter(e => !STORE.sent["t:" + e.id]) })) return;          // tests already sent are on their way
+    if (put({ ...c, launched: [] })) { if (unsaved.length && !saveWarned) { saveWarned = true; toast(`This browser's storage is full. ${unsaved.length} test${unsaved.length > 1 ? "s are" : " is"} being saved to the history database: keep this tab open until that is done.`, 6000); } return; } }
+  if (!saveWarned) { saveWarned = true; toast(db ? "This browser's storage is full. Your tests are safe in the history database; only this browser's shortcuts are not saved." : "This browser could not save the demo state (its storage is full). Delete old drafts, or reset the demo in Settings.", 6000); } };
+const saveDyn = () => { writeCache(); storeSync(); };
+
+/* The history database (canary/store.py, one SQLite file on the live server). On the local live server every launched test, its state and every
+   click is saved there, so all browsers on that server share one history and it survives a restart; this browser's copy is a cache. The hosted
+   copy and the offline file have no server: they keep the state in this browser only. Only what changed since the last save is sent, with the
+   version (rev) this browser last saw: a save based on an older version is refused and this browser reloads the latest. */
+const APP_KEYS = ["drafts", "settings", "libLog", "libRolled"], APP_EMPTY = () => ({ drafts: [], settings: {}, libLog: [], libRolled: [] });
+const STORE = { on: LIVE && !HOSTED, track: false, epoch: null, sent: {}, rev: {}, held: new Set(), timer: null, busy: false, again: false, warned: false, info: null };
+const STORE_PART = 4e6;                                       // a first save from a browser with many tests goes up in parts of about 4 MB
+const storeItems = () => { const out = {}, rej = new Set(DYN.storeRejected || []);       // a test the database refused stays in this browser only
+  DYN.launched.forEach(e => { if (!rej.has(e.id)) out["t:" + e.id] = e; }); Object.keys(DYN.dyn).forEach(id => { if (!rej.has(id)) out["s:" + id] = DYN.dyn[id]; });
+  APP_KEYS.forEach(k => { if (DYN[k] != null) out["a:" + k] = DYN[k]; }); return out; };
+function storeSync() { if (!STORE.on || !STORE.epoch) return; clearTimeout(STORE.timer); STORE.timer = setTimeout(storePush, 200); }
+async function storePush() {
+  if (STORE.busy) { STORE.again = true; return; }
+  const body = { epoch: STORE.epoch, tests: [], state: {}, app: {}, revs: {} }, sent = {}, later = new Set(); let size = 0;
+  for (const [k, v] of Object.entries(storeItems())) {          // tests come first, then states, then drafts and settings
+    const text = JSON.stringify(v), sg = fnv(text), id = k.slice(2); if (STORE.sent[k] === sg) continue;
+    if (k[0] === "t") { if (body.tests.length && size + text.length > STORE_PART) { later.add(id); continue; } body.tests.push(v); size += text.length; }
+    else if (k[0] === "s") { if (later.has(id)) continue; body.state[id] = v; body.revs[k] = STORE.rev[k] || 0; }
+    else { body.app[id] = v; body.revs[k] = STORE.rev[k] || 0; }
+    sent[k] = sg;
+  }
+  if (!Object.keys(sent).length) return;
+  STORE.busy = true;
+  try {
+    const r = await fetch("/api/store", { method: "POST", headers: { "X-Canary-Store": "1" }, body: JSON.stringify(body) }), j = await r.json();
+    if (r.status === 409) { STORE.on = false; toast(j.reset ? "The history was reset from another browser. Reloading it." : "Another browser saved a newer version of this. Loading the latest.", 4000); if (j.reset) try { localStorage.removeItem(SK); } catch { } setTimeout(() => location.reload(), 1500); return; }
+    if (j.error) throw new Error(j.error);
+    const rej = (j.rejected || []).map(x => x.id).filter(Boolean);
+    Object.assign(STORE.sent, sent); Object.assign(STORE.rev, j.revs || {}); STORE.warned = false;
+    body.tests.forEach(t => { if (!rej.includes(t.id)) STORE.held.add(t.id); });
+    if (rej.length) { DYN.storeRejected = [...new Set([...(DYN.storeRejected || []), ...rej])]; toast(`${rej.length} test${rej.length > 1 ? "s" : ""} in this browser could not be saved to the history database (${j.rejected[0].error}). ${rej.length > 1 ? "They stay" : "It stays"} in this browser only.`, 7000); }
+    writeCache();                                                // nothing pending any more (or less)
+    if (later.size) STORE.again = true;
+  } catch (e) { if (!STORE.warned) { STORE.warned = true; toast(`Could not save to the history database (${e.message || e}). The change is kept in this browser (also across a reload) and sent again with the next one.`, 6000); } }
+  finally { STORE.busy = false; if (STORE.again) { STORE.again = false; storeSync(); } }
+}
+/** The first time a browser that was used before the database connects, both sides are kept (drafts, the library log, custom metrics). */
+function storeMerge(k, srv, loc) {
+  const union = (a, b, key) => [...a, ...b.filter(x => !a.some(y => key(y) === key(x)))];
+  if (k === "drafts") return union(srv, loc, x => x.id);
+  if (k === "libLog") return union(srv, loc, x => x.ts + "|" + x.type + "|" + x.text);
+  if (k === "libRolled") return [...new Set([...srv, ...loc])];
+  const cm = union(srv.customMetrics || [], loc.customMetrics || [], x => x.key);
+  return { ...loc, ...srv, ...(cm.length ? { customMetrics: cm } : {}) };
+}
+/** On start the database's copy is read. Same history as this browser's cache: the database wins for anything both have, except a change this
+    browser made that never reached the database and that nobody changed since (it is kept and sent); what only this browser has is sent up
+    (on its first visit everything it has, merged). After a reset elsewhere, this browser's old cache is dropped. */
+async function storeLoad() {
+  if (!STORE.on) return;
+  let s; try { const r = await fetch("/api/store"); s = await r.json(); if (!r.ok || s.error) throw Object.assign(new Error(s.error || r.status), { code: r.status }); }
+  catch (e) { STORE.on = false; if (e.code === 403) return;                    // another computer or a tunnel: this browser keeps its own state, as before
+    if (DYN.storeEpoch) {        // this browser used the database before: what changes now is remembered (pending) and sent when it is back
+      STORE.track = true; STORE.rev = { ...(DYN.storeRev || {}) }; const old = new Set(DYN.storePending || []);
+      Object.entries(storeItems()).forEach(([k, v]) => { if (!old.has(k)) STORE.sent[k] = fnv(JSON.stringify(v)); });
+      toast("The history database could not be read. Changes made now are kept in this browser and sent when it is back: reload the page then.", 7000);
+    } else toast(`The history database could not be read (${e.message || e}). This browser keeps its own state for now.`, 6000);
+    return; }
+  const first = !DYN.storeEpoch, same = first || DYN.storeEpoch === s.epoch, ids = new Set(s.launched.map(e => e.id)), empty = APP_EMPTY(), revs = s.revs || {};
+  const pend = new Set(same && !first ? DYN.storePending || [] : []), lrev = DYN.storeRev || {}, lost = [];
+  const mine = k => pend.has(k) && (revs[k] || 0) === (lrev[k] || 0);            // changed here, never saved, and nobody saved it since
+  DYN.launched = [...s.launched, ...(same ? DYN.launched.filter(e => !ids.has(e.id) && !e.id.startsWith("replay-")) : [])];
+  const dyn = { ...(same ? DYN.dyn : {}) };
+  Object.entries(s.dyn).forEach(([id, v]) => { if (mine("s:" + id) && dyn[id]) return; if (pend.has("s:" + id)) lost.push(id); dyn[id] = v; });
+  DYN.dyn = dyn;
+  APP_KEYS.forEach(k => { const srv = s.app[k], loc = same ? DYN[k] : null;
+    DYN[k] = srv == null ? (loc != null ? loc : empty[k]) : loc == null ? srv : first ? storeMerge(k, srv, loc) : mine("a:" + k) ? loc : srv;
+    if (DYN[k] !== srv && srv != null && JSON.stringify(DYN[k]) === JSON.stringify(srv)) DYN[k] = srv;       // nothing new: nothing to send
+    if (srv != null && pend.has("a:" + k) && DYN[k] === srv) lost.push(k); });
+  delete DYN.storePending; delete DYN.storeRev;
+  DYN.storeEpoch = STORE.epoch = s.epoch; STORE.info = s.info; STORE.rev = { ...revs };
+  s.launched.forEach(e => { STORE.sent["t:" + e.id] = fnv(JSON.stringify(e)); STORE.held.add(e.id); });
+  Object.entries(s.dyn).forEach(([id, v]) => { if (DYN.dyn[id] === v) STORE.sent["s:" + id] = fnv(JSON.stringify(v)); });
+  APP_KEYS.forEach(k => { if (s.app[k] != null && DYN[k] === s.app[k]) STORE.sent["a:" + k] = fnv(JSON.stringify(s.app[k])); });
+  if (lost.length) toast(`Changes this browser made while the history database was out of reach were replaced by newer saves from another browser (${lost.slice(0, 3).join(", ")}${lost.length > 3 ? " ..." : ""}).`, 7000);
+  saveDyn();
+}
 const SET = () => ({ ...C.defaults, ...DYN.settings });
 const EXPS = () => [...C.demo, ...DYN.launched, ...C.past];
 const byId = id => EXPS().find(e => e.id === id);
@@ -245,7 +345,7 @@ function render() {
   const run = EXPS().filter(e => view(e).running || view(e).kind === "HOLD_FOR_APPROVAL" && !view(e).d.approval).length;
   $("#nav").innerHTML = NAV.map(([k, n]) => `<a href="#/${k}" ${CUR.name === k || (k === "history" && CUR.name === "report") ? 'aria-current="page"' : ""}><span>${n}</span>${k === "live" ? `<span class="count" title="Tests running or waiting for a person">${run}</span>` : ""}</a>`).join("");
   const fn = ROUTES[CUR.name]; $("#page").innerHTML = ""; fn($("#page"), CUR.arg);
-  scrollTo(0, 0); document.title = `Canary - ${(NAV.find(n => n[0] === CUR.name) || ["", "Report"])[1]}`;
+  scrollTo(0, 0); document.title = `Picky - ${(NAV.find(n => n[0] === CUR.name) || ["", "Report"])[1]}`;
 }
 const head = (title, sub, actions = "") => `<div class="page-head"><div><h1>${esc(title)}</h1>${sub ? `<p class="sub">${sub}</p>` : ""}</div><div class="actions">${actions}</div></div>`;
 const pill = (txt, cls) => `<span class="pill ${cls || ""}">${esc(txt)}</span>`;
@@ -1158,7 +1258,7 @@ function wzBody(w) {
     <h3 style="margin:24px 0 8px">Pre-launch checklist</h3><div style="display:grid;gap:8px" id="w-checks">${chk.map(x => `<div class="check ${x.ok ? "ok" : "bad"}"><span class="ico">${x.ok ? "✓" : "✕"}</span><span><b>${esc(x.label)}</b>: ${esc(x.why)}${x.ok ? "" : ` <button class="link" data-goto="${x.step}">Fix in step ${x.step}</button>`}</span></div>`).join("")}</div>
     <div class="form-grid" style="margin-top:16px">${F("Start date", `<input type="date" id="w-start" value="${esc(w.startDate)}" min="${TODAY}">`, w.startDate > TODAY ? "a later date makes it Scheduled" : "optional; today starts it now")}</div>
     <h3 style="margin:24px 0 8px">Where do the results come from?</h3><div style="display:grid;gap:8px"><label class="radio"><input type="radio" name="w-src" value="sim" ${w.source === "sim" ? "checked" : ""}><div><b>Simulator (demo only)</b><span>Leads are replayed from the 30-day history with a known effect you set on the primary goal, so you can check the engine decides correctly. The effect is put into B's input, never into the result. A call ends in one outcome, so when B gets more goal outcomes its other outcomes shrink in proportion: a guardrail on another disposition moves a little too.</span></div></label>
-      <label class="radio"><input type="radio" name="w-src" value="files" ${w.source === "files" ? "checked" : ""}><div><b>Results files from the voice platform</b><span>The test runs elsewhere; you give Canary the A and B results and it decides with the plan above.</span></div></label></div>
+      <label class="radio"><input type="radio" name="w-src" value="files" ${w.source === "files" ? "checked" : ""}><div><b>Results files from the voice platform</b><span>The test runs elsewhere; you give Picky the A and B results and it decides with the plan above.</span></div></label></div>
     ${w.source === "sim" ? `<div class="form-grid" style="margin-top:16px"><div class="field wide"><label>Simulation settings (demo only)</label><div class="seg" role="group" aria-label="Preset">${(P.dir === "lower" ? [["win", "B wins (−15%)"], ["worse", "B worse (+15%)"], ["flat", "Flat (0%)"], ["custom", "Custom"]] : [["win", "B wins (+15%)"], ["worse", "B worse (−15%)"], ["flat", "Flat (0%)"], ["custom", "Custom"]]).map(([k, n]) => `<button data-preset="${k}" aria-pressed="${w.preset === k}">${n}</button>`).join("")}</div></div>
       ${F("B's true effect on the primary goal (relative)", `<input type="number" id="w-eff" step="1" value="${w.effectRel}" ${w.preset === "custom" ? "" : "disabled"}>`, "% of A's value")}${F("Random seed", `<input type="number" id="w-seed" value="${w.seed}">`, "same seed, same run")}${F("B's calls are longer by (%)", `<input type="number" id="w-dx" step="1" value="${w.durExtra || 0}">`, "to test a call-length guardrail")}${usesHang ? F("B's early hang-ups are higher by (points)", `<input type="number" id="w-hx" step="0.5" min="0" value="${w.hangExtra || 0}">`, `today ${fmtMetric(baselineFor(metricByKey("early_hangup"), P.seg).value, metricByKey("early_hangup"))} of answered calls`) : ""}</div>`
       : `<div class="banner" style="margin-top:16px"><div>Your plan above is used when the files are read. Next: choose the files on the import screen.</div></div>`}
@@ -1414,7 +1514,7 @@ ROUTES.report = (el, id) => {
       ${v.kind === "INCONCLUSIVE" && v.res.more_leads ? `<h2>What would settle it</h2><ul>${v.res.more_leads.options.map(o => `<li>${o.enough_already ? `Already enough data to detect ${esc(liftWords(o))} (${esc(o.label)}): any real lift is smaller than that.` : `${nf(o.more_leads)} more leads (about ${o.more_days} days) to detect ${esc(liftWords(o))} (${esc(o.label)}).${o.impractical ? " Over a year of traffic: not practical." : ""}`}</li>`).join("")}</ul>` : ""}
       <h2>Learning</h2><div class="field"><label for="r-learn">One line that feeds the next suggestions</label><input type="text" id="r-learn" list="r-sugg" value="${esc(dyn(e).learning || "")}" placeholder="for example: slot options work"><datalist id="r-sugg">${sugg.map(s => `<option value="${esc(s)}">`).join("")}</datalist></div>
       <h2>Record</h2><p class="note">${ents.length} entries, head <span class="mono">${esc(ents[ents.length - 1].hash.slice(0, 16))}</span> <button class="link" id="r-ver">Re-check in this browser</button> <span id="r-vo"></span></p>
-      <p class="note">${e.kind === "files" ? "These results were supplied as files; Canary advises and does not control live traffic." : "The outcomes are simulated with a known injected effect: this report shows the engine decides correctly, not that a real prompt is better."}</p></div>`;
+      <p class="note">${e.kind === "files" ? "These results were supplied as files; Picky advises and does not control live traffic." : "The outcomes are simulated with a known injected effect: this report shows the engine decides correctly, not that a real prompt is better."}</p></div>`;
   trendChart($("#trend"), dayRows(rec), v.win, { finalDay: c.rule_set === "final_look" ? v.win : null, c });
   $("#r-clone").onclick = () => cloneOf(e);
   $("#r-csv").onclick = () => download(`${e.id}_report.csv`, avg ? toCsv(["day", "leads_A", "counted_A", "leads_B", "counted_B", "mean_A", "mean_B", "lift_" + (metricUnit(primaryDef(c)) || "units")], dayRows(rec).map(({ day, row }) => [day, row.nA, row.dA, row.nB, row.dB, row.rateA.toFixed(3), row.rateB.toFixed(3), row.diff.toFixed(3)]))
@@ -1496,12 +1596,25 @@ ROUTES.settings = (el) => {
         <p class="note" style="margin-top:12px">${esc(C.defaults.leads_per_day_note)}</p><div class="actions" style="margin-top:12px"><button class="btn primary" id="s-save">Save defaults</button></div></div>
       <div class="grid"><div class="card"><h2>Overlap warning</h2><div class="sub">When two running tests include the same leads, their results interfere. A launch is refused if it would overlap a running one.</div><div style="margin-top:12px">${(() => { const m = runningMain(), c = m.flatMap((x, i) => m.slice(i + 1).filter(y => segsOverlap(segOf(x) || {}, segOf(y) || {})).map(y => [x, y])); return c.length ? `<div class="banner warn" style="margin:0"><div><b>Overlap.</b> ${c.map(([x, y]) => esc(x.record.config.name) + " and " + esc(y.record.config.name)).join("; ")} share leads. Finish one before trusting the other.</div></div>` : `<div class="banner pos" style="margin:0"><div><b>No overlap.</b> ${m.length} test${m.length === 1 ? "" : "s"} launched here ${m.length === 1 ? "is" : "are"} running. The five pre-set scenarios are separate replays of history and are exempt.</div></div>`; })()}</div></div>
         <div class="card"><h2>Tools</h2><div class="sub">For engineers and for the optional extras.</div><div class="actions" style="margin-top:12px"><a class="btn" href="#/import">Import results files</a>${HOSTED ? '<span class="note">Proof lab, call labelling and audio are not in the hosted copy (they use real-call data). Run ./start.sh locally for them.</span>' : `<a class="btn" href="${LIVE ? "/tools.html" : "canary_tools.html"}">Proof lab, label calls, hear it</a>`}</div></div>
-        <div class="card"><h2>This demo</h2><div class="sub">What is real and what is simulated.</div><ul style="margin:8px 0 0;padding-left:20px;font-size:13px"><li>The demo tests use <b>simulated</b> outcomes with a known injected effect.</li><li>Call lengths are resampled from 713 <b>real</b> recordings.</li><li>Leads per day is an <b>assumption</b> (no real volume was provided).</li><li>History holds re-runs of our scenarios and sample result files.</li><li>Days played, approvals and rollbacks live in this browser only.</li></ul><div class="actions" style="margin-top:12px"><button class="btn danger" id="s-reset">Reset the demo</button></div></div></div></div>`;
+        <div class="card"><h2>This demo</h2><div class="sub">What is real and what is simulated.</div><ul style="margin:8px 0 0;padding-left:20px;font-size:13px"><li>The demo tests use <b>simulated</b> outcomes with a known injected effect.</li><li>Call lengths are resampled from 713 <b>real</b> recordings.</li><li>Leads per day is an <b>assumption</b> (no real volume was provided).</li><li>History holds re-runs of our scenarios and sample result files.</li><li>${STORE.on ? "Launched tests, days played, approvals and rollbacks are saved in the history database on this server." : "Days played, approvals and rollbacks live in this browser only."}</li></ul><div class="actions" style="margin-top:12px"><button class="btn danger" id="s-reset">Reset the demo</button></div></div>${storeCard()}</div></div>`;
   $("#s-save").onclick = () => { DYN.settings = { ...DYN.settings, confidence: +$("#s-conf").value, harm_bar: +$("#s-harm").value, min_leads_per_arm: +$("#s-min").value, window_days: +$("#s-days").value, share_b: +$("#s-share").value / 100, duration_margin: +$("#s-dur").value / 100, leads_per_day: +$("#s-lpd").value, approval: $("#s-appr").value, lift_rel: +$("#s-lift").value / 100 }; DYN.settings.mde = Math.round(SET().baseline * DYN.settings.lift_rel * 10000) / 10000; saveDyn(); WZ = null; toast("Defaults saved. New experiments will start from them."); };
   $$("[data-mrm]", el).forEach(b => b.onclick = () => { DYN.settings = { ...DYN.settings, customMetrics: customMetrics().filter(m => m.key !== b.dataset.mrm) }; saveDyn(); toast("Removed from the metric list. Tests already launched keep their locked copy."); route(); });
   $$("[data-pre]", el).forEach(c => c.onchange = () => { const off = new Set(SET().preCallOff || []); c.checked ? off.delete(c.dataset.pre) : off.add(c.dataset.pre); DYN.settings = { ...DYN.settings, preCallOff: [...off] }; saveDyn(); route(); });
-  $("#s-reset").onclick = () => { if (!confirm("Reset the demo? Days played, approvals, rollbacks and launched tests are cleared.")) return; try { localStorage.removeItem(SK); } catch { } location.hash = "#/overview"; location.reload(); };
+  $("#s-reset").onclick = async () => {
+    if (!confirm(STORE.on ? "Reset the demo? Launched tests, days played, approvals, rollbacks, drafts and saved settings are cleared from the history database, for every browser on this server. The click log keeps a 'reset' entry." : "Reset the demo? Days played, approvals, rollbacks and launched tests are cleared.")) return;
+    if (STORE.on) { try { const r = await fetch("/api/store/reset", { method: "POST", headers: { "X-Canary-Store": "1" }, body: "{}" }); if (!r.ok) throw new Error(r.status); } catch (e) { toast(`Could not reset the history database (${e.message || e}). Nothing was cleared.`, 6000); return; } STORE.on = false; }
+    try { localStorage.removeItem(SK); } catch { } location.hash = "#/overview"; location.reload(); };
+  if (STORE.on) fetch("/api/store/info").then(r => r.json()).then(j => { if (j.error) return; STORE.info = j; const c = $("#s-store"); if (c) c.outerHTML = storeCard(); }).catch(() => { });
 };
+/** Settings: where the history is kept, how much is in it, and the file itself. */
+function storeCard() {
+  if (!STORE.on) return "";
+  const i = STORE.info || {}, t = i.tests || {}, n = k => nf(t[k] || 0);
+  return `<div class="card" id="s-store"><h2>History database</h2><div class="sub">Every test, its locked setup, day-by-day results, decision record and every click, in one SQLite file on this server.</div>
+    <table style="margin-top:8px;font-size:13px"><tbody><tr><td>Tests launched here</td><td class="num"><b>${nf((t.launched || 0) + (t.files || 0))}</b></td></tr><tr><td>Demo tests and History samples</td><td class="num">${n("demo")} + ${n("sample")}</td></tr><tr><td>Clicks logged</td><td class="num">${nf(i.actions || 0)}</td></tr><tr><td>Decision record entries</td><td class="num">${nf(i.decision_entries || 0)}</td></tr></tbody></table>
+    <p class="note" style="margin-top:8px">File: <span class="mono">${esc(i.path || "data/history.db")}</span> · ${esc(i.engine || "SQLite")}</p>
+    <div class="actions" style="margin-top:8px"><a class="btn" href="/api/store/download" download>Download the database</a></div></div>`;
+}
 
 /* Suggest A/B Tests, Import results files, and start-up. */
 
@@ -1540,7 +1653,7 @@ ROUTES.suggest = (el) => {
 let IM = { files: [], info: null, err: "" };
 ROUTES.import = (el) => {
   const plan = { baseline: 0.45, share_b: 0.30, mde: 0.05, window_days: 14, rule_set: "sequential", ...(DYN.ui.importPlan || {}) };
-  el.innerHTML = head("Import results files", "The voice test ran somewhere else. Give Canary the results (one row per call: lead, which prompt, what happened, call length, when) and it decides with the plan you fix here. It advises: it does not change live traffic.", `<a class="btn" href="#/new">Back to New Experiment</a>`) +
+  el.innerHTML = head("Import results files", "The voice test ran somewhere else. Give Picky the results (one row per call: lead, which prompt, what happened, call length, when) and it decides with the plan you fix here. It advises: it does not change live traffic.", `<a class="btn" href="#/new">Back to New Experiment</a>`) +
     (!LIVE ? `<div class="banner warn"><div><b>Reading your own files needs the live version.</b> Run <span class="mono">./start.sh</span>. Meanwhile, History already holds six decisions made from sample result files.</div></div>` : "") +
     `<div class="g-main grid"><div class="card"><h2>1. Choose the files</h2><div class="sub">One file with a variant column, or two files (A's results, then B's). CSV, tab-separated or JSON; column names are matched flexibly.</div>
       <div class="form-grid" style="margin-top:16px"><div class="field wide"><label for="i-files">Results file(s)</label><input type="file" id="i-files" multiple accept=".csv,.tsv,.txt,.json,.jsonl" ${LIVE ? "" : "disabled"}></div>
@@ -1582,7 +1695,9 @@ ROUTES.import = (el) => {
 /* ------------------------------------------------------------------ start */
 async function init() {
   if (LIVE) { try { C = await (await fetch("/api/console")).json(); } catch (e) { $("#page").innerHTML = `<div class="empty">Could not reach the engine.</div>`; return; } }
+  await storeLoad();
   $("#mode").textContent = LIVE ? "Live engine" : "Offline demo"; $("#mode").className = "pill " + (LIVE ? "pos" : "plain");
+  if (STORE.on) $("#state-note").textContent = "Tests, days played, approvals and rollbacks are saved in the history database on this server: every browser here sees the same history.";
   $("#reset-link").onclick = () => go("settings");
   window.addEventListener("hashchange", route); route();
 }

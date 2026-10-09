@@ -1,4 +1,4 @@
-# Where Canary plugs into the production bot
+# Where Picky plugs into the production bot
 
 Nothing here is wired to a live bot (no live traffic exists for the hackathon). This note says exactly where the module sits and what each side must provide, so the integration is a small job and not a guess.
 
@@ -22,7 +22,7 @@ lead arrives ──> ROUTER (this module) ──> prompt version id ──> voic
 2. **After each call:** write one row to the call log: `lead_id, timestamp, connected, disposition, duration, variant, in_segment`. The engine counts each lead once (its first call) and ignores repeat calls for the decision.
 3. **A way to serve a chosen prompt version per call.** On the Sarvam voice-agent platform an agent has draft, committed and deployed versions and a session can pin a version (from the platform documentation; we have **not** tested it, because no voice-agent key was available). If a per-call version is not possible, the fallback is two committed agents (A and B) and the router picks which agent to dial.
 
-## What Canary provides
+## What Picky provides
 - `python -m canary decide FILE ...` reads such a call log (CSV, TSV, JSON, daily summaries), checks it, and returns the same record as a simulated run. It advises; it does not change live traffic.
 - The production pointer and the 5% holdback are recorded in the decision log (`promotion`, `routing_changed`); making them take effect needs the platform's agent-update API, which we have not verified exists.
 - `python -m canary export-db` writes the BRD's data model (experiments, versions, assignments, calls, daily results, decision log) to one SQLite file for audit.
