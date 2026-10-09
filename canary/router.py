@@ -63,7 +63,7 @@ class Router:
         achieved = self.counts["B"] / n if n else float("nan")
         lo, hi = binom_ci(self.counts["B"], n, conf) if n else (float("nan"),) * 2
         return {"mode": self.mode, "configured_b": self.share_b, "achieved_b": achieved,
-                "n_leads": n, "n_a": self.counts["A"], "n_b": self.counts["B"],
+                "n_leads": n, "n_a": self.counts["A"], "n_b": self.counts["B"], "calls_a": self.calls["A"], "calls_b": self.calls["B"],
                 "abs_error_pp": (achieved - self.share_b) * 100 if n else float("nan"),
                 "binomial_ci": [lo, hi],
                 "within_chance_band": bool(lo <= self.share_b <= hi) if n else True}

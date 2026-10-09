@@ -56,7 +56,21 @@ def _candidates() -> dict:
     return c
 
 
+RUNTIME: dict = {}          # full prompts pasted in the New Experiment wizard: key -> {"name", "text"}
+
+
+def register_text(name: str, text: str) -> str:
+    key = "custom_" + prompt_hash(text)
+    RUNTIME[key] = {"name": name or "A pasted prompt", "text": text}
+    return key
+
+
 def make_variant(candidate_key: str) -> dict:
+    if candidate_key in RUNTIME:
+        base = load_base()
+        r = RUNTIME[candidate_key]
+        diff = list(difflib.unified_diff(base["text"].splitlines(), r["text"].splitlines(), "A (production)", "B (candidate)", lineterm="", n=1))
+        return {"key": candidate_key, "name": r["name"], "origin": "human", "text": r["text"], "hash": prompt_hash(r["text"]), "diff": diff[:400], "evidence": None}
     spec = _candidates()[candidate_key]
     base = load_base()
     text = apply_patch(base["text"], spec)

@@ -52,6 +52,53 @@ def run_decide(body: dict) -> dict:
     return {"meta": meta, "record": rec, "replay": {"same_decision": True, "same_ledger_head": True}}
 
 
+def console_live() -> dict:
+    with _lock:
+        if "console" not in _cache:
+            cached = build.OUT / "console_bundle.json"
+            _cache["console"] = json.loads(cached.read_text()) if cached.exists() else build.build_console_bundle()
+        b = dict(_cache["console"])
+    b["live"] = True
+    return b
+
+
+def run_wizard(body: dict) -> dict:
+    """Launch a new simulated experiment from the New Experiment wizard. Returns the experiment as the console stores it."""
+    from . import console
+    num = lambda k, d, t=float: t(body.get(k, d))
+    win, share, lpd = num("window_days", 7, int), num("share_b", 0.30), num("leads_per_day", 1000, int)
+    if not 1 <= win <= 60 or not 1 <= lpd <= 20000 or win * lpd > 60000:
+        raise ValueError("test length 1-60 days and 1-20,000 leads a day; days x leads a day is capped at 60,000 for the live demo")
+    effect = num("effect_rel", 0.0)
+    if not -0.9 <= effect <= 3.0:
+        raise ValueError("the simulated effect must be between -90% and +300%")
+    over = dict(share_b=share, baseline=num("baseline", 0.45), mde=num("mde", 0.05), window_days=win, leads_per_day=lpd,
+                rule_set=str(body.get("rule_set", "final_look")), alpha=(1 - num("confidence", 0.95)) / 2, alpha_harm_daily=1 - num("harm_bar", 0.999),
+                guardrail_margin=num("duration_margin", 0.10), approval=str(body.get("approval", "auto")), min_per_arm=num("min_leads_per_arm", 50, int))
+    if body.get("duration_on") is False:
+        over.update(secondary_role="none")
+    if body.get("early_hangup"):
+        over.update(guard_rate="early_hangup", guard_rate_margin=num("rate_margin_pp", 2) / 100.0)
+    name = str(body.get("name") or "New experiment")[:120]
+    exp_id = "exp-" + "".join(ch for ch in name.lower().replace(" ", "-") if ch.isalnum() or ch == "-")[:40] + "-" + str(num("seed", 7, int))
+    from datetime import datetime
+    start = str(body.get("start") or datetime(2026, 10, 9, 9).isoformat(timespec="seconds"))
+    variant = str(body.get("variant_b", "cap_two_asks"))
+    full = str(body.get("full_prompt") or "")
+    if full:
+        from . import promptlint, variants as _v
+        if len(full) > 400_000:
+            raise ValueError("the pasted prompt is too long (400,000 characters at most)")
+        rep = promptlint.variable_report(_v.load_base()["text"], full)
+        if not rep["ok"]:
+            raise ValueError("prompt B no longer uses these template variables: " + ", ".join(rep["dropped"]))
+        variant = _v.register_text(name, full)
+    rec = console.run_preset(name, variant, start, exp_id, effect, num("seed", 7, int), dur_mult=num("dur_mult", 1.0), **over)
+    return {"id": exp_id, "kind": "simulated", "preset": str(body.get("preset", "Custom")), "hypothesis": str(body.get("hypothesis", ""))[:600],
+            "truth": {"effect_rel": effect, "true_a": rec["config"]["baseline"], "true_b": round(rec["config"]["baseline"] * (1 + effect), 4)},
+            "record": console.slim(rec)}
+
+
 def run_custom(body: dict) -> dict:
     sc_over, cfg_over = {}, {}
     for k, t in RUN_FIELDS.items():
@@ -103,17 +150,19 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         try:
-            if u.path in ("/", "/index.html"):
-                html = (WEB / "index.html").read_text()
-                html = html.replace('<script src="app.js"></script>',
-                                    '<script>window.CANARY_LIVE=true;</script><script src="app.js"></script>')
+            if u.path in ("/", "/index.html", "/tools.html"):
+                html = (WEB / ("tools.html" if u.path == "/tools.html" else "index.html")).read_text()
+                html = html.replace('<script src="app.js"></script>', '<script>window.CANARY_LIVE=true;</script><script src="app.js"></script>')
+                html = html.replace('<script src="console.js"></script>', '<script>window.CANARY_LIVE=true;</script><script src="console.js"></script>')
                 data = html.encode()
                 self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
-            elif u.path in ("/style.css", "/app.js", "/simple.js"):
+            elif u.path in ("/style.css", "/app.js", "/simple.js", "/console.css", "/console.js"):
                 self._file(WEB / u.path[1:])
             elif u.path == "/api/bundle":
                 self._json(bundle_live())
+            elif u.path == "/api/console":
+                self._json(console_live())
             elif u.path == "/api/samples":
                 from . import samples
                 self._json({k: {"title": v["title"], "note": v["note"], "lpd": v["lpd"], "days": v["days"]} for k, v in samples.SAMPLES.items()})
@@ -151,7 +200,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
-        if n > (14_000_000 if self.path in ("/api/decide", "/api/inspect") else 20000):
+        if n > (14_000_000 if self.path in ("/api/decide", "/api/inspect") else 1_000_000 if self.path == "/api/wizard" else 20000):
             return self._json({"error": "body too large"}, 413)
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
@@ -159,6 +208,8 @@ class H(BaseHTTPRequestHandler):
                 self._json(run_custom(body))
             elif self.path == "/api/decide":
                 self._json(run_decide(body))
+            elif self.path == "/api/wizard":
+                self._json(run_wizard(body))
             elif self.path == "/api/inspect":
                 from . import decide
                 try:
@@ -177,7 +228,9 @@ class H(BaseHTTPRequestHandler):
 
 
 def serve(port: int = 8765, host: str = "127.0.0.1"):
-    threading.Thread(target=bundle_live, daemon=True).start()      # warm the cache
+    build.assemble_console_js()
+    threading.Thread(target=bundle_live, daemon=True).start()      # warm the caches
+    threading.Thread(target=console_live, daemon=True).start()
     srv = ThreadingHTTPServer((host, port), H)
     print(f"Canary live on http://{host}:{port}   (Ctrl+C to stop)")
     if host != "127.0.0.1":

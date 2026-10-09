@@ -17,8 +17,9 @@ Canary closes the loop in four steps, on VANI's **real prompt** (Resources/Sarva
 - **Honest finding:** VANI repeats itself verbatim in only about 1.7% of calls (a lower bound), so the consistency fix is a safety measure and is expected to move conversion by a point at most; proving 1 point takes about 83,000 calls. The tool says so.
 
 ## Start here
-- **Anyone:** `START_HERE.md` (one page), then open `dist/canary_demo.html` or run `./start.sh`. The app opens on a **Start** page with four plain choices: judge a test's results, check whether a test can finish, suggest a change worth testing, and why to trust it.
+- **Anyone:** `START_HERE.md` (one page), then open `dist/canary_demo.html` or run `./start.sh`. The dashboard follows the PS05 feature spec: a left menu with **Overview, New Experiment (6 steps), Live Experiments (with "Advance 1 day"), History, Suggest A/B Tests, Prompt Library, Decision Log, Settings**, in the Clean Slate theme from the PM's design brief. Four experiments are pre-set and paused on day 2, as in the spec's demo plan.
 - **AI assistants:** `skill/ab-test-decision/SKILL.md` is the same method packaged as a reusable skill (plan a test, check a results file, decide, report honestly). Its scripts need only the standard library, except `decide.py` which uses the engine in this folder.
+- **Engineers:** the technical tools (proof lab, label calls, hear it) are one click away under Settings > Tools (`dist/canary_tools.html` offline, `/tools.html` live).
 
 ## Scope: what is ours, what is not (checked against the documents)
 The PM's split: **before the test** (variants, traffic split, goals and rules locked), **the test itself** (the voice calls: not ours), **after / during** (watch the results, decide, early stop, roll out). Our reading of the documents:
@@ -51,7 +52,7 @@ Then follow `USER_JOURNEY.md`. For the live engine and the labelling page: `pyth
 | `python -m canary arena plan\|run [--yes --force]` | voice arena: hear prompt A vs B | only with `--yes` |
 | `python -m canary decide FILE --goal ... --share-b 0.3 --baseline ... --window-days ...` | **decide from results files** (A and B, per call or per day): ship, stop, hold for a person, or keep A | no |
 | `python -m canary samples` | write six synthetic sample results files to `data/samples/` | no |
-| `python -m canary demo\|proof\|build\|qa\|slide\|serve` | scenarios, proof lab, dashboard, QA report, slide, live server | no |
+| `python -m canary demo\|proof\|build\|qa\|slide\|serve` | scenarios, proof lab, dashboards (`dist/canary_demo.html` and `dist/canary_tools.html`), QA report, slide, live server | no |
 | `python -m unittest discover -s tests` | 116 tests (fake Sarvam client, no network) | no |
 
 Needs Python 3.10+, numpy, scipy, jinja2 (`requirements.txt`); `pdftotext` (poppler) only to re-extract the prompt from the PDF; `pip install sarvamai` plus `SARVAM_API_KEY` in `.env` only for paid steps. The dashboard needs no network, no CDN, no build step.
@@ -65,7 +66,8 @@ Needs Python 3.10+, numpy, scipy, jinja2 (`requirements.txt`); `pdftotext` (popp
 - `canary/seqdesign.py`, `engine.py` - alpha-spending boundaries, power, one decision function (`Monitor.look`) used by the live runner and the proof lab.
 - `canary/router.py`, `ledger.py`, `simulator.py`, `scenarios.py`, `proof.py`, `baselines.py` - sticky split, hash-chained record, traffic replay, 3 fix scenarios + 6 stress scenarios, thousands of simulated tests against typical approaches.
 - `canary/sarvam_pipe.py`, `labels.py`, `evaluator.py` - Sarvam labelling with spend guards, human labels, the schema-2 tagger prompt (`data/evaluator_prompt.md`, `data/dispositions.json`).
-- `web/` - the dashboard (plain JS, hand-drawn SVG, light/dark, keyboard friendly).
+- `canary/console.py` - the data behind the dashboard: demo experiments, history, prompt library, suggestions, metric list.
+- `web/console/*.js`, `web/console.css`, `web/index.html` - the dashboard that follows the feature spec and the Clean Slate theme (plain JS, hand-drawn SVG, no libraries, works offline; `web/console.js` is generated from the parts). `web/tools.html`, `simple.js`, `app.js`, `style.css` - the earlier technical tools page.
 
 ## What the real resources changed (all corrected, none hidden)
 | We had assumed | Real prompt / matrix | Consequence |

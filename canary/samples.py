@@ -50,7 +50,7 @@ def make_rows(key: str, seed: int | None = None, **over) -> list[dict]:
     rng = np.random.default_rng(sp["seed"] if seed is None else seed)
     durs = real_durations()
     rows, cid = [], 0
-    start = datetime(2026, 10, 12)
+    start = datetime.fromisoformat(sp["start"]) if sp.get("start") else datetime(2026, 10, 12)
     lead_no = 0
     for day in range(sp["days"]):
         for _ in range(sp["lpd"]):

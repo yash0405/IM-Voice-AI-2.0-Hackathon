@@ -303,8 +303,9 @@ class Monitor:
                             reason = f"the win line was crossed at look {self.eff_at + 1}, but the evidence is now weaker (z={z:.2f} < {ce:.2f}); waiting"
                     elif not unproven:
                         kind = "PROMOTE"
-                        reason = f"B beats A on {cfg.primary_goal}: z={self.eff_z:.2f} crossed the efficacy boundary"
-                        if self.eff_at != k:
+                        reason = (f"B beats A on {cfg.primary_goal} at the final call: z={z:.2f}, needed {ce:.2f}" if cfg.rule_set == "final_look"
+                                  else f"B beats A on {cfg.primary_goal}: z={self.eff_z:.2f} crossed the efficacy boundary")
+                        if self.eff_at != k and cfg.rule_set != "final_look":
                             reason += f" at look {self.eff_at + 1} (z={z:.2f} now, still above the {ce:.2f} line)"
                         for x, nm, mg, kd in guards:
                             reason += f"; guardrail {nm} proven within {mg:+.0%}" if kd == "relative" else f"; guardrail {nm} proven within {mg * 100:+.0f} points"
@@ -400,7 +401,9 @@ def run_experiment(cfg: Config, sim, design: Design | None = None) -> dict:
             dec, row = mon.look(k, c, final, want_row=True)
             looks.append(row)
             row["time"] = _iso(start, call["i"] * secs_per_call)
+            row["day"] = (k + 1) if cfg.rule_set == "final_look" else int(call["i"] * secs_per_call // 86400) + 1      # final_look looks are daily by design
             row["exposedB"] = router.calls["B"]
+            row["calls"] = calls                      # every call so far, repeats included (the split panel shows the split by call as well as by lead)
             ledger.append("look", {"k": k, "n": n, "z": round(row["z"], 4), "bound_eff": round(row["eff"], 4),
                                    "bound_harm": round(row["harm"], 4), "rateA": row["rateA"], "rateB": row["rateB"],
                                    "p_srm": row["p_srm"], "decision": dec["kind"]})

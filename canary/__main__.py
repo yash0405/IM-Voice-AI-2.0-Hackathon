@@ -2,7 +2,7 @@
 
   demo      run the six scenarios in the terminal
   proof     run the Monte Carlo proof lab (writes out/proof.json)
-  build     bundle everything into dist/canary_demo.html (works offline, no server)
+  build     bundle the dashboard into dist/canary_demo.html and the technical tools into dist/canary_tools.html (both work offline)
   serve     live dashboard + Label Lab on http://127.0.0.1:8765
   qa        write QA_REPORT.md from out/proof.json
   slide     write dist/one_slide.html (the one-slide deliverable)
@@ -98,8 +98,9 @@ def main():
         from . import proof
         proof.main(a.runs, a.aa_runs)
     elif a.cmd == "build":
-        from .build import build_html
-        print("wrote", build_html())
+        from .build import build_console_html, build_html
+        print("wrote", build_console_html())      # the dashboard that follows the feature spec
+        print("wrote", build_html())              # the technical tools: proof lab, label calls, hear it
     elif a.cmd == "serve":
         from .server import serve
         serve(a.port, a.host)
@@ -182,9 +183,10 @@ def main():
         print(json.dumps(run(a.transcripts), indent=1))
     elif a.cmd == "all":
         from . import proof
-        from .build import build_html
+        from .build import build_console_html, build_html
         from .report import write_report
         proof.main(a.runs, a.aa_runs)
+        print("wrote", build_console_html())
         print("wrote", build_html())
         print("wrote", write_report())
 

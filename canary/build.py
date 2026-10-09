@@ -76,10 +76,42 @@ def build_bundle() -> dict:
     }
 
 
+def assemble_console_js() -> Path:
+    """web/console.js is generated from the parts in web/console/ (kept apart so each screen is a readable file)."""
+    parts = sorted((WEB / "console").glob("*.js"))
+    out = WEB / "console.js"
+    out.write_text("/* GENERATED from web/console/*.js by canary.build.assemble_console_js: edit the parts, not this file. */\n" + "\n".join(p.read_text() for p in parts))
+    return out
+
+
+def build_console_bundle() -> dict:
+    from . import console
+    b = console.console_bundle()
+    OUT.mkdir(exist_ok=True)
+    (OUT / "console_bundle.json").write_text(json.dumps(b))
+    return b
+
+
+def build_console_html(bundle: dict | None = None) -> Path:
+    """The dashboard that follows the feature spec, as one offline file."""
+    bundle = bundle or build_console_bundle()
+    DIST.mkdir(exist_ok=True)
+    assemble_console_js()
+    html = (WEB / "index.html").read_text()
+    css = (WEB / "console.css").read_text()
+    js = (WEB / "console.js").read_text()
+    data = json.dumps(bundle, separators=(",", ":")).replace("</", "<\\/")
+    html = html.replace('<link rel="stylesheet" href="console.css">', f"<style>{css}</style>")
+    html = html.replace('<script src="console.js"></script>', f"<script>window.CONSOLE_DATA={data};</script><script>{js}</script>")
+    out = DIST / "canary_demo.html"
+    out.write_text(html)
+    return out
+
+
 def build_html(bundle: dict | None = None) -> Path:
     bundle = bundle or build_bundle()
     DIST.mkdir(exist_ok=True)
-    html = (WEB / "index.html").read_text()
+    html = (WEB / "tools.html").read_text()
     css = (WEB / "style.css").read_text()
     js = (WEB / "simple.js").read_text() + "\n" + (WEB / "app.js").read_text()
     data = json.dumps(bundle, separators=(",", ":")).replace("</", "<\\/")
@@ -88,7 +120,7 @@ def build_html(bundle: dict | None = None) -> Path:
     import shutil
     if arena.ARENA.exists():
         shutil.copytree(arena.ARENA, DIST / "arena", dirs_exist_ok=True)      # audio for the offline demo
-    out = DIST / "canary_demo.html"
+    out = DIST / "canary_tools.html"
     out.write_text(html)
     (OUT / "bundle.json").write_text(json.dumps(bundle))
     return out

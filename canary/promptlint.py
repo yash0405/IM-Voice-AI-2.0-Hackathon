@@ -156,3 +156,17 @@ def analyse(text: str | None = None) -> dict:
     return {"prompt": rp.stats(text), "limits": found, "conflicts": conflicts(found), "cross_flow": cross_flow(found),
             "duplicates": duplicates(text)[:8],
             "note": "A lead for a person to check. Line numbers refer to data/base_prompt.md."}
+
+
+def variables(text: str) -> list[str]:
+    """Names of the template variables a prompt uses (for example buyer_name). A candidate must not drop any of them."""
+    try:
+        from jinja2 import Environment, meta
+        return sorted(meta.find_undeclared_variables(Environment().parse(text)))
+    except Exception:                                  # a template that does not parse: fall back to a plain scan
+        return sorted(set(re.findall(r"{{\s*([A-Za-z_][A-Za-z0-9_]*)", text)))
+
+
+def variable_report(before: str, after: str) -> dict:
+    a, b = set(variables(before)), set(variables(after))
+    return {"base": sorted(a), "dropped": sorted(a - b), "added": sorted(b - a), "ok": not (a - b)}

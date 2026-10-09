@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Canary - prove a prompt change before it ships</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 28 28%27%3E%3Crect width=%2728%27 height=%2728%27 rx=%278%27 fill=%27%230b0b0b%27/%3E%3Cpath d=%27M7 15.5l4.2 4.2L21 9%27 stroke=%27white%27 stroke-width=%272.6%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css">
+<title>Canary</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 28 28%27%3E%3Crect width=%2728%27 height=%2728%27 rx=%278%27 fill=%27%23243b53%27/%3E%3Cpath d=%27M7 15.5l4.2 4.2L21 9%27 stroke=%27white%27 stroke-width=%272.6%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="console.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand">
-    <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="8" fill="var(--ink)"/><path d="M7 15.5l4.2 4.2L21 9" stroke="var(--bg)" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <b>Canary</b><span>No prompt ships without proof</span>
-  </div>
-  <nav class="tabs" role="tablist" id="tabs"></nav>
-  <div class="top-right"><span class="chip" id="mode"></span><button class="iconbtn" id="theme" title="Toggle light / dark">Theme</button></div>
-</header>
-<main id="app"></main>
-<div id="tip" class="tip" hidden></div>
-<script src="simple.js"></script>
-<script src="app.js"></script>
+<div class="app">
+  <aside class="side" aria-label="Main menu">
+    <div class="brand">
+      <svg width="32" height="32" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="8" fill="#243b53"/><path d="M7 15.5l4.2 4.2L21 9" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><b>Canary</b><span>A/B testing and auto-rollout</span></div>
+    </div>
+    <nav class="nav" id="nav" aria-label="Screens"></nav>
+    <div class="side-foot"><span id="mode" class="pill">Offline demo</span><span>Demo state (days played, approvals, rollbacks) is kept in this browser. <button class="link" id="reset-link">Reset in Settings</button></span></div>
+  </aside>
+  <main class="main"><div id="page"></div></main>
+</div>
+<script src="console.js"></script>
 </body>
 </html>

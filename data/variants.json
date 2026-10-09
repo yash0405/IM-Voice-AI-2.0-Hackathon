@@ -81,6 +81,17 @@
      "replace": "more then 1 time"
     }
    ]
+  },
+  "whatsapp_after_call": {
+   "name": "Say the WhatsApp details come right after the call",
+   "origin": "human",
+   "edit": [
+    {
+     "in_line": "the assure the buyer that at the end of the call contact details",
+     "find": "would be shared over whatsapp",
+     "replace": "would be shared over whatsapp right after this call"
+    }
+   ]
   }
  }
 }

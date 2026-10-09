@@ -1,30 +1,28 @@
 # Canary - 5-minute demo script and hard questions
 
-Open `dist/canary_demo.html` (works with no internet). Live engine and labelling page: `python -m canary serve`, then http://127.0.0.1:8765. One slide: `dist/one_slide.html`. A step-by-step walkthrough: `USER_JOURNEY.md`.
+Open `dist/canary_demo.html` (works with no internet). Live engine (new experiments, your own files) and the labelling page: `./start.sh`, then http://127.0.0.1:8765. One slide: `dist/one_slide.html`. A step-by-step walkthrough: `USER_JOURNEY.md`.
 
 **One sentence.** We read VANI's real prompt with code, found where it contradicts itself, derived a small fix that is checked not to add contradictions, and let the A/B engine prove it on live traffic and roll it out only if it provably wins.
 
 **Say this first.** A buyer calls a seller on IndiaMART; the seller is unavailable; the call is redirected to VANI, which confirms the product, collects quantity, specifications, name and city, and connects the buyer to a live seller. Today a prompt change reaches every buyer on judgement alone.
 
-## The 5 minutes (open the **Start** page, then the **Suggest a change** and **Judge a test** tabs)
+## The 5 minutes (the feature spec's own demo plan: set up in advance, then "Advance 1 day")
 
-**0:00 - The problem (25 s).** "A prompt edit can quietly cost leads and a good edit can't be proven. We closed the loop on VANI's real prompt: find, fix, prove, roll out."
+**0:00 - The problem (25 s).** "A prompt edit can quietly cost leads, and a good edit can't be proven. Canary tries a change on a slice, and ships it only if it wins. The voice test runs elsewhere; Canary judges its results." Open **Overview**: four tests are already set up, paused on day 2.
 
-**0:25 - Step 1, Find (85 s).** "Three independent checks, none needed a paid call. One: we read the 25,000-word prompt with code. It gives different limits for the same thing: buyer name two or three asks, product confirmation four or five, enrichment slots two or three. IndiaMART's own quality matrix marks asking more than 1+2 times as a fatal looping failure, so where limits disagree the bot can follow the wrong one. Two: we scanned 234 real recordings. VANI repeats itself verbatim three or more times in only 1.7% of calls, a lower bound, so we expect a safety gain, not a conversion jump. Three: Sarvam labelled 299 real calls. And here is something we want you to see: our first tagger flagged 'did not read the details back' on 129 calls. VANI's real prompt forbids reading values back. We caught our own mistake and removed it."
+**0:25 - Watch results build (75 s).** Press **Advance all running tests 1 day (demo)** and open **Live Experiments**. "Results up to yesterday. Final winner call on day 7. Both rates with 95% ranges, the lift with its range, the call-length guardrail, a daily harm monitor, and the split panel: configured against achieved share, a chi-square check, and zero leads that saw both prompts." Keep advancing.
 
-**1:50 - Step 2, Fix (40 s).** "One edit, three lines in a 2,300-line prompt; highlighted words are what changes. Prompt lint: three contradictions to zero, none added. Any edit that contradicts the prompt is rejected automatically. A Sarvam-written alternative costs under one rupee; we haven't run it."
+**1:40 - Three outcomes (80 s).** "B wins: promoted on day 7. B worse: stopped on day 4 by the daily harm check and its leads go back to A. Flat: inconclusive, keep A, and it says how many more leads would settle it. We do not force a winner."
 
-**2:30 - Step 3, the pre-check (20 s).** "We did not run the simulated-buyer pre-check on the real prompt: it is 22,000 tokens per turn, about 116 rupees for 24 calls. Credits are limited, so it is optional and costed. Step 4 stops a harmful edit anyway."
+**3:00 - A win with a catch (45 s).** Open *Offer the seller details on WhatsApp earlier*: "more BuyLeads, but calls 13% longer against a 10% limit. Not shipped and not thrown away: held for a person." Press **Approve**. "The click is in the **Decision Log**; the record re-verifies in the browser. It is now a new version in the **Prompt Library**; **Rollback** is one click, also logged."
 
-**2:50 - Step 4, Prove it (85 s).** "To be sure of a three-point lift Canary needs about 9,200 calls, about 15 days at 600 a day. One point needs 83,000: too small to prove on conversion, so this fix is judged mainly on safety." Click **The fix works**: the needle crosses into green after about 6,000 calls, 35% sooner than a fixed-length test. **The fix backfires**: stopped after about 1,600 buyers where a fixed test would use about 4,600. **Does almost nothing**: "we cannot tell, nothing ships."
+**3:45 - Why trust it (45 s).** Back on **Overview**, the **A vs A check**: "with two identical prompts a winner is wrongly declared 2.6% of the time, against 11% for a plain p < 0.05 checked daily. We also measured the spec's one-look rule against ours on identical traffic: both keep false wins near 2.5%; the one-look rule catches a clearly worse B 89% of the time, ours 98%. It is a setting."
 
-**4:15 - Judge a test (45 s).** Open **Judge a test**. "The voice calls run on the voice platform; what comes to us are the results, one row per call. Canary reads them, checks them, and decides with the same rules." Click **B wins**, Skip: "ship, with the numbers; the browser re-checks the tamper-evident record." Back, click **B wins, but calls run longer**: "a clear win with a safety check not proven is not thrown away and not shipped on its own: a person decides." Press **Approve**: "the click is added to the record and the chain still verifies." (These example files are synthetic, from a known truth.)
+**4:30 - Results from outside (30 s).** "The voice test is not ours. **Import results files**: Canary checks the data, counts each lead once, lists anything odd, and decides." (Live version.) Or show **History**, which already holds six decisions made from sample result files.
 
-**5:00 - Why trust it (35 s).** "When nothing really changed, a tool that checks every day crowns a fake winner 12% of the time. Canary: 2.3%. When call tracking silently loses calls, usual tools ship the change 99% of the time. Canary: 0%. One command re-runs it."
+**5:00 - Close (15 s).** "Setup is locked with a version ID, every decision is in a tamper-evident record, and every demo result is simulated with a known answer: it shows the engine decides correctly, not that a real prompt is better."
 
-**5:35 - Close (15 s).** "Every step, including the evidence behind the fix, is in a tamper-evident record. The A/B outcomes are simulated with a known answer; the prompt, the lint and the loop scan are real."
-
-Technical judges: the **Advanced** tab has the decision record (Verify chain, Tamper with one entry), the proof tables and split accuracy.
+Technical judges: **Settings** > Tools opens the proof lab, with every number re-runnable. **Suggest A/B Tests** shows the evidence-based ideas, including the fix loop on VANI's real prompt.
 
 ## What the PM suggested, and what we did
 

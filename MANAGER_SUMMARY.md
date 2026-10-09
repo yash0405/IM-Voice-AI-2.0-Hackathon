@@ -63,13 +63,33 @@ Scrutinised; its good ideas were adopted (hold for approval, "more leads needed"
 - No Sarvam credits were used in this work (spend total still Rs 313.82).
 - **Decisions needed:** (1) ask the organisers the two questions above; (2) get a sample of the PM's metric files; (3) approve or decline the paid steps; (4) still unanswered: the deck rule that all build work happens on 9-10 Oct, so today's earlier work may need to be shown as built in the event.
 
-## Update after the "extraordinary and simple" goal
+## Update: the dashboard now follows the feature spec and the Clean Slate theme
+You said the UI was different from the spec and theme. It was: it used its own screens. It has been rebuilt.
+
+| In the feature spec | In the dashboard |
+|---|---|
+| Left menu: Overview, New Experiment, Live Experiments, History, Suggest A/B Tests, Prompt Library, Decision Log, Settings | **Built**, exactly these eight |
+| Overview: running tests (name, day X of Y, current lift, status), production prompt, totals | **Built**, plus an "A vs A check" card |
+| New Experiment, 6 steps, locked with a version ID; patch or full prompt with side-by-side diff and a template-variable check; live calculator; simulation presets B wins / B worse / flat | **Built** (the optional "Try it" chat box is shown switched off: it uses paid credits) |
+| Live page: header with Pause, Stop, Approve, Rollback; "results up to yesterday" banner; number tiles; daily trend with ranges; harm monitor; split panel; progress; **Advance 1 day**; decision table | **Built**, every part |
+| Demo plan: three experiments set up and paused on day 2 (B wins, B worse, flat) | **Built**, plus the BRD's bonus fourth (a win held for approval because calls run longer) |
+| History with filters, frozen report, Clone, learning tag, CSV export | **Built** |
+| Prompt Library with diff against the previous version, production pointer, one-click logged rollback | **Built** |
+| Decision Log of every event | **Built**, with filters and CSV |
+| Settings: metric list, defaults, approval mode, overlap warning | **Built** |
+| Suggest A/B Tests: five idea sources, expected effect, days needed, priority, one-click start | **Built**; the "weak segments" idea says plainly it cannot be generated (no segment data), and ideas come from our own evidence, not a language model |
+| Theme: Clean Slate colours, Inter font, 8-12 px corners, no shadows, header + filters + KPI cards + charts + tables, accessible status (word and symbol, never colour alone) | **Applied**. Inter is used if installed, otherwise a clean system font (offline) |
+| Not built | Email/Slack alerts, the post-promotion 5% holdback, model-written summaries (a template writes them from the numbers), segments |
+
+Independent check: a separate reviewer opened the finished dashboard in a browser and compared it with the spec and the theme line by line. It found real defects (a new test could not be launched offline; two library versions were identical so their diff was meaningless; guardrail results disagreed between screens; a range showed -100 to +100 points on early days; the Overview counted history samples the library did not). All were fixed and re-tested.
+
+What stayed: the engine, the decision rules, the results-file reader, the skill and the technical tools page (proof lab, label calls, hear it), now under Settings > Tools. Proof: 127 tests pass; every screen and the spec's whole demo plan were exercised in a real browser (offline and live).
+
+## Earlier update after the "extraordinary and simple" goal
 | What | Why it matters | Proof |
 |---|---|---|
-| A **Start** page and a smaller menu (Start, Judge a test, Plan a test, Suggest a change, Why trust it, More) | Anyone, technical or not, sees four plain choices instead of seven tabs | Browser test; no horizontal overflow at phone width |
-| Upload helper: choose a file and **tick which outcomes count as success** | No typing of column or outcome names | Browser test with the messy export |
-| **Whole percentages and a plain range** on every verdict ("probably between +1 and +12 points") | Decimals the data cannot support mislead | Visible on every result |
-| Honest wording for results files: Canary **advises**, it does not claim to have rolled anything out | We do not control live traffic | Result card text |
-| Engine rule: a win is **never shipped on a peak that has since faded**; held for a person instead | A novelty effect cannot slip through | Unit test; headline proof numbers unchanged (false wins 2.2%, power 77%) |
-| A reusable **skill** (`skill/ab-test-decision/SKILL.md`): plan, check, decide, report | Plug-and-play for any AI assistant or team | 100% vs 88% of graded statements without it; see `skills.md` for the honest reading |
+| Whole percentages and a plain range on every verdict | Decimals the data cannot support mislead | Visible on every result |
+| Honest wording for results files: Canary **advises**, it does not claim to have rolled anything out | We do not control live traffic | Result text |
+| Engine rule: a win is **never shipped on a peak that has since faded**; held for a person instead | A novelty effect cannot slip through | Unit test; headline proof numbers unchanged |
+| A reusable **skill** (`skill/ab-test-decision/SKILL.md`) | Plug-and-play for any AI assistant or team | 100% vs 88% of graded statements without it; see `skills.md` |
 | `START_HERE.md` and `start.sh` (one command) | Five minutes to a first result | Run it |
