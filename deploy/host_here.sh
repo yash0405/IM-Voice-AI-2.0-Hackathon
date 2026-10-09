@@ -15,7 +15,15 @@ alive() { [ -s "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
 
 hosted_capable() { git -C "$ROOT" show "$1:canary/server.py" 2>/dev/null | grep -q 'CANARY_HOSTED'; }
 
-stop_app() { alive "$STATE/app.pid" && kill "$(cat "$STATE/app.pid")" 2>/dev/null; sleep 1; rm -f "$STATE/app.pid"; }
+stop_app() {
+  alive "$STATE/app.pid" && kill "$(cat "$STATE/app.pid")" 2>/dev/null
+  rm -f "$STATE/app.pid"
+  for _ in $(seq 1 20); do                                   # wait until the port is free; kill whatever still holds it
+    p="$(ss -ltnp "sport = :$PORT" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)"
+    [ -z "$p" ] && return 0
+    kill "$p" 2>/dev/null; sleep 0.5
+  done
+}
 
 deploy() {   # $1 = branch ref (name or origin/name)
   local ref="$1" sha dir
@@ -26,8 +34,10 @@ deploy() {   # $1 = branch ref (name or origin/name)
   if [ ! -d "$dir" ]; then mkdir -p "$dir.tmp" && git -C "$ROOT" archive "$ref" | tar -x -C "$dir.tmp" && mv "$dir.tmp" "$dir"; fi
   "$STATE/venv/bin/pip" install -q -r "$dir/requirements.txt" || { log "pip failed for $ref"; return 1; }
   stop_app
-  ( cd "$dir" && CANARY_HOSTED=1 CANARY_PASSWORD="$(cat "$STATE/password")" RENDER_GIT_BRANCH="$ref" RENDER_GIT_COMMIT="$sha" \
-      setsid nohup "$STATE/venv/bin/python" -m canary serve --hosted --host 127.0.0.1 --port "$PORT" > "$STATE/app.log" 2>&1 & echo $! > "$STATE/app.pid" )
+  ( cd "$dir" || exit 1
+    CANARY_HOSTED=1 CANARY_PASSWORD="$(cat "$STATE/password")" RENDER_GIT_BRANCH="$ref" RENDER_GIT_COMMIT="$sha" \
+      setsid nohup "$STATE/venv/bin/python" -m canary serve --hosted --host 127.0.0.1 --port "$PORT" > "$STATE/app.log" 2>&1 &
+    echo $! > "$STATE/app.pid" )
   for _ in $(seq 1 40); do curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break; sleep 0.5; done
   if curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then echo "$ref $sha" > "$STATE/current"; log "deployed $ref ($sha)"
   else log "app did not start for $ref, see $STATE/app.log"; return 1; fi
