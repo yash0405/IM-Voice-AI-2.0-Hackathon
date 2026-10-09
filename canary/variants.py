@@ -61,6 +61,8 @@ RUNTIME: dict = {}          # full prompts pasted in the New Experiment wizard: 
 
 def register_text(name: str, text: str) -> str:
     key = "custom_" + prompt_hash(text)
+    while len(RUNTIME) >= 60 and key not in RUNTIME:        # a long-running host must not grow without bound
+        RUNTIME.pop(next(iter(RUNTIME)))
     RUNTIME[key] = {"name": name or "A pasted prompt", "text": text}
     return key
 

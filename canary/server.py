@@ -1,8 +1,11 @@
 """Local server: dashboard, live engine API, Label Lab. Standard library only."""
 from __future__ import annotations
 
+import base64
+import hmac
 import json
 import mimetypes
+import os
 import re
 import sys
 import threading
@@ -18,6 +21,19 @@ from .synth import benchmark_report
 WEB = build.WEB
 _cache: dict = {}
 _lock = threading.Lock()
+
+# Hosted mode (public internet, e.g. Render): only the engine screens are served. The Label Lab, call audio, transcripts, the
+# Sarvam spend ledger and the proof lab stay off, and a password is required. Set by serve(hosted=True) or CANARY_HOSTED=1.
+HOSTED = {"on": False, "password": None}
+HOSTED_GET = ("/", "/index.html", "/console.css", "/console.js", "/api/console", "/api/samples")
+HOSTED_POST = ("/api/wizard", "/api/decide", "/api/inspect")
+HOSTED_MAX_BODY = 4_000_000                         # the free instance has 512 MB of memory
+_heavy = threading.BoundedSemaphore(2)              # at most two simulations/file decisions at once; the rest get a polite 503
+
+
+def build_info() -> dict:
+    """Which branch and commit this server is running (Render sets these; a local run reports 'local')."""
+    return {"branch": os.environ.get("RENDER_GIT_BRANCH") or "local", "commit": (os.environ.get("RENDER_GIT_COMMIT") or "")[:7] or "-"}
 
 RUN_FIELDS = {"true_a": float, "true_b": float, "dur_mult_b": float, "log_drop_b": float, "seed": int}
 CFG_FIELDS = {"share_b": float, "baseline": float, "mde": float, "guardrail_margin": float, "window_days": int,
@@ -159,14 +175,46 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _gate(self, path: str, allowed: tuple) -> bool:
+        """Hosted mode only: password check, then the allowlist. Returns True when the request may go on (else it has answered)."""
+        if not HOSTED["on"]:
+            return True
+        if path == "/healthz":
+            self._json({"ok": True, **build_info()})
+            return False
+        got = self.headers.get("Authorization", "")
+        ok = False
+        if got.startswith("Basic "):
+            try:
+                pw = base64.b64decode(got[6:]).decode("utf8", "replace").partition(":")[2]
+                ok = hmac.compare_digest(pw.encode(), HOSTED["password"].encode())
+            except Exception:
+                ok = False
+        if not ok:
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="Canary (team access)", charset="UTF-8"')
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+        if path not in allowed and not re.fullmatch(r"/api/sample/[a-z_]+", path):
+            self.send_error(404)
+            return False
+        return True
+
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
+        if not self._gate(u.path, HOSTED_GET):
+            return
         try:
             if u.path in ("/", "/index.html", "/tools.html"):
                 html = (WEB / ("tools.html" if u.path == "/tools.html" else "index.html")).read_text()
-                html = html.replace('<script src="app.js"></script>', '<script>window.CANARY_LIVE=true;</script><script src="app.js"></script>')
-                html = html.replace('<script src="console.js"></script>', '<script>window.CANARY_LIVE=true;</script><script src="console.js"></script>')
+                flag = "window.CANARY_LIVE=true;" + ("window.CANARY_HOSTED=true;" if HOSTED["on"] else "")
+                html = html.replace('<script src="app.js"></script>', f'<script>{flag}</script><script src="app.js"></script>')
+                html = html.replace('<script src="console.js"></script>', f'<script>{flag}</script><script src="console.js"></script>')
+                if HOSTED["on"]:
+                    b = build_info()
+                    html = html.replace("</body>", f'<div style="position:fixed;right:8px;bottom:6px;font:11px/1 system-ui,sans-serif;color:#627d98;background:#ffffffd9;padding:3px 6px;border-radius:6px">branch {b["branch"]} &middot; {b["commit"]}</div></body>')
                 data = html.encode()
                 self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
@@ -212,9 +260,13 @@ class H(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 500)
 
     def do_POST(self):
+        if not self._gate(urlparse(self.path).path, HOSTED_POST):
+            return
         n = int(self.headers.get("Content-Length", 0))
-        if n > (14_000_000 if self.path in ("/api/decide", "/api/inspect") else 1_000_000 if self.path == "/api/wizard" else 20000):
+        if n > (14_000_000 if self.path in ("/api/decide", "/api/inspect") else 1_000_000 if self.path == "/api/wizard" else 20000) or (HOSTED["on"] and n > HOSTED_MAX_BODY):
             return self._json({"error": "body too large"}, 413)
+        if HOSTED["on"] and not _heavy.acquire(blocking=False):
+            return self._json({"error": "The server is busy with other people's runs. Try again in a few seconds."}, 503)
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
             if self.path == "/api/run":
@@ -238,15 +290,25 @@ class H(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 400)
         except Exception as e:  # pragma: no cover
             self._json({"error": str(e)}, 500)
+        finally:
+            if HOSTED["on"]:
+                _heavy.release()
 
 
-def serve(port: int = 8765, host: str = "127.0.0.1"):
+def serve(port: int = 8765, host: str = "127.0.0.1", hosted: bool = False):
+    hosted = hosted or os.environ.get("CANARY_HOSTED") == "1"
+    if hosted:
+        pw = os.environ.get("CANARY_PASSWORD", "")
+        if len(pw) < 8:
+            sys.exit("Hosted mode needs CANARY_PASSWORD (at least 8 characters). Refusing to start an open server.")
+        HOSTED.update(on=True, password=pw)
     build.assemble_console_js()
-    threading.Thread(target=bundle_live, daemon=True).start()      # warm the caches
+    if not hosted:                                                  # hosted mode never touches labels, spend or audio
+        threading.Thread(target=bundle_live, daemon=True).start()   # warm the caches
     threading.Thread(target=console_live, daemon=True).start()
     srv = ThreadingHTTPServer((host, port), H)
-    print(f"Canary live on http://{host}:{port}   (Ctrl+C to stop)")
-    if host != "127.0.0.1":
+    print(f"Canary live on http://{host}:{port}   (Ctrl+C to stop)" + ("   [hosted mode: password required, Label Lab/audio/transcripts off]" if hosted else ""))
+    if host != "127.0.0.1" and not hosted:
         print("WARNING: this serves call audio to anyone on your network. Use only on the office network and stop it when labelling is done.")
     try:
         srv.serve_forever()

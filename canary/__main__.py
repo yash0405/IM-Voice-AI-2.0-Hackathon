@@ -35,6 +35,7 @@ def main():
     ap.add_argument("--out", default="out/canary.db", help="export-db: where to write the SQLite file")
     ap.add_argument("--no-past", action="store_true", help="export-db: leave out the history samples")
     ap.add_argument("--no-calls", action="store_true", help="export-db: leave out the per-call rows")
+    ap.add_argument("--hosted", action="store_true", help="serve: public-internet mode (needs CANARY_PASSWORD; Label Lab, audio and transcripts off)")
     ap.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 so other laptops on the office network can label")
     ap.add_argument("--transcripts", help="folder of <idx>.txt transcripts for real-label evaluation")
     ap.add_argument("files", nargs="*", help="decide: more results files")
@@ -111,7 +112,7 @@ def main():
         print("wrote", build_html())              # the technical tools: proof lab, label calls, hear it
     elif a.cmd == "serve":
         from .server import serve
-        serve(a.port, a.host)
+        serve(a.port, a.host, hosted=a.hosted)
     elif a.cmd == "qa":
         from .report import write_report
         print("wrote", write_report())

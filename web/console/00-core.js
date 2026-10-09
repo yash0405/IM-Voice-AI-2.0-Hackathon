@@ -4,6 +4,7 @@
    lives in this browser only and is reset from Settings. */
 
 const LIVE = !!window.CANARY_LIVE;
+const HOSTED = !!window.CANARY_HOSTED;
 let C = window.CONSOLE_DATA || null;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
