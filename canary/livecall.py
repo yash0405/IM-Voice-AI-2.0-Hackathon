@@ -139,7 +139,12 @@ def candidates() -> list[dict]:
     for key, spec in variants._candidates().items():
         out.append({"key": key, "name": spec["name"], "origin": spec.get("origin", "human"), "why": spec.get("why")})
     out.sort(key=lambda c: (c["key"] != "fix_candidate", c["name"]))
-    return out
+    seen, uniq = set(), []
+    for c in out:                                   # the fix loop's pick can also be listed under its own name: show each patch once
+        if c["name"] not in seen:
+            seen.add(c["name"])
+            uniq.append(c)
+    return uniq
 
 
 def default_candidate() -> str:
