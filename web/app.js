@@ -49,7 +49,7 @@ function sha256(str) {
 
 /* ------------------------------------------------------------------ state */
 const S = { tab: "exp", key: (D && D.scenarios && D.scenarios[0] ? D.scenarios[0].meta.key : "b_wins"), rec: null, meta: null, replay: null, k: 1, playing: false, speed: 4, timer: null,
-            ledgerAll: false, tamper: null, verify: null, showDiff: false, plan: { b: 0.45, m: 0.07, s: 0.10, lpd: 600, days: 14 },
+            ledgerAll: false, tamper: null, verify: null, tail: null, showDiff: false, plan: { b: 0.45, m: 0.07, s: 0.10, lpd: 600, days: 14 },
             lab: { name: store.get("lab_name", ""), call: null, summary: null, start: 0 } };
 
 const KIND = {
@@ -58,10 +58,10 @@ const KIND = {
   STOP_GUARDRAIL: { cls: "bad", pill: "Stopped: guardrail", icon: "clock", verdict: "B wins on BuyLeads but breaks the guardrail: stopped" },
   HALT_SRM: { cls: "warn", pill: "Halted: broken test", icon: "link", verdict: "Test is broken (split mismatch): nothing ships" },
   INCONCLUSIVE: { cls: "neutral", pill: "Inconclusive", icon: "approx", verdict: "No evidence either way: nothing ships" },
-  NO_PROMOTE_GUARDRAIL: { cls: "warn", pill: "Not promoted", icon: "alert", verdict: "Win not proven safe on the guardrail: not promoted" },
+  HOLD_FOR_APPROVAL: { cls: "warn", pill: "Held for approval", icon: "alert", verdict: "B wins, but a guardrail is not proven: a person decides" },
   CONTINUE: { cls: "run", pill: "Running", icon: "play", verdict: "Collecting evidence" }
 };
-const SCN_ICON = { fix_ships: ["good", "check"], fix_harms: ["bad", "x"], fix_flat: ["neutral", "approx"], b_wins: ["good", "check"], b_harmful: ["bad", "x"], inconclusive: ["neutral", "approx"], peeking_trap: ["warn", "alert"], srm_broken: ["warn", "link"], guardrail_veto: ["bad", "clock"] };
+const SCN_ICON = { fix_ships: ["good", "check"], fix_harms: ["bad", "x"], fix_flat: ["neutral", "approx"], b_wins: ["good", "check"], b_harmful: ["bad", "x"], inconclusive: ["neutral", "approx"], peeking_trap: ["warn", "alert"], guardrail_hold: ["warn", "alert"], srm_broken: ["warn", "link"], guardrail_veto: ["bad", "clock"] };
 
 /* ------------------------------------------------------------------ chart core */
 const tip = $("#tip");
@@ -115,7 +115,7 @@ const xfmtCalls = v => v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + "k" : 
 function loadScenario(key, auto = true) {
   const sc = D.scenarios.find(s => s.meta.key === key) || D.scenarios[0];
   S.key = sc.meta.key; S.rec = sc.record; S.meta = sc.meta; S.replay = sc.replay;
-  S.tamper = null; S.verify = null; S.showDiff = false;
+  S.tamper = null; S.verify = null; S.showDiff = false; S.tail = null;
   stop(); S.k = auto ? 1 : S.rec.looks.length;
   renderExperiment();
   if (auto) play();
@@ -141,12 +141,13 @@ function renderExperiment() {
   const chips = D.scenarios.map(s => { const [cl, ic] = SCN_ICON[s.meta.key] || ["neutral", "approx"];
     return `<button data-key="${s.meta.key}" aria-pressed="${s.meta.key === S.key}"><span class="ic ${cl}">${icon(ic)}</span><span><div class="t">${esc(s.meta.title)}</div><div class="s">expect: ${(KIND[s.meta.expect] || { pill: s.meta.expect }).pill}</div></span></button>`; }).join("");
   const custom = `<button data-custom="1" aria-pressed="${S.key === "custom"}" ${LIVE ? "" : 'disabled title="Needs the live engine: python -m canary serve"'}><span class="ic neutral">${icon("plus")}</span><span><div class="t">Custom experiment</div><div class="s">${LIVE ? "your own numbers" : "live mode only"}</div></span></button>`;
+  const hasTruth = m.true_a != null;
   const dk = m.dur_mult_b && m.dur_mult_b !== 1 ? ` · B calls ${((m.dur_mult_b - 1) * 100).toFixed(0)}% longer` : "";
   const dr = m.log_drop_b ? ` · B loses ${(m.log_drop_b * 100).toFixed(0)}% of its non-converting calls from the log` : "";
   app.innerHTML = `
   <div class="scn" id="scn">${chips}${custom}</div>
   <div class="story"><span><b>${esc(m.title)}.</b> ${esc(m.story)}</span>
-    <span class="chip" title="We inject a known difference so we can check the engine finds it. Outcomes are simulated; call durations are resampled from the 713 real recordings.">Known truth (simulated): A ${pct(m.true_a)} · B ${pct(m.true_b)}${dk}${dr}</span></div>
+    ${hasTruth ? `<span class="chip" title="We inject a known difference so we can check the engine finds it. Outcomes are simulated; call durations are resampled from the 713 real recordings.">Known truth (simulated): A ${pct(m.true_a)} · B ${pct(m.true_b)}${dk}${dr}</span>` : `<span class="chip good" title="These are results supplied in files. There is no hidden truth to compare with: the decision is the point.">From results files &middot; ${esc((rec.source && rec.source.files || []).join(", "))}</span>`}</div>
   <div class="grid">
     <div class="stack">
       <section class="card" id="hero"><div id="hero-d"></div>
@@ -154,6 +155,7 @@ function renderExperiment() {
           <button class="btn" id="bk" title="Back one look">${icon("back")}</button>
           <button class="btn primary" id="pp" title="Play / pause (space)"></button>
           <button class="btn" id="fw" title="Skip to the end">${icon("fwd")}</button>
+          <button class="btn2" id="nd" title="Show the results up to the end of the next day (the spec's 'Advance 1 day')">+1 day</button>
           <input type="range" id="scrub" min="1" max="${rec.looks.length}" value="${S.k}" aria-label="Look">
           <span class="muted mono" id="lk"></span>
           <span class="seg" id="spd">${[1, 4, 16].map(v => `<button data-v="${v}" aria-pressed="${S.speed === v}">${v}&times;</button>`).join("")}</span>
@@ -183,6 +185,10 @@ function wireStatic() {
   const L = S.rec.looks.length;
   $("#bk").onclick = () => { stop(); S.k = Math.max(1, S.k - 1); renderDynamic(); };
   $("#fw").onclick = () => { stop(); S.k = L; renderDynamic(); };
+  $("#nd").onclick = () => {
+    stop(); const c0 = S.rec.config, day = r => Math.floor((new Date(r.time) - new Date(c0.start)) / 86400000), target = day(S.rec.looks[S.k - 1]) + 1;
+    let k = S.k; S.rec.looks.forEach((r, i) => { if (day(r) <= target) k = Math.max(k, i + 1); }); S.k = Math.min(L, Math.max(k, S.k + 1)); renderDynamic();
+  };
   $("#pp").onclick = () => { S.playing ? stop() : play(); updatePlayer(); };
   $("#scrub").oninput = e => { stop(); S.k = +e.target.value; renderDynamic(); };
   $$("#spd button").forEach(b => b.onclick = () => { S.speed = +b.dataset.v; if (S.playing) play(); updatePlayer(); });
@@ -196,32 +202,67 @@ function renderDynamic(first) {
 }
 
 const seen = () => S.rec.looks.slice(0, S.k);
-function truthBetter() { const m = S.meta; return m.true_b > m.true_a && (m.dur_mult_b || 1) <= 1.15 && !m.log_drop_b; }
+function truthBetter() { const m = S.meta; if (m.true_a == null) return false; return m.true_b > m.true_a && (m.dur_mult_b || 1) <= 1.15 && !m.log_drop_b; }
 
 function naiveWrongText(wins) {
   const a = D.proof && D.proof.scenarios.aa.methods.naive_peek.outcomes, k = wins ? "PROMOTE" : "STOP_HARM", r = a && a[k] ? a[k].rate : 0;
   return r ? `about 1 time in ${Math.round(1 / r)}` : "often";
 }
 
+
+/* ------------------------------------------------------------------ decisions that need a person, rollback, "how many more leads" (shared by both views) */
+const tailSays = t => ({ approve: "A person approved it: B now serves all traffic.", reject: "A person rejected it: all traffic is back on A.", rollback: "Rolled back: all traffic is back on the previous prompt." }[t] || "");
+function actionBar(rec, tail) {
+  const res = rec.result, t = rec.tails || {};
+  const btn = (act, label, cls = "") => `<button class="btn2 ${cls}" data-act="${act}">${label}</button>`;
+  if (res.kind === "HOLD_FOR_APPROVAL" && t.approve) {
+    return tail ? `<div class="act done">Logged in the record. ${btn("undo", "Undo the demo click")}</div>`
+      : `<div class="act"><span><b>A person decides.</b> The click is logged in the tamper-evident record. Meanwhile callers are unaffected.</span><span class="actbtns">${btn("approve", "Approve: ship B", "okb")}${btn("reject", "Reject: keep A")}</span></div>`;
+  }
+  if (res.kind === "PROMOTE" && t.rollback && !(rec.source && rec.source.type === "files")) {      // for results files Canary does not route traffic, so there is nothing to roll back here
+    return tail ? `<div class="act done">Logged in the record. ${btn("undo", "Undo the demo click")}</div>`
+      : `<div class="act"><span>Changed your mind? Rolling back is one click and is logged.</span><span class="actbtns">${btn("rollback", "Roll back")}</span></div>`;
+  }
+  return "";
+}
+function moreLeadsHtml(res) {
+  const m = res.more_leads; if (!m || !m.options || !m.options.length) return "";
+  const li = m.options.map(o => o.enough_already
+    ? `<li>Already enough data to detect <b>${o.lift_pp} points</b> (${esc(o.label)}). Nothing showed, so any real lift is smaller than that.</li>`
+    : `<li><b>${nf(o.more_leads)} more leads</b> (about ${o.more_days} days) to detect <b>${o.lift_pp} points</b> (${esc(o.label)}).${o.impractical ? " That is over a year of traffic: not practical." : ""}</li>`).join("");
+  return `<div class="more"><b>What would settle it</b><ul>${li}</ul></div>`;
+}
+function dataNotesHtml(rec) {
+  const src = rec.source; if (!src || !src.warnings || !src.warnings.length) return "";
+  return `<details class="notes"><summary>${src.warnings.length} data note${src.warnings.length > 1 ? "s" : ""} (what Canary found in the files)</summary><ul>${src.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></details>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const act = b.dataset.act, simple = S.tab === "try" || S.tab === "files";
+  const st = simple ? V : S; st.tail = act === "undo" ? null : act;
+  if (simple) { const r = $("#result"); if (r) r.innerHTML = resultCard(); } else { renderHero(); renderLedger(); }
+});
+
 function renderHero() {
   const rec = S.rec, L = rec.looks.length, row = rec.looks[S.k - 1], final = S.k >= L, res = rec.result, c = rec.config;
   const kind = final ? res.kind : "CONTINUE", K = KIND[kind] || KIND.CONTINUE;
   const lift = row.diff, ci = row.rci, wide = Math.abs(ci[1] - ci[0]) > 0.6;
-  const prod = final && kind === "PROMOTE" ? `Production prompt <span class="mono">${res.production_before.slice(0, 7)}</span> &rarr; <span class="mono">${res.production_after.slice(0, 7)}</span> (auto-approved). ` : "";
-  const reason = final ? prod + esc(res.reason) : `Look ${S.k} of up to ${L}: z = ${row.z.toFixed(2)}, needs &ge; ${row.eff > 50 ? "&gt;50" : row.eff.toFixed(2)} to promote or &le; &minus;${row.harm.toFixed(2)} to stop. No decision yet.`;
+  const prod = final && kind === "PROMOTE" && !(rec.source && rec.source.type === "files") ? `Production prompt <span class="mono">${res.production_before.slice(0, 7)}</span> &rarr; <span class="mono">${res.production_after.slice(0, 7)}</span> (auto-approved). ` : "";
+  const done = final && S.tail ? ` <b>${esc(tailSays(S.tail))}</b>` : "";
+  const reason = final ? prod + esc(res.reason) + done + moreLeadsHtml(res) + actionBar(rec, S.tail) : `Look ${S.k} of up to ${L}: z = ${row.z.toFixed(2)}, needs &ge; ${row.eff > 50 ? "&gt;50" : row.eff.toFixed(2)} to promote or &le; &minus;${row.harm.toFixed(2)} to stop. No decision yet.`;
   const exposed = row.exposedB, total = row.n;
   const day = Math.floor((new Date(row.time) - new Date(c.start)) / 86400000) + 1;
   const sh = S.rec.result.split;
   $("#hero-d").innerHTML = `
     <div class="hero"><div>
       <span class="pill ${K.cls}">${kind === "CONTINUE" ? '<span class="pulse"></span>' : icon(K.icon, 14)}${K.pill}</span>
-      <div class="verdict">${esc(K.verdict)}</div><p class="reason">${reason}</p></div>
-      <div class="figure"><div class="num">${wide ? "&plusmn;?" : pp(lift)}</div>
-        <div class="lbl">B vs A on ${esc(c.primary_goal.replace(/_/g, " "))}<br>${wide ? "interval still very wide" : `always-valid 95% interval ${pp(ci[0])} to ${pp(ci[1])}`}</div></div></div>
+      <div class="verdict">${esc(K.verdict)}</div><p class="reason">${reason}</p>${final ? dataNotesHtml(rec) : ""}</div>
+      <div class="figure"><div class="num">${wide ? "&plusmn;?" : pp(lift, 0)}</div>
+        <div class="lbl">B vs A on ${esc(c.primary_goal.replace(/_/g, " "))}<br>${wide ? "interval still very wide" : `always-valid 95% interval ${pp(ci[0], 0)} to ${pp(ci[1], 0)}`}</div></div></div>
     <div class="tiles">
       <div class="tile"><div class="k">Calls analysed</div><div class="v">${nf(row.n)}</div><div class="d">of ${nf(rec.design.n_max)} planned</div><div class="bar"><i style="width:${Math.min(100, row.n / rec.design.n_max * 100)}%"></i></div></div>
-      <div class="tile"><div class="k"><span class="dot" style="display:inline-block;background:var(--a)"></span> A (production)</div><div class="v">${pct(row.rateA)}</div><div class="d">${nf(row.xA)} of ${nf(row.nA)} calls</div></div>
-      <div class="tile"><div class="k"><span class="dot" style="display:inline-block;background:var(--b)"></span> B (candidate)</div><div class="v">${pct(row.rateB)}</div><div class="d">${nf(row.xB)} of ${nf(row.nB)} calls</div></div>
+      <div class="tile"><div class="k"><span class="dot" style="display:inline-block;background:var(--a)"></span> A (production)</div><div class="v">${pct(row.rateA, 0)}</div><div class="d">${nf(row.xA)} of ${nf(row.nA)} calls</div></div>
+      <div class="tile"><div class="k"><span class="dot" style="display:inline-block;background:var(--b)"></span> B (candidate)</div><div class="v">${pct(row.rateB, 0)}</div><div class="d">${nf(row.xB)} of ${nf(row.nB)} calls</div></div>
       <div class="tile"><div class="k">Calls served to B</div><div class="v">${nf(exposed)}</div><div class="d">${pct(row.assignedB, 1)} of traffic</div></div>
       <div class="tile"><div class="k">Elapsed</div><div class="v">Day ${day}</div><div class="d">${esc(row.time.replace("T", " ").slice(0, 16))}</div></div>
     </div>`;
@@ -232,7 +273,7 @@ function renderSetup() {
   const isHdr = l => l.startsWith("+++ B (candidate)") || l.startsWith("--- A (production)") || l.startsWith("@@");
   const diff = v.B.diff.map(l => isHdr(l) ? `<span class="hdr">${esc(l)}</span>` : l.startsWith("+") ? `<span class="add">${esc(l)}</span>` : l.startsWith("-") ? `<span class="del">${esc(l)}</span>` : esc(l)).join("\n");
   $("#setup").innerHTML = `
-    <div class="card-head"><div><h3>Experiment setup</h3><div class="sub">Locked before launch. Config <span class="mono">${rec.config_hash}</span></div></div>${S.replay && S.replay.same_ledger_head ? `<span class="chip good" title="Re-running from the stored config and seed gave the identical decision and identical ledger.">${icon("check", 13)} Reproducible</span>` : ""}</div>
+    <div class="card-head"><div><h3>Experiment setup</h3><div class="sub">Locked before launch: version ${c.version || 1}, config <span class="mono">${rec.config_hash}</span>${c.parent_hash ? `, changed from <span class="mono">${esc(c.parent_hash)}</span>` : ""}. Any change is a new version.</div></div>${S.replay && S.replay.same_ledger_head ? `<span class="chip good" title="Re-running from the stored config and seed gave the identical decision and identical ledger.">${icon("check", 13)} Reproducible</span>` : ""}</div>
     <div class="var"><div class="row"><span class="dot" style="background:var(--a)"></span><b>A: control</b><span class="chip">${(1 - c.share_b) * 100}% of traffic</span><span class="muted mono" style="margin-left:auto">${v.A.hash.slice(0, 7)}</span></div><div class="muted" style="margin-top:2px">${esc(v.A.name)}</div></div>
     <div class="var"><div class="row"><span class="dot" style="background:var(--b)"></span><b>B: ${esc(v.B.name)}</b><span class="chip ${v.B.origin === "human" ? "" : "accent"}">${esc(v.B.origin)}</span><span class="muted mono" style="margin-left:auto">${v.B.hash.slice(0, 7)}</span></div>
       <div style="margin-top:4px"><button class="linkbtn" id="dtoggle">${S.showDiff ? "Hide" : "Show"} prompt diff (${v.B.diff.filter(l => !isHdr(l) && /^[+-]/.test(l)).length} lines changed)</button></div>${S.showDiff ? `<div class="diff">${diff}</div>` : ""}</div>
@@ -241,10 +282,15 @@ function renderSetup() {
       <div><span class="k">Guardrail</span><span>${esc(c.secondary_metric)} may not get worse by more than <b>${(c.guardrail_margin * 100).toFixed(0)}%</b>. Primary decides; the guardrail can only veto.</span></div>
       <div><span class="k">Traffic</span><span><b>${pct(c.share_b, 0)}</b> to B for up to ${c.window_days} days, sticky per lead (${c.assignment} assignment).</span></div>
       <div><span class="k">Sample plan</span><span>${nf(d.n_max)} calls for ${pct(0.8, 0)} power (${nf(d.n_fixed)} for a single-look test), ${d.look_n.length} looks.</span></div>
-      <div><span class="k">Promote when</span><span>z crosses the O'Brien-Fleming-type boundary (${pct(c.alpha)} one-sided error budget) <i>and</i> the guardrail is proven.</span></div>
-      <div><span class="k">Stop when</span><span>z crosses the harm boundary (Pocock-type, ${pct(c.alpha_harm)}) or the guardrail is breached.</span></div>
+      ${c.rule_set === "final_look"
+        ? `<div><span class="k">Promote when</span><span><b>One winner call at the end of the window</b>: z &ge; ${(d.eff[d.eff.length - 1] || 0).toFixed(2)} (95% two-sided) <i>and</i> the guardrail is proven. Never earlier.</span></div>
+      <div><span class="k">Stop when</span><span>At any daily check, z &le; &minus;${(d.harm[0] || 0).toFixed(2)} (a ${((1 - c.alpha_harm_daily) * 100).toFixed(1)}% bar) or the guardrail is breached.</span></div>`
+        : `<div><span class="k">Promote when</span><span>z crosses the O'Brien-Fleming-type boundary (${pct(c.alpha)} one-sided error budget) <i>and</i> the guardrail is proven.</span></div>
+      <div><span class="k">Stop when</span><span>z crosses the harm boundary (Pocock-type, ${pct(c.alpha_harm)}) or the guardrail is breached.</span></div>`}
+      ${c.guard_rate ? `<div><span class="k">Second guardrail</span><span><b>${esc(c.guard_rate.replace(/_/g, " "))}</b> may not get worse by more than ${(c.guard_rate_margin * 100).toFixed(0)} points.</span></div>` : ""}
+      <div><span class="k">Hold for a person</span><span>If B wins but a guardrail is not proven, nothing ships and nothing is thrown away: a person approves or rejects, and the click is logged.</span></div>
       <div><span class="k">Test broken when</span><span>logged split differs from ${pct(c.share_b, 0)} at p &lt; ${c.srm_alpha}.</span></div>
-      <div><span class="k">Otherwise</span><span>Inconclusive at the window end. Nothing ships.</span></div>
+      <div><span class="k">Otherwise</span><span>Inconclusive at the window end. Nothing ships, and the result says how many more leads would settle it.</span></div>
     </div>`;
   const t = $("#dtoggle"); if (t) t.onclick = () => { S.showDiff = !S.showDiff; renderSetup(); };
 }
@@ -280,7 +326,7 @@ function renderCharts() {
   $("#lg-z").innerHTML = `<span><i style="border-color:var(--b)"></i>z of B vs A</span><span><i style="border-color:var(--good)"></i>promote boundary</span><span><i style="border-color:var(--bad)"></i>stop boundary</span><span><i style="border-color:var(--ink-3)"></i>naive &plusmn;1.96</span><span><svg width="14" height="12"><path d="M7 1l6 10H1z" fill="var(--warn)"/></svg>naive rule would fire here</span>`;
   // typical-tool strip
   const tp = $("#typical"); const fl = naiveHit || naiveHurt;
-  if (fl) {
+  if (fl && S.meta.true_a != null) {
     const wins = fl.z > 0, wrong = wins ? !truthBetter() : S.meta.true_b >= S.meta.true_a;
     tp.innerHTML = `<div class="note ${wrong ? "" : "info"}" style="margin-top:10px"><b>${wrong ? "A typical tool would have gotten this wrong." : "A typical tool would have agreed here."}</b> A plain "p &lt; 0.05 at every check" rule fires at look ${fl.k + 1} (${nf(fl.n)} calls) and ${wins ? "crowns B the winner" : "kills B"}. ${wrong ? `The known truth is that ${wins ? "B is not better" : "B is not worse"}.` : `It happens to be right in this run, but it is wrong ${naiveWrongText(wins)} when nothing changed (see Proof Lab).`}</div>`;
   } else tp.innerHTML = "";
@@ -288,14 +334,14 @@ function renderCharts() {
   // --- lift
   const mid = rec.looks.map(r => [r.n, r.diff * 100]);
   const ok = rows.filter(r => Math.abs(r.rci[0]) < 0.4 && Math.abs(r.rci[1]) < 0.4);
-  const truth = (S.meta.true_b - S.meta.true_a) * 100;
-  const ymax = Math.max(12, Math.ceil(Math.max(Math.abs(truth) + 4, ...ok.map(r => Math.max(Math.abs(r.rci[0]), Math.abs(r.rci[1])) * 100)) / 4) * 4);
+  const hasT = S.meta.true_a != null, truth = hasT ? (S.meta.true_b - S.meta.true_a) * 100 : 0;
+  const ymax = Math.max(12, Math.ceil(Math.max((hasT ? Math.abs(truth) : 0) + 4, ...ok.map(r => Math.max(Math.abs(r.rci[0]), Math.abs(r.rci[1])) * 100)) / 4) * 4);
   drawChart($("#c-l"), {
     xd, yd: [-ymax, ymax], xt, yt: niceTicks(-ymax, ymax, 4), xf: xfmtCalls, yf: v => (v > 0 ? "+" : "") + v, h: 250, label: "lift with always-valid interval",
     layers: (sx, sy) => {
       const vis = rows.filter(r => r.rci[0] > -400); const hi = vis.map(r => [r.n, r.rci[1] * 100]), lo = vis.map(r => [r.n, r.rci[0] * 100]);
       let s = `<line x1="${sx(0)}" x2="${sx(nmax)}" y1="${sy(0)}" y2="${sy(0)}" stroke="var(--axis)"/>`;
-      s += `<line x1="${sx(0)}" x2="${sx(nmax)}" y1="${sy(truth)}" y2="${sy(truth)}" stroke="var(--ink)" stroke-width="1" opacity=".5"/><text x="${sx(nmax) - 4}" y="${sy(truth) - 5}" text-anchor="end">known truth ${truth >= 0 ? "+" : ""}${truth.toFixed(0)} pp</text>`;
+      if (hasT) s += `<line x1="${sx(0)}" x2="${sx(nmax)}" y1="${sy(truth)}" y2="${sy(truth)}" stroke="var(--ink)" stroke-width="1" opacity=".5"/><text x="${sx(nmax) - 4}" y="${sy(truth) - 5}" text-anchor="end">known truth ${truth >= 0 ? "+" : ""}${truth.toFixed(0)} pp</text>`;
       if (vis.length > 1) s += `<path d="${band(hi, lo, sx, sy)}" fill="var(--b)" opacity=".13"/>`;
       s += `<path d="${path(rows.map(r => [r.n, Math.max(-ymax, Math.min(ymax, r.diff * 100))]), sx, sy)}" fill="none" stroke="var(--b)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`;
       s += dotSvg(sx(last.n).toFixed(1), sy(last.diff * 100).toFixed(1), "var(--b)");
@@ -303,7 +349,7 @@ function renderCharts() {
     },
     tip: r => `<b>${nf(r.n)} calls</b><div class="r"><span>lift</span><span>${pp(r.diff)}</span></div><div class="r"><span>always-valid 95%</span><span>${Math.abs(r.rci[0]) > 0.5 ? "very wide" : pp(r.rci[0]) + " to " + pp(r.rci[1])}</span></div><div class="r"><span>A / B rate</span><span>${pct(r.rateA)} / ${pct(r.rateB)}</span></div>`
   }, rows);
-  $("#lg-l").innerHTML = `<span><i style="border-color:var(--b)"></i>lift of B (pp)</span><span><i class="sw" style="background:var(--b);opacity:.25"></i>always-valid 95% interval</span><span><i style="border-color:var(--ink);opacity:.5"></i>known truth</span>`;
+  $("#lg-l").innerHTML = `<span><i style="border-color:var(--b)"></i>lift of B (pp)</span><span><i class="sw" style="background:var(--b);opacity:.25"></i>always-valid 95% interval</span>${hasT ? `<span><i style="border-color:var(--ink);opacity:.5"></i>known truth</span>` : ""}`;
 
   // --- guardrail
   const gcard = $("#guard-card");
@@ -357,7 +403,7 @@ function renderCharts() {
 }
 
 /* ------------------------------------------------------------------ ledger */
-function ledgerEntries() { return S.rec.ledger.map((e, i) => ({ i, e, body: JSON.parse(e.body) })); }
+function ledgerEntries() { const tail = S.tail && S.rec.tails && S.rec.tails[S.tail] ? S.rec.tails[S.tail] : []; return S.rec.ledger.concat(tail).map((e, i) => ({ i, e, body: JSON.parse(e.body) })); }
 function visibleLedger() {
   const L = S.rec.looks.length, all = ledgerEntries(), out = [];
   for (const x of all) {
@@ -375,6 +421,9 @@ function entryText(b) {
     case "routing_changed": return `Routing &rarr; A ${(p.A * 100).toFixed(0)}% / B ${(p.B * 100).toFixed(0)}%: ${esc(p.reason)}`;
     case "look": return `Look ${p.k + 1}: n=${nf(p.n)}, z=${p.z.toFixed(2)} (promote &ge;${p.bound_eff > 50 ? "&gt;50" : p.bound_eff.toFixed(2)}, stop &le;&minus;${p.bound_harm.toFixed(2)})`;
     case "decision": return `<b>${esc((KIND[p.kind] || { pill: p.kind }).pill || p.kind)}</b>: ${esc(p.reason)}`;
+    case "approval": return `<b>${esc(p.action)}</b> by ${esc(p.by)}${p.simulated ? " (a demo click, not a real person)" : ""}`;
+    case "approval_requested": return `A person is asked to approve <span class="mono">${esc(String(p.candidate).slice(0, 7))}</span>: ${esc((p.cause || "").replace(/_/g, " "))}. Callers are unaffected meanwhile.`;
+    case "rollback": return `<b>Rolled back</b> <span class="mono">${esc(String(p.from).slice(0, 7))}</span> &rarr; <span class="mono">${esc(String(p.to).slice(0, 7))}</span> by ${esc(p.by)}${p.simulated ? " (a demo click)" : ""}`;
     case "promotion": return `Production prompt <span class="mono">${p.production_before.slice(0, 7)}</span> &rarr; <span class="mono">${p.production_after.slice(0, 7)}</span> &middot; approval: ${esc(p.approval)}`;
     default: return esc(JSON.stringify(p));
   }
@@ -405,7 +454,7 @@ function openCustom() {
   stop();
   const c = S.rec.config, m = S.meta;
   const v = { true_a: m.true_a, true_b: m.true_b, share_b: c.share_b, dur_mult_b: m.dur_mult_b || 1, log_drop_b: m.log_drop_b || 0, seed: 7, guardrail_margin: c.guardrail_margin, variant_b: c.variant_b };
-  const cands = { ask_together: "Ask quantity and location together", insist_specs: "Keep asking until the specification is given", warmer_greeting: "Warmer greeting", long_intro: "Explain how details are used first" };
+  const cands = { reconcile_limits: "Make the ask limits agree with each other", cap_two_asks: "Ask for any single detail at most twice" };
   $("#app").innerHTML = `<div class="card" style="max-width:720px;margin:0 auto"><h3>Custom experiment</h3><div class="sub">Set the hidden truth and the rules. The real engine runs it end to end.</div>
   <div class="form" style="margin-top:14px;grid-template-columns:1fr 1fr">
     <div class="field"><label>True rate of A <span class="hint">hidden truth</span></label><input type="number" step="0.01" id="f_true_a" value="${v.true_a}"></div>
@@ -433,6 +482,24 @@ function openCustom() {
 /* ------------------------------------------------------------------ proof lab */
 const MNAME = { canary: "Canary (ours)", naive_peek: "Naive peeking (p<0.05 at every look)", fixed_horizon: "Fixed-horizon z-test", higher_rate: "Higher rate wins" };
 const outc = (m, k) => (m.outcomes[k] ? m.outcomes[k].rate : 0);
+/* proof sections 6 and 7: the spec's single-look rule vs ours, and decisions from results files */
+function renderProofExtra(P) {
+  if (!P.rulesets || !P.files) return "";
+  const pc1 = x => (x * 100).toFixed(1) + "%", oc = (m, k) => (m.outcomes[k] ? m.outcomes[k].rate : 0);
+  const rs = Object.entries(P.rulesets).map(([k, v]) => {
+    const row = (name, m, cls) => `<tr class="${cls}"><td>${name}</td><td class="num">${pc1(oc(m, "PROMOTE"))}</td><td class="num">${pc1(oc(m, "STOP_HARM") + oc(m, "STOP_GUARDRAIL"))}</td><td class="num">${m.median_n_when_promoted ? nf(m.median_n_when_promoted) : "-"}</td><td class="num">${nf(m.mean_exposure_b)}</td></tr>`;
+    return `<tr class="grp"><td colspan="5"><b>${esc(v.label)}</b></td></tr>${row("Sequential: early promote and early stop (ours, default)", v.sequential.canary, "ours")}${row("Single look at the end + strict daily harm check (the spec)", v.final_look.canary, "")}${row("Plain p&lt;0.05 every day (no correction)", v.final_look.naive_peek, "")}`;
+  }).join("");
+  const fl = Object.values(P.files).map(v => `<tr><td>${esc(v.label)}</td><td class="num">${nf(v.runs)}</td><td class="num">${pc1(oc(v, "PROMOTE"))}</td><td class="num">${pc1(oc(v, "STOP_HARM") + oc(v, "STOP_GUARDRAIL"))}</td><td class="num">${pc1(oc(v, "INCONCLUSIVE") + oc(v, "HOLD_FOR_APPROVAL"))}</td><td class="num">${v.ledger_ok} of ${v.runs}</td></tr>`).join("");
+  return `
+  <div class="sec"><h2>6. The dashboard spec's rule, against ours</h2><p>The spec proposes one winner call at the end plus a very strict daily harm check. The BRD proposes daily checks on stricter-early boundaries. They are different rules, so Canary runs either one (a setting) and we measured both on identical simulated traffic: ${nf(P.rulesets.aa.sequential.canary.runs)} tests per case, 14 days, 300 leads a day, 30% to B.</p>
+    <div class="card"><table class="t"><thead><tr><th>Rule</th><th class="num">Ships B</th><th class="num">Stops B</th><th class="num">Calls to promote</th><th class="num">B calls served</th></tr></thead><tbody>${rs}</tbody></table>
+    <p class="sub" style="margin-top:8px">Both valid rules keep false wins near the 2.5% budget when nothing changed. The spec's single look is simpler to explain; it can never promote early and catches a clearly worse B less often (its daily bar is stricter). Ours promotes sooner and protects better, at the price of a slightly higher false-stop rate. Neither is free: that is the trade, shown with numbers.</p></div></div>
+  <div class="sec"><h2>7. Decisions made from results files</h2><p>The voice test runs elsewhere; the files come to us. This is the whole file path (write a file, read it, check it, decide), repeated on synthetic files with a known answer. The planned power is 80% for a +7 point lift.</p>
+    <div class="card"><table class="t"><thead><tr><th>Truth in the file</th><th class="num">Files</th><th class="num">Ship B</th><th class="num">Stop B</th><th class="num">No decision / held</th><th class="num">Record intact</th></tr></thead><tbody>${fl}</tbody></table>
+    <p class="sub" style="margin-top:8px">When A and B are identical, a winner is wrongly declared ${pc1(oc(P.files.aa, "PROMOTE"))} of the time (95% interval ${pc1(P.files.aa.outcomes.PROMOTE.ci[0])} to ${pc1(P.files.aa.outcomes.PROMOTE.ci[1])}; budget 2.5%). The record's hash chain was intact in every file.</p></div></div>`;
+}
+
 function renderProof() {
   const P = D.proof, app = $("#app");
   if (!P) { app.innerHTML = `<div class="card"><h3>Proof Lab</h3><p class="muted">No proof run found. Run <code>python -m canary proof</code> then rebuild.</p></div>`; return; }
@@ -452,7 +519,7 @@ function renderProof() {
   }).join("");
   // looks sweep chart data
   const ks = Object.keys(P.looks_sweep).map(Number).sort((a, b) => a - b), rowsK = ks.map((k, i) => ({ n: i, k, c: P.looks_sweep[k].canary, nv: P.looks_sweep[k].naive_peek }));
-  const gridRows = [0.03, 0.12, 0.30], gridCols = [0.05, 0.10, 0.45];
+  const gridRows = [...new Set(P.grid.map(x => x.baseline))].sort((a, b) => a - b), gridCols = [...new Set(P.grid.map(x => x.share))].sort((a, b) => a - b);   // read from the data, never hard-coded
   const gcell = (b, s) => P.grid.find(x => x.baseline === b && x.share === s);
   const sp = P.split_accuracy;
   const spRows = sp.map(x => `<tr><td>${pct(x.share, 0)}</td><td class="num">${nf(x.n)}</td><td class="num">${x.hash.mean_abs_err_pp.toFixed(2)}</td><td class="num"><b>${x.balanced.mean_abs_err_pp.toFixed(2)}</b></td><td class="num">${x.naive_random.mean_abs_err_pp.toFixed(2)}</td><td class="num">${pct(x.hash.inside_95_band, 0)}</td><td class="num">${x.balanced.worst_prefix_pp ? x.balanced.worst_prefix_pp.toFixed(2) : "-"}</td></tr>`).join("");
@@ -478,7 +545,8 @@ function renderProof() {
       <tr class="ours"><td>Hash (Canary)</td><td class="num">${st.hash.arm_flips}</td></tr><tr class="ours"><td>Balanced (Canary)</td><td class="num">${st.balanced.arm_flips}</td></tr></tbody></table>
       <p class="sub" style="margin-top:8px">A second, independent hash router with no shared state disagreed on ${st.hash.independent_server_disagreements} of ${nf(st.distinct_leads)} leads, so two servers can route the same lead without talking to each other. Balanced mode remembers each lead in a ledger.</p></section></div></div>
   <div class="sec"><h2>5. When the auto-tagger is imperfect</h2><p>Outcomes are tagged by an evaluator, and evaluators make mistakes. This table is a model: it shows what a tagger of a given quality does to a test planned for a ${pp(P.config.mde, 0)} lift from ${pct(P.config.baseline, 0)}. Plug in the measured sensitivity and specificity once real labels exist.</p>
-    <div class="card"><table class="t"><thead><tr><th>Tagger</th><th class="num">Sensitivity</th><th class="num">Specificity</th><th class="num">Observed lift</th><th class="num">Power</th><th class="num">Calls for 80% power</th></tr></thead><tbody>${P.evaluator_error.map(e => `<tr><td>${esc(e.tagger)}</td><td class="num">${pct(e.sensitivity, 0)}</td><td class="num">${pct(e.specificity, 0)}</td><td class="num">${e.observed_lift_pp.toFixed(1)} pp</td><td class="num">${pct(e.power, 0)}</td><td class="num">${nf(e.calls_needed_for_80pct_power)} (&times;${e.extra_calls_factor.toFixed(2)})</td></tr>`).join("")}</tbody></table></div></div>`;
+    <div class="card"><table class="t"><thead><tr><th>Tagger</th><th class="num">Sensitivity</th><th class="num">Specificity</th><th class="num">Observed lift</th><th class="num">Power</th><th class="num">Calls for 80% power</th></tr></thead><tbody>${P.evaluator_error.map(e => `<tr><td>${esc(e.tagger)}</td><td class="num">${pct(e.sensitivity, 0)}</td><td class="num">${pct(e.specificity, 0)}</td><td class="num">${e.observed_lift_pp.toFixed(1)} pp</td><td class="num">${pct(e.power, 0)}</td><td class="num">${nf(e.calls_needed_for_80pct_power)} (&times;${e.extra_calls_factor.toFixed(2)})</td></tr>`).join("")}</tbody></table></div></div>
+  ${renderProofExtra(P)}`;
   const nmax = ks.length - 1;
   drawChart($("#c-sweep"), {
     xd: [-0.3, nmax + 0.3], yd: [0, 0.16], xt: rowsK.map(r => r.n), yt: [0, 0.025, 0.05, 0.1, 0.15], xf: i => ks[i] + (ks[i] === 1 ? " look" : " looks"), yf: v => (v * 100).toFixed(1).replace(/\.0$/, "") + "%", h: 260, label: "false-win rate by number of looks",
@@ -546,14 +614,14 @@ function confusion(m) {
 }
 function machineCard() {
   const a = D.auto || {}, r = a.report || {}, rich = r.rich; if (!rich) return "";
-  const nice = k => String(k).replace(/_/g, " ");
+  const nice = k => String(k).replace(/_/g, " ") + (k === "did_not_confirm_details" ? " (retired: the real prompt forbids reading values back)" : "");
   const bars = (obj, total) => Object.entries(obj || {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<tr><td>${esc(nice(k))}</td><td style="width:45%"><div class="pbar"><i class="neutral" style="width:${Math.max(2, v / total * 100)}%"></i></div></td><td class="num">${v}</td></tr>`).join("") || `<tr><td class="muted">none</td></tr>`;
   const n = r.machine_labelled, rate = r.buylead_rate_machine, acc = r.tagger_vs_human_blind;
   return `<div class="sec"><h2>What the machine found in ${n} real calls <span class="chip warn">machine labels, not yet human-verified</span></h2>
     <p>Sarvam transcribed each call (with speaker separation) and tagged it. These counts are the raw material for a later fix loop: every bot issue links back to the calls it appeared in (<code>data/fix_backlog.json</code>).</p>
-    <div class="two"><section class="card"><h3>Outcomes</h3><div class="sub">${r.buylead_rate_loose ? `<b>${pct(r.buylead_rate_loose.rate, 0)}</b> of calls captured quantity and specification (95% range ${pct(r.buylead_rate_loose.ci[0], 0)} to ${pct(r.buylead_rate_loose.ci[1], 0)}), inside the stated 35-60% BuyLead-conversion benchmark. ` : ""}${rate ? `The stricter reading (also needs location or timeline) gives ${pct(rate.rate, 0)}. Confirm which one IndiaMART counts.` : ""}</div><table class="t" style="margin-top:8px"><tbody>${bars(r.distribution, n)}</tbody></table>
+    <div class="two"><section class="card"><h3>Outcomes</h3><div class="sub">${r.buylead_rate_loose ? `<b>${pct(r.buylead_rate_loose.rate, 0)}</b> of calls captured quantity and specification (95% range ${pct(r.buylead_rate_loose.ci[0], 0)} to ${pct(r.buylead_rate_loose.ci[1], 0)}), inside the stated 35-60% BuyLead-conversion benchmark. ` : ""}${r.provisional ? `These labels were made before the real VANI prompt arrived, so the label names below (partial, not interested, and so on) are the earlier vocabulary. The real BuyLead disposition is known only after the re-tag.` : (rate ? `Under the real definition, BuyLead created is ${pct(rate.rate, 0)}.` : "")}</div><table class="t" style="margin-top:8px"><tbody>${bars(r.distribution, n)}</tbody></table>
       <h3 style="margin-top:14px">How the calls ended</h3><table class="t" style="margin-top:8px"><tbody>${bars(rich.call_end, n)}</tbody></table></section>
-    <section class="card"><h3>Where the bot went wrong</h3><div class="sub">${pct(rich.bot_issue_rate, 0)} of calls have at least one issue. Fatal calls: ${esc(JSON.stringify(rich.fatal).replace(/[{}"]/g, "").replace(/,/g, ", "))}</div><table class="t" style="margin-top:8px"><tbody>${bars(rich.bot_issue_counts, n)}</tbody></table>
+    <section class="card"><h3>Where the bot went wrong${r.provisional ? " (provisional)" : ""}</h3><div class="sub">${pct(rich.bot_issue_rate, 0)} of calls have at least one issue. Fatal calls: ${esc(JSON.stringify(rich.fatal).replace(/[{}"]/g, "").replace(/,/g, ", "))}</div><table class="t" style="margin-top:8px"><tbody>${bars(rich.bot_issue_counts, n)}</tbody></table>
       <h3 style="margin-top:14px">Buyer mood and language</h3><table class="t" style="margin-top:8px"><tbody>${bars(rich.sentiment, n)}${bars(rich.language, n)}</tbody></table></section></div>
     <p class="sub">${acc ? `Checked by a person on ${acc.n} random calls: the machine's outcome was right ${pct(acc.accuracy, 0)} of the time.` : "Not yet checked by a person: use the spot-check list in Label calls."} Credits used: about Rs ${((a.status || {}).estimated_spend_inr || 0).toFixed(0)}.</p></div>`;
 }
@@ -626,17 +694,25 @@ function renderLab() {
 
 /* ------------------------------------------------------------------ shell */
 const OLD = [["exp", "Experiment"], ["proof", "Proof Lab"], ["planner", "Planner"], ["labels", "Labels"]];
-const TABS = [["try", "Fix the bot"], ["hear", "Hear it"], ["plan", "Plan a test"], ["trust", "Why trust it"], ["label", "Label calls"], ["adv", "Advanced"]];
+const TABS = [["home", "Start"], ["files", "Judge a test"], ["plan", "Plan a test"], ["try", "Suggest a change"], ["trust", "Why trust it"], ["more", "More"]];
+const MORE = ["hear", "label", "exp", "proof", "planner", "labels"];
 function subnav(tab) {
   const el = document.createElement("div"); el.className = "subnav";
   el.innerHTML = `<span>For the technical team:</span>` + OLD.map(([k, n]) => `<button data-t="${k}" aria-pressed="${k === tab}">${n}</button>`).join("");
   $("#app").prepend(el); $$("button", el).forEach(b => b.onclick = () => go(b.dataset.t));
 }
+function renderMore() {
+  stopV();
+  const c = (k, t, b) => `<button class="s-card" data-go="${k}"><span class="s-ct">${t}</span><span class="s-cb">${b}</span><span class="s-go">Open ${icon("fwd", 14)}</span></button>`;
+  $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">More</h1><p class="s-lead">Extra tools. You do not need them to judge a test.</p>
+    <div class="f-grid">${c("hear", "Hear it", "Listen to the two prompts on the same simulated buyer (recorded earlier with a stand-in prompt).")}${c("label", "Label calls", "Check a sample of the machine's call labels. This measures how accurate they are.")}${c("exp", "Technical view", "Charts, the decision record, proof tables and split accuracy for engineers.")}</div></div>`;
+  $$("#app [data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
+}
 function go(tab) {
   stop(); stopV(); if (tab === "adv") tab = "exp"; S.tab = tab;
-  const top = OLD.some(o => o[0] === tab) ? "adv" : tab;
+  const top = MORE.includes(tab) ? "more" : tab;
   $$("#tabs .tab").forEach(b => b.setAttribute("aria-selected", b.dataset.t === top));
-  if (tab === "try") renderTry(); else if (tab === "hear") renderHear(); else if (tab === "plan") renderPlan(); else if (tab === "trust") renderTrust(); else if (tab === "label") renderLabelPage();
+  if (tab === "home") renderHome(); else if (tab === "more") renderMore(); else if (tab === "try") renderTry(); else if (tab === "files") renderFiles(); else if (tab === "hear") renderHear(); else if (tab === "plan") renderPlan(); else if (tab === "trust") renderTrust(); else if (tab === "label") renderLabelPage();
   else {
     if (tab === "exp") { if (!S.rec) loadScenario(S.key, false); else renderExperiment(); }
     else if (tab === "proof") renderProof(); else if (tab === "planner") renderPlanner(); else renderLabels();
@@ -666,7 +742,7 @@ async function init() {
   const applyTheme = () => { const t = themes[ti]; t ? document.documentElement.setAttribute("data-theme", t) : document.documentElement.removeAttribute("data-theme"); $("#theme").textContent = t ? (t === "dark" ? "Dark" : "Light") : "Auto"; store.set("theme", t); };
   $("#theme").onclick = () => { ti = (ti + 1) % 3; applyTheme(); if (S.tab === "exp" && S.rec) renderCharts(); };
   applyTheme();
-  const h = (location.hash || "#try").slice(1).split(":"); const tab = TABS.concat(OLD).some(t => t[0] === h[0]) ? h[0] : "try";
+  const h = (location.hash || "#home").slice(1).split(":"); const tab = TABS.concat(OLD).concat(MORE.map(k => [k])).some(t => t[0] === h[0]) ? h[0] : "home";
   if (h[1] && D.scenarios.some(s => s.meta.key === h[1])) { S.key = h[1]; if (tab === "try") V.key = h[1]; }
   if (tab === "try" && V.key) { const sc = D.scenarios.find(x => x.meta.key === V.key); V.rec = sc.record; V.meta = sc.meta; V.k = sc.record.looks.length; }
   go(tab);

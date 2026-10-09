@@ -1,0 +1,76 @@
+{
+ "skill": "ab-test-decision",
+ "note": "Independent assistants ran each request twice (with the skill, without it); each answer was graded against fixed statements in evals.json. Iteration 2 used the improved skill; the no-skill answers for requests 1-4 are carried over.",
+ "iterations": [
+  {
+   "iteration": 1,
+   "pass_rate": {
+    "with_skill": 1.0,
+    "without_skill": 0.75
+   },
+   "seconds": {
+    "with_skill": 110.25,
+    "without_skill": 150.7
+   },
+   "tokens": {
+    "with_skill": 61601.5,
+    "without_skill": 55775.5
+   },
+   "per_request": {
+    "eval-1-clean-win-forward-to-manager": {
+     "with_skill": "7/7",
+     "without_skill": "7/7"
+    },
+    "eval-2-day3-peeking-trap": {
+     "with_skill": "6/6",
+     "without_skill": "6/6"
+    },
+    "eval-3-plan-window-feasibility": {
+     "with_skill": "5/5",
+     "without_skill": "2/5"
+    },
+    "eval-4-messy-export-no-plan": {
+     "with_skill": "5/5",
+     "without_skill": "3/5"
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "pass_rate": {
+    "with_skill": 1.0,
+    "without_skill": 0.88
+   },
+   "seconds": {
+    "with_skill": 113.78,
+    "without_skill": 152.38
+   },
+   "tokens": {
+    "with_skill": 62935.2,
+    "without_skill": 56394.6
+   },
+   "per_request": {
+    "eval-1-clean-win-forward-to-manager": {
+     "with_skill": "7/7",
+     "without_skill": "7/7"
+    },
+    "eval-2-day3-peeking-trap": {
+     "with_skill": "6/6",
+     "without_skill": "6/6"
+    },
+    "eval-3-plan-window-feasibility": {
+     "with_skill": "5/5",
+     "without_skill": "4/5"
+    },
+    "eval-4-messy-export-no-plan": {
+     "with_skill": "5/5",
+     "without_skill": "3/5"
+    },
+    "eval-5-fade-after-the-win": {
+     "with_skill": "5/5",
+     "without_skill": "5/5"
+    }
+   }
+  }
+ ]
+}

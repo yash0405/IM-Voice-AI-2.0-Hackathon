@@ -1,0 +1,82 @@
+[
+ {
+  "query": "ok so we ran the new greeting prompt on 20% of calls for 10 days, export is in ~/Downloads/split_results_FINAL.csv (lead_id, bucket, outcome, secs). boss asks did it work or not, can you tell me?",
+  "should_trigger": true
+ },
+ {
+  "query": "our dashboard says variant B is at p=0.04 on day 2 of a 21 day experiment and the PM wants to ship it today. is that ok?",
+  "should_trigger": true
+ },
+ {
+  "query": "we have about 1,500 chat leads a day, 12% book a demo, we want to see a 1.5 point lift from a new opening message. how many days do we need if we give it 25% of traffic?",
+  "should_trigger": true
+ },
+ {
+  "query": "Can you look at this results file and tell me whether it's safe to roll the new agent prompt out to everyone? Calls longer than 20% are a no-go for us.",
+  "should_trigger": true
+ },
+ {
+  "query": "B has 52% vs A 47% conversion, n=900 each, is that statistically significant and can we stop the test early?",
+  "should_trigger": true
+ },
+ {
+  "query": "the test finished but the new flow's average handling time went up 25% while conversions went up. ship or not?",
+  "should_trigger": true
+ },
+ {
+  "query": "I need a one-paragraph plain-English verdict on this A/B test for my director. numbers: A 44% (n=1,431), B 51% (n=581), 14 days, 30% to B.",
+  "should_trigger": true
+ },
+ {
+  "query": "some leads got both prompts in our experiment export, plus a few rows labelled 'C'. can we still trust the winner?",
+  "should_trigger": true
+ },
+ {
+  "query": "how long should a 10% split test run before we can call it? baseline conversion is 40% and we care about 3 points",
+  "should_trigger": true
+ },
+ {
+  "query": "write me a summary of how our voice bot's new prompt did vs the old one from the attached split-test csv, with ranges not just point estimates",
+  "should_trigger": true
+ },
+ {
+  "query": "write a python function that computes a two-proportion z-test p-value from four numbers",
+  "should_trigger": false
+ },
+ {
+  "query": "explain what a p-value is to a first-year student",
+  "should_trigger": false
+ },
+ {
+  "query": "we want to try four different email subject lines and automatically shift traffic toward the best one as results come in. how should we set up the bandit?",
+  "should_trigger": false
+ },
+ {
+  "query": "our revenue per user in the test group went from 18.2 to 19.1 dollars, build me a chart comparing the two cohorts with error bars",
+  "should_trigger": false
+ },
+ {
+  "query": "clean this csv: drop duplicate call ids, fix the date column to ISO format and save it as a new file",
+  "should_trigger": false
+ },
+ {
+  "query": "is the new prompt wording friendlier? rewrite our voice bot greeting so it sounds warmer",
+  "should_trigger": false
+ },
+ {
+  "query": "design the database schema to store experiment assignments for a feature flag system",
+  "should_trigger": false
+ },
+ {
+  "query": "we randomly split customers across two pricing pages last quarter and have the signup counts per page. which page won, and is the difference real?",
+  "should_trigger": true
+ },
+ {
+  "query": "transcribe these call recordings and tag each one with a disposition",
+  "should_trigger": false
+ },
+ {
+  "query": "review this python script that assigns users to experiment buckets using a hash and tell me if it is sticky",
+  "should_trigger": false
+ }
+]

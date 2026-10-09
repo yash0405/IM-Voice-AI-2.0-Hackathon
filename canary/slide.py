@@ -35,20 +35,24 @@ def build_slide() -> str:
     mean = lambda key: sum(x[key]["mean_abs_err_pp"] for x in sp) / len(sp)
     st = P["stickiness"]
     if fixed:
-        F = fixloop.bundle(); m = F["mine"]; tg = next(r for r in m["issues"] if r["key"] == m["target"]); pm = next(r for r in m["issues"] if r["key"] == m["pm_pick"])
-        PS = F["prescreen"]; prop = F["proposal"]; line = prop["added"][0].lstrip("- ").strip()
-        pre = (f"{PS['n_pairs']} simulated buyers: {PS['A']['converted']} vs {PS['B']['converted']} usable requirements, gate {'passed' if PS['passed'] else 'FAILED'}" if PS else "not run yet")
-        flow = (f'<div><b>1 Find</b> {m["n_calls"]} real calls tagged by Sarvam. <b>{tg["name"]}</b>: {tg["converted_with"]*100:.0f}% convert vs {tg["converted_without"]*100:.0f}% without. '
-                f'The most common issue ({pm["name"].lower()}) costs nothing: {pm["converted_with"]*100:.0f}% vs {pm["converted_without"]*100:.0f}%.</div><i>&darr;</i>'
-                f'<div><b>2 Fix</b> Sarvam drafts one line: &ldquo;{line}&rdquo;</div><i>&darr;</i>'
+        F = fixloop.bundle(); m = F["mine"]; E = F["evidence"] or {}; prop = F["proposal"]; lp = E.get("loops") or {}
+        cf = E.get("conflicts", []); ck = E.get("edit_check") or {}
+        pairs = ", ".join(f"{c['field']} {' vs '.join(str(x) for x in c['limits'])}" for c in cf)
+        PS = F["prescreen"]
+        pre = (f"{PS['n_pairs']} simulated buyers: gate {'passed' if PS['passed'] else 'FAILED'}" if PS and not PS.get("stale")
+               else f"not run on the real prompt (about Rs {F['costs']['prescreen']['est_inr']:.0f}, optional)")
+        rep3 = f"{lp['bot_repeat3']['rate']*100:.1f}%" if lp else "n/a"
+        flow = (f'<div><b>1 Find</b> VANI\'s real prompt (25,000 words) contradicts itself on ask limits ({pairs}); the quality matrix grades more than 1+2 asks as fatal looping. '
+                f'Only {rep3} of {lp.get("calls_with_speech", 0)} real calls loop verbatim (lower bound), so expect a safety gain, not a conversion jump.</div><i>&darr;</i>'
+                f'<div><b>2 Fix</b> {prop["name"]}: {ck.get("before", "?")} contradictions &rarr; {ck.get("after", "?")}, none added (origin: {prop["origin"]})</div><i>&darr;</i>'
                 f'<div><b>3 Pre-check</b> {pre}</div><i>&darr;</i>'
-                f'<div><b>4 Prove</b> sticky split, sequential test, ships only if it provably wins</div><i>&darr;</i>'
+                f'<div><b>4 Prove</b> {F["plan"]["n_max"]:,} calls to be sure of +{F["plan"]["mde"]*100:.0f}pp; ships only if it provably wins</div><i>&darr;</i>'
                 f'<div><b>Record</b> hash-chained, with the evidence behind the fix</div>')
-        title, sub = "Canary: the bot finds its weak spot, fixes it, and proves the fix", "From real VANI calls to a proven prompt change. Sarvam does the listening, the drafting and the voices; the A/B engine decides. Every claim is computed by re-runnable code."
-        wf_h = "From real calls to a shipped fix"
+        title, sub = "Canary: the bot finds its weak spot, fixes it, and proves the fix", "On VANI\'s real prompt and 299 real calls. The A/B engine decides; every claim is computed by re-runnable code and says how sure we are."
+        wf_h = "From the real prompt to a shipped fix"
         exp_h = f"Live test of the fix (simulated outcomes, known truth A {b['meta']['true_a']*100:.1f}% / B {b['meta']['true_b']*100:.1f}%)"
     else:
-        flow = ('<div>Variants A / B (prompt + small patch, versioned)</div><i>&darr;</i><div>Router: sticky split</div><i>&darr;</i><div>VANI calls the buyer</div><i>&darr;</i>'
+        flow = ('<div>Variants A / B (prompt + small patch, versioned)</div><i>&darr;</i><div>Router: sticky split</div><i>&darr;</i><div>VANI answers the buyer</div><i>&darr;</i>'
                 '<div>Auto-disposition tagger &rarr; BuyLead created? + handling time</div><i>&darr;</i><div>Monitor each look: SRM &middot; harm &middot; promote &middot; guardrail</div><i>&darr;</i><div>Hash-chained ledger</div>')
         title, sub = "Canary: no prompt ships without proof", "Try a change on a small slice of calls, ship it only if it provably wins, stop it early if it is clearly worse."
         wf_h = "Workflow"

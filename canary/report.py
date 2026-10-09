@@ -33,6 +33,58 @@ def run_tests() -> str:
     return " ".join(last)
 
 
+def _extra_sections(w, P):
+    """Hold for approval, 'how many more leads', decisions from results files, the dashboard spec's rule. All from re-runnable code."""
+    import json as _j
+    from dataclasses import replace
+    from .engine import lock_check, run_experiment
+    from .ledger import verify
+    from .planner import spec_calculator_check
+    from .scenarios import make
+    from .simulator import TrafficSim
+    w("## 5b. Hold for approval, rollback, and 'how many more leads' (decision table of the BRD and the dashboard spec)\n")
+    b = scenario_bundle("guardrail_hold")["record"]
+    c, sc = make("guardrail_hold")[0], make("guardrail_hold")[2]
+    kinds = {}
+    for seed in range(1, 61):
+        k = run_experiment(c, TrafficSim(replace(sc, seed=seed)))["result"]["kind"]
+        kinds[k] = kinds.get(k, 0) + 1
+    w(f"- **Hold for approval.** A win whose guardrail is not proven is not thrown away and not shipped on its own: nothing changes for callers while a person decides. The scenario ends `{b['result']['kind']}` at {b['result']['calls_analysed']:,} calls "
+      f"({b['looks'][-1]['guardrail']['worse']:+.1%} handling time against a +15% limit). Over 60 seeds of this scenario: " + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items(), key=lambda x: -x[1])) + f" (the demo seed shows the most common outcome).")
+    ok_a = verify(b["ledger"] + b["tails"]["approve"])[0]; ok_r = verify(b["ledger"] + b["tails"]["reject"])[0]
+    w(f"- **Approve / reject / rollback are logged.** Both answers are pre-chained to the real ledger head; the hash chain verifies after approve ({'yes' if ok_a else 'NO'}) and after reject ({'yes' if ok_r else 'NO'}); a tampered answer is detected (tests/test_decide.py). A promotion carries a one-click rollback entry the same way.")
+    inc = scenario_bundle("inconclusive")["record"]["result"].get("more_leads", {"options": []})
+    w("- **Inconclusive says what would settle it.** " + "; ".join((f"already enough data to detect {o['lift_pp']} points" if o["enough_already"] else f"{o['more_leads']:,} more leads (~{o['more_days']} days) to detect {o['lift_pp']} points" + (" (a guess: the lift seen so far)" if o["guess"] else "")) for o in inc["options"]) + ".")
+    lk = lock_check(scenario_bundle("b_wins")["record"])
+    w(f"- **Config is locked and versioned.** The registered config hash ({lk['config_hash_registered']}) still matches the stored config ({'yes' if lk['config_unchanged'] else 'NO'}); a rule edited after the start fails this check (test), and any change is a new version pointing at its parent.\n")
+    if P.get("files"):
+        F = P["files"]
+        w("## 5c. Decisions from results files (the voice test runs elsewhere; we judge its results)\n")
+        w("The PM's model is: the test is performed outside our scope and files with the metrics for A and B come to us. `python -m canary decide FILE` (and the dashboard's Results files tab) reads them, checks them, counts each lead once, replays them day by day through the same decision function and returns the same record as a simulated run. "
+          "Proof: synthetic files with a known truth, written to CSV, read back and decided end to end.\n")
+        w("| Truth in the file | Files | Ship B | Stop B | No decision / held | Median leads | Ledger intact |\n|---|---|---|---|---|---|---|")
+        for k, v in F.items():
+            o = lambda x: v["outcomes"].get(x, {"rate": 0})["rate"]
+            w(f"| {v['label']} | {v['runs']} | {ci(v['outcomes']['PROMOTE']) if 'PROMOTE' in v['outcomes'] else '0.0%'} | {pct(o('STOP_HARM') + o('STOP_GUARDRAIL'))} | {pct(o('INCONCLUSIVE') + o('HOLD_FOR_APPROVAL'))} | {v['median_n']:,.0f} | {v['ledger_ok']}/{v['runs']} |")
+        w("\nThe files are synthetic (outcomes from a known truth, real call durations); they prove the path, not a real prompt. Data checks are reported, never repaired silently: repeated call ids, unknown variant names, missing outcomes, leads served both prompts, a lead with several calls. The decision is identical whether results arrive day by day or all at once (test), because the planned maximum comes only from the pre-registered config.\n")
+    if P.get("rulesets"):
+        R = P["rulesets"]
+        w("## 5d. The dashboard spec's decision rule against ours, on identical traffic\n")
+        w("The BRD asks for daily checks on strict-early boundaries; the dashboard spec asks for ONE winner call at the end plus a very strict daily harm check. Both are valid; Canary runs either (`rule_set`). Same data for both: 14 days, 300 leads a day, 30% to B, planned for a +3 point lift.\n")
+        w("| Truth | Rule | Ships B | Stops B | Median calls when promoted | B calls served |\n|---|---|---|---|---|---|")
+        for k, v in R.items():
+            for rs, nm in (("sequential", "Sequential (ours, default)"), ("final_look", "One look at the end + 99.9% daily harm (spec)")):
+                m = v[rs]["canary"]
+                w(f"| {v['label']} | {nm} | {ci(rate(m, 'PROMOTE'))} | {pct(rate(m, 'STOP_HARM')['rate'] + rate(m, 'STOP_GUARDRAIL')['rate'])} | {m['median_n_when_promoted']:,.0f} | {m['mean_exposure_b']:,.0f} |" if m["median_n_when_promoted"] else
+                  f"| {v['label']} | {nm} | {ci(rate(m, 'PROMOTE'))} | {pct(rate(m, 'STOP_HARM')['rate'] + rate(m, 'STOP_GUARDRAIL')['rate'])} | - | {m['mean_exposure_b']:,.0f} |")
+        aa = R["aa"]["final_look"]["naive_peek"]
+        wrong = rate(aa, "PROMOTE")["rate"] + rate(aa, "STOP_HARM")["rate"]
+        w(f"\nReading: both keep false wins near the 2.5% budget. The spec's rule never promotes before the last day and stops a clearly worse B less often (its daily bar is stricter, so it also falsely stops less); ours promotes sooner and protects better, at a slightly higher false-stop rate. Neither dominates, so it is a setting, with the default argued by these numbers.\n")
+        w("**Claims in the BRD and the spec that we checked**\n")
+        w(f"- 'Checking every day with a plain 95% test picks a false winner 20 to 25% of the time': over 14 daily looks with A = B, a plain test crowns B {pct(rate(aa, 'PROMOTE')['rate'])} and kills B {pct(rate(aa, 'STOP_HARM')['rate'])} of the time, so a wrong call in either direction is {pct(wrong)}: the 20-25% figure holds for 'any wrong call', not for 'a false winner' alone.")
+        sc_ = spec_calculator_check()
+        w(f"- Spec calculator example ('4,200 B leads in 7 days detects 1.2 pp; 0.8 pp needs 12 days'): {sc_['verdict']} At a 45% baseline the same 4,200 B leads detect {sc_['mde_at_baseline_45pct_pp']} pp.\n")
+
 def write_report() -> Path:
     P = json.loads((OUT / "proof.json").read_text())
     S = P["scenarios"]
@@ -52,7 +104,7 @@ def write_report() -> Path:
     w("| Question | Canary | Typical approach | Source |\n|---|---|---|---|")
     w(f"| Crowns B when A = B (false win) | **{ci(rate(aa['canary'], 'PROMOTE'))}** | naive peeking {ci(rate(aa['naive_peek'], 'PROMOTE'))}; fixed-horizon {pct(rate(aa['fixed_horizon'], 'PROMOTE')['rate'])}; higher-rate-wins {pct(rate(aa['higher_rate'], 'PROMOTE')['rate'])} | §3 |")
     w(f"| Ships B when the test is silently broken (B loses 35% of non-converting calls from the log; see §3b) | **{pct(rate(srm['canary'], 'PROMOTE')['rate'])}** (halts {pct(rate(srm['canary'], 'HALT_SRM')['rate'])}) | naive peeking {pct(rate(srm['naive_peek'], 'PROMOTE')['rate'])}; fixed-horizon {pct(rate(srm['fixed_horizon'], 'PROMOTE')['rate'])} | §3 |")
-    w(f"| Ships B that is 30% slower while winning on BuyLeads | **{pct(rate(gr['canary'], 'PROMOTE')['rate'])}** (vetoes {pct(rate(gr['canary'], 'STOP_GUARDRAIL')['rate'] + rate(gr['canary'], 'NO_PROMOTE_GUARDRAIL')['rate'], 0)}) | naive peeking {pct(rate(gr['naive_peek'], 'PROMOTE')['rate'])} | §3 |")
+    w(f"| Ships B that is 30% slower while winning on BuyLeads | **{pct(rate(gr['canary'], 'PROMOTE')['rate'])}** (vetoes {pct(rate(gr['canary'], 'STOP_GUARDRAIL')['rate'] + rate(gr['canary'], 'HOLD_FOR_APPROVAL')['rate'], 0)}) | naive peeking {pct(rate(gr['naive_peek'], 'PROMOTE')['rate'])} | §3 |")
     w(f"| Detects a real lift of the planned size (power) | **{ci(rate(win['canary'], 'PROMOTE'))}** | fixed-horizon {pct(rate(win['fixed_horizon'], 'PROMOTE')['rate'])}; naive peeking {pct(rate(win['naive_peek'], 'PROMOTE')['rate'])} (but see its false-win rate) | §3 |")
     w(f"| Calls needed to promote a real winner (median) | **{win['canary']['median_n_when_promoted']:,.0f}** | fixed-horizon {win['fixed_horizon']['median_n_when_promoted']:,.0f} ({pct(saved, 0)} fewer for Canary) | §3 |")
     w(f"| Stops a B that is truly 10pp worse | **{pct(rate(hm['canary'], 'STOP_HARM')['rate'])}** of runs | fixed-horizon never stops early | §3 |")
@@ -65,7 +117,7 @@ def write_report() -> Path:
     w("")
     w("## 2. What data we actually have (measured)\n")
     w(f"- {len(d)} recordings, {sum(d) / 3600:.2f} hours, 8 kHz mono telephony MP3. Duration: median {statistics.median(d):.1f} s, mean {statistics.mean(d):.1f} s, max {max(d):.1f} s; {sum(1 for x in d if x < 15)} calls ({pct(sum(1 for x in d if x < 15) / len(d), 0)}) are under 15 s.")
-    w("- **No** transcripts, dispositions, labels or base prompt were provided (PS05 lists them as \"[to be shared]\"). So: durations are real and drive the simulator; outcomes are simulated with a known injected difference; the base prompt is a clearly-marked stand-in; real tagger accuracy is not yet measured (§6).")
+    w("- Resources received: the recordings, the problem statements and, added on 9 Oct, **VANI's real buyer-side prompt** (77 pages, about 25,000 words) and **IndiaMART's call-quality matrix** (fatal / non-fatal definitions). No transcripts and no human labels were provided: the transcripts and machine labels are ours (Sarvam). Durations are real and drive the simulator; A/B outcomes are simulated with a known injected difference (§6).")
     w("")
     w("## 3. Statistical validity of the winner call (30% criterion)\n")
     w("Method: one-sided score test on the difference in rates, **Lan-DeMets alpha-spending** (O'Brien-Fleming-type for promotion, Pocock-type for harm), 40 looks, pre-registered rules, sample size set by power. Spending lets us check as often as we like without inflating false wins. Implementation validated against published boundaries and by simulation (unit tests `SeqDesign`).\n")
@@ -105,7 +157,7 @@ def write_report() -> Path:
     w("")
     w(f"Stickiness: {st['calls']:,} calls, {st['distinct_leads']:,} leads, {st['repeat_calls']:,} repeats. Arm changes: hash {st['hash']['arm_flips']}, balanced {st['balanced']['arm_flips']}, coin flip {st['naive_random']['arm_flips']:,}. A second independent hash router disagreed on {st['hash']['independent_server_disagreements']} leads. Balanced mode needs its ledger persisted to stay sticky across restarts.\n")
     w("")
-    w("## 5. Auto-promotion and early stop (30% criterion): the six scenarios\n")
+    w("## 5. Auto-promotion and early stop (30% criterion): the seven scenarios\n")
     w("| Scenario | Known truth | Expected | Got | Look | Calls analysed | B calls served | Ledger verifies | Re-run identical |\n|---|---|---|---|---|---|---|---|---|")
     for k in ORDER:
         b = scenario_bundle(k)
@@ -115,28 +167,46 @@ def write_report() -> Path:
     w("")
     w("Every decision is written to a hash-chained ledger with time, rule, evidence and routing change; re-running from config + seed reproduces the identical ledger head.\n")
     w("")
-    w("## 6. Labels, auto-disposition and metrics (20% criterion + deck metrics)\n")
+    _extra_sections(w, P)
+    w("## 6. The real prompt, the quality matrix, and the labels (20% criterion + deck metrics)\n")
     o, e, h = bench["overall"], bench["easy"], bench["hard"]
-    w("**We have no labels.** The calls are VANI phoning *buyers* to capture the requirement (Quantity, Specification, Delivery location, Timeline) because the seller is unavailable, so the goal disposition is **BuyLead created**. What we did about the missing labels:\n")
-    w("1. **Label Lab** (`python -m canary serve`, Labels tab): plays a recording, one keypress per call, two people label the same calls so label quality (kappa) is itself measured. Real labels give a real baseline rate and the ground truth to score any tagger. Status at build: see the Labels tab (0 real labels at the time of writing).")
-    w(f"2. **Synthetic labelled set** ({bench['n']} scripted calls, known labels, ASR-style noise). Rule tagger accuracy: overall **{pct(o['accuracy'])}** [{pct(o['accuracy_ci'][0])}, {pct(o['accuracy_ci'][1])}], easy phrasings {pct(e['accuracy'])}, hard phrasings {pct(h['accuracy'])}; BuyLead-created sensitivity {pct(o['sensitivity'], 0)}, specificity {pct(o['specificity'], 0)}. **This is an optimistic bound, not accuracy on real calls** - the scripts are ours.")
-    w("3. **Pluggable LLM tagger** (same interface, `LLMEvaluator(complete)`): the Sarvam model goes here; the prompt template is `data/evaluator_prompt.md`. `python -m canary eval --transcripts DIR` scores it against real labels when transcripts exist.")
+    from . import arena as _arena, sarvam_pipe as _sp, fixloop as _fx, prescreen as _ps, promptlint as _pl, loopscan as _ls, realprompt as _rp
+    w("**6a. What the real resources changed.** We built the first version against a stand-in prompt written from a verbal description. The real prompt and matrix contradicted four of our assumptions, so we corrected the work instead of defending it:\n")
+    w("| We assumed | The real prompt / matrix says | What we did |\n|---|---|---|")
+    w("| VANI phones the buyer | \"This is NOT an outbound call.\" The buyer called a seller, the seller was unavailable, the call was redirected to the Help Desk (only the redial flows are outbound) | Simulation is an inbound call with VANI's predefined opening; earlier arena and pre-screen results are marked stale and not shown as VANI's behaviour |")
+    w("| It captures quantity, specification, delivery location, timeline | It collects product confirmation, quantity, each specification, buyer name, buyer city and state. There is no timeline | Label schema 2 (data/dispositions.json); earlier labels kept as legacy |")
+    w("| Reading details back is good practice | \"Do not repeat, paraphrase, summarize, or reconfirm the value\" (the No-Echo rule) | Our top machine-labelled issue (\"did not read the details back\", 129 of 299 calls) is retired: it was never a failure |")
+    w("| Success = a BuyLead with quantity and specification | Connecting the buyer to a live seller is the top priority; quantity and specification must never block it. Dispositions are BL Approved / BL Enriched / BL Deleted | Outcomes in schema 2 follow the real dispositions; quantity-and-specification is kept only as a proxy for the earlier labels |")
+    w("| Our own list of bot issues | IndiaMART's quality matrix: outcome, quantity, specification, looping, WER, live-seller pitch, product, dead air... each fatal or non-fatal | Schema 2 issues are the matrix parameters; Overall Call = pass / non-fatal / fatal |")
     w("")
-    from . import arena as _arena, sarvam_pipe as _sp
+    L_ = _pl.analyse()
+    w(f"**6b. Prompt lint (free, deterministic, no model).** The real prompt is {L_['prompt']['words']:,} words and four prompts in one document. `python -m canary fix lint` compares every statement of how many times VANI may ask for the same thing. IndiaMART's matrix grades probing a parameter more than 1+2 times as fatal \"looping\", so the limits have to agree.\n")
+    w("| Where | Field | Limits stated | Evidence (line numbers in data/base_prompt.md) |\n|---|---|---|---|")
+    for c_ in L_["conflicts"]:
+        w(f"| {c_['flow'].replace('_', ' ')} | {c_['field']} | {' vs '.join(str(x) for x in c_['limits'])} | " + "; ".join(f"L{e_['line'] + 1} \"{e_['quote'][:48]}\"" for e_ in c_["evidence"]) + " |")
+    w("")
+    if L_["cross_flow"]:
+        w("Across flows (information, not a defect): " + "; ".join(f"{x['field']}: " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in x["by_flow"].items()) for x in L_["cross_flow"]) + ".\n")
+    if L_["duplicates"]:
+        d0 = L_["duplicates"][0]
+        w(f"Copy-paste risk: {len(L_['duplicates'])} blocks (the largest {d0['lines']} lines) are repeated across flows, so an edit to one copy leaves the others behind; patches therefore check that their anchor matches exactly one line.\n")
+    LS = _ls.summary()
+    if LS:
+        w(f"**6c. Looping in the real calls (no model, tagger-free).** `python -m canary fix loops`. Of {LS['calls_with_speech']} recorded calls with speech, VANI said a near-identical thing **3 or more times in {LS['bot_repeat3']['n']} ({pct(LS['bot_repeat3']['rate'], 1)})** and 4 or more times in {LS['bot_loop']['n']}. This is a lower bound: VANI is told to vary its wording and this check sees only near-identical repeats. So verbatim loops are rare, and a consistency fix is a safety measure, not a conversion lever. (The earlier machine tagger flagged loop-like issues in {LS['vs_machine_loop_flag']['both'] + LS['vs_machine_loop_flag']['machine_only']} calls; the two methods agree on {LS['vs_machine_loop_flag']['both']}, so the tagger over-flags or sees rephrased loops.)\n")
     R = _sp.report()
     if R.get("machine_labelled"):
-        n = R["machine_labelled"]; loose = R["buylead_rate_loose"]; strict = R["buylead_rate_machine"]; rich = R["rich"]; cc = R.get("capture_connected", {})
-        w(f"**6b. Real calls, labelled by Sarvam (machine labels, NOT yet human-verified).** Sarvam Saaras transcribed {n} randomly chosen recordings with speaker separation and the Sarvam chat model tagged each. Cost and method: `python -m canary autolabel` (budget-capped, cached).\n")
+        n = R["machine_labelled"]; loose = R["buylead_rate_loose"]; rich = R["rich"]; cc = R.get("capture_connected", {})
+        prov = R.get("provisional")
+        w(f"**6d. Real calls, labelled by Sarvam ({'PROVISIONAL: made before the real prompt arrived' if prov else 'real-prompt schema'}; machine labels, not yet human-verified).** Sarvam Saaras transcribed {n} randomly chosen recordings with speaker separation and the Sarvam chat model tagged each (`python -m canary autolabel`, budget-capped, cached). {'The tagging prompt used the earlier vocabulary, so treat these as a first look. `python -m canary autolabel retag` re-tags the saved transcripts with the real-prompt schema for about Rs ' + str(round(_sp.retag_plan()['est_inr'])) + ' (not run).' if prov else ''}\n")
         w("| Measure | Result |\n|---|---|")
-        w(f"| BuyLead conversion, looser reading (quantity AND specification captured) | **{pct(loose['rate'], 0)}** (95% range {pct(loose['ci'][0], 0)}-{pct(loose['ci'][1], 0)}); stated benchmark 35-60% |")
-        w(f"| BuyLead conversion, stricter reading (also location or timeline) | {pct(strict['rate'], 0)} (95% range {pct(strict['ci'][0], 0)}-{pct(strict['ci'][1], 0)}) |")
+        w(f"| Quantity AND specification captured (the proxy for BL conversion used for the earlier labels) | **{pct(loose['rate'], 1)}** (95% range {pct(loose['ci'][0], 0)}-{pct(loose['ci'][1], 0)}); stated benchmark for BL conversion 35-60% |")
         if cc:
-            w(f"| Details captured, connected calls | quantity {pct(cc['quantity'], 0)} (stated target ~88%), specification {pct(cc['specification'], 0)} (~79%), location {pct(cc['location'], 0)}, timeline {pct(cc['timeline'], 0)} |")
-        w(f"| Calls with at least one bot issue | {pct(rich['bot_issue_rate'], 0)}; top: " + ", ".join(f"{k.replace('_', ' ')} ({v})" for k, v in list(rich['bot_issue_counts'].items())[:3]) + " |")
-        w(f"| Fatal grading | " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in rich['fatal'].items()) + " |")
+            w(f"| Details captured, connected calls | quantity {pct(cc['quantity'], 0)} (stated target ~88%), specification {pct(cc['specification'], 0)} (~79%) |")
+        w(f"| Calls with at least one issue flagged | {pct(rich['bot_issue_rate'], 0)}; top: " + ", ".join(f"{k.replace('_', ' ')} ({v})" for k, v in list(rich['bot_issue_counts'].items())[:3]) + " (\"did not confirm details\" is retired, see 6a) |")
+        w(f"| Fatal grading (earlier tagger, not the matrix) | " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in rich['fatal'].items()) + " |")
         w(f"| Language mix | " + ", ".join(f"{k} {v}" for k, v in rich['language'].items()) + " |")
-        b = R.get("tagger_vs_human_blind")
-        w("| Tagger accuracy vs a person | " + (f"**{pct(b['accuracy'], 0)}** on {b['n']} blind-checked calls (95% range {pct(b['accuracy_ci'][0], 0)}-{pct(b['accuracy_ci'][1], 0)})" if b else "not measured yet: waiting for the 40-call human spot-check") + " |")
+        b_ = R.get("tagger_vs_human_blind")
+        w("| Tagger accuracy vs a person | " + (f"**{pct(b_['accuracy'], 0)}** on {b_['n']} blind-checked calls (95% range {pct(b_['accuracy_ci'][0], 0)}-{pct(b_['accuracy_ci'][1], 0)})" if b_ else "not measured yet: needs the 40-call spot-check, best done after the re-tag") + " |")
         w("")
         import json as _j, statistics as _st
         dur = {r_["idx"]: r_["duration_s"] for r_ in _j.loads((_sp.DATA / "call_durations.json").read_text())}
@@ -145,42 +215,60 @@ def write_report() -> Path:
             grp.setdefault(d_["label"], []).append(dur[d_["idx"]])
         med = lambda k: _st.median(grp[k]) if grp.get(k) else float("nan")
         allm = _st.median([x for v in grp.values() for x in v])
-        w(f"Sanity checks that need no human: call length follows outcome (median {med('buylead_created'):.0f} s for BuyLead calls, {med('partial'):.0f} s for partial, {med('no_connect'):.0f} s when nobody spoke; {allm:.0f} s across all {n} calls, inside the stated 44-68 s ideal handling time). BuyLead calls run longer than the ideal range because they carry the most questions. The looser conversion rate lands inside the stated benchmark. The issue counts are machine estimates and are likely to over-flag until the spot-check calibrates them.\n")
-    ar = _arena.load()
-    if ar and ar.get("cases"):
-        w("**6c. Voice arena (illustrative).** Sarvam's chat model plays the buyer and VANI under prompt A and prompt B; Sarvam Bulbul voices speak both; the same tagger scores each call. Three buyers per prompt, so a demonstration and not a statistical test.\n")
-        w("| Buyer | Turns A | Turns B | Outcome A | Outcome B |\n|---|---|---|---|---|")
-        for c in ar["cases"]:
-            w(f"| {c['title']} | {len(c['A']['lines'])} | {len(c['B']['lines'])} | {c['A']['tag']['label'].replace('_', ' ')} | {c['B']['tag']['label'].replace('_', ' ')} |")
-        w("")
-    from . import fixloop as _fx, prescreen as _ps
+        w(f"Sanity check that needs no human: call length follows outcome (median {med('buylead_created'):.0f} s for the strict BuyLead label, {med('partial'):.0f} s for partial, {med('no_connect'):.0f} s when nobody spoke; {allm:.0f} s across all {n} calls, inside the stated 44-68 s ideal handling time).\n")
     FX = _fx.mine()
-    if FX.get("issues"):
-        w("**6d. The fix loop: the PM's idea, run on the real labels.** `python -m canary fix mine | propose | prescreen`. The system reads the labelled calls, finds the failure that costs BuyLeads, has Sarvam draft one small prompt edit, pre-checks it on simulated buyers, and hands it to the A/B engine. The engine, not the mining, decides whether it ships.\n")
-        w("| Failure | Calls | Converts with it | Converts without it | With minus without | p (unadjusted) | BuyLeads per 100 calls if removed |\n|---|---|---|---|---|---|---|")
-        for r_ in FX["issues"]:
-            if r_["eligible"]:
-                mark = " **<- chosen**" if r_["key"] == FX["target"] else (" (PM rule picks this)" if r_["key"] == FX["pm_pick"] else "")
-                w(f"| {r_['name']}{mark} | {r_['calls']} | {pct(r_['converted_with'], 0)} | {pct(r_['converted_without'], 0)} | {-r_['gap_pp']:+.0f} pp | {r_['p_value']:.3f} | {r_['ceiling_pp']} |")
-        w("")
-        pm_row = next(r_ for r_ in FX["issues"] if r_["key"] == FX["pm_pick"]); tg_row = next(r_ for r_ in FX["issues"] if r_["key"] == FX["target"])
-        w(f"**A correction to the PM's rule.** \"Cluster the failed calls and fix the top cluster\" picks *{pm_row['name']}* ({pm_row['failed_calls']} of the failed calls, the largest group). But {pct(pm_row['converted_with'], 0)} of calls with that problem convert, against {pct(pm_row['converted_without'], 0)} without it: it is common in good calls too, so fixing it recovers nothing. Ranking by the conversion gap instead picks *{tg_row['name']}* ({pct(tg_row['converted_with'], 0)} vs {pct(tg_row['converted_without'], 0)}, p={tg_row['p_value']:.3f}, unadjusted for the {sum(1 for x in FX['issues'] if x['eligible'])} failures compared). The gap is an association between two machine labels; whether removing the failure helps is what the live test decides.\n")
-        prop = _fx.load_proposal()
+    prop = _fx.load_proposal()
+    if FX.get("issues") or prop:
+        w("**6e. The fix loop: the PM's idea, on the real prompt.** `python -m canary fix mine | lint | loops | candidate | propose | prescreen | costs`. Find, fix, pre-check, prove; the A/B engine, not the mining, decides whether anything ships.\n")
+        if FX.get("issues"):
+            w(f"Mining the machine labels ({'provisional' if FX.get('provisional') else 'current'}): failures ranked by what they cost in conversions, not by how often they occur. An association between two machine labels, never a cause.\n")
+            w("| Failure | Calls | Converts with it | Converts without it | With minus without | p (unadjusted) | BuyLeads per 100 calls if removed |\n|---|---|---|---|---|---|---|")
+            for r_ in FX["issues"]:
+                if r_["eligible"]:
+                    mark = " (largest group among failed calls: the PM's rule)" if r_["key"] == FX["pm_pick"] and r_["key"] != FX["target"] else (" **<- ranked first**" if r_["key"] == FX["target"] else "")
+                    w(f"| {r_['name']}{mark} | {r_['calls']} | {pct(r_['converted_with'], 0)} | {pct(r_['converted_without'], 0)} | {-r_['gap_pp']:+.0f} pp | {r_['p_value']:.3f} | {r_['ceiling_pp']} |")
+            w("")
+            w("Read the first row with care: the earlier tagger did not know that ending the call early is the CORRECT closing when the buyer has no product requirement, wants only the original seller or refuses to talk to an AI, so \"ended abruptly\" is probably inflated by correct closes. The re-tag with the real-prompt schema will retest it.\n")
+            if FX.get("retired"):
+                w("Retired from the ranking: " + "; ".join(f"**{x['name']}** ({x['calls']} calls): {x['why']}" for x in FX["retired"]) + " Before it was retired it made the PM's \"fix the biggest cluster\" rule look wrong; with it removed the two rules agree on this data, so we do not claim that correction. The re-tag will retest it.\n")
         if prop:
-            w(f"Sarvam ({prop['model']}) drafted this edit for Rs {prop['inr']:.2f}, from {prop['evidence']['hints_used']} audit suggestions and the measured call profile: **{prop['name']}**. Added line: `{prop['add'][0]['text']}` Risk it flagged: {prop['risk']}\n")
+            ec = prop.get("evidence", {})
+            w(f"Candidate edit (**{prop['name']}**, origin: {prop.get('origin')}): lint check {ec.get('conflicts_before', '?')} contradictions before, {ec.get('conflicts_after', '?')} after, {ec.get('introduced', '?')} introduced. Why: {prop.get('why')} Risk: {prop.get('risk')}\n")
         PS = _ps.summary()
-        if PS:
+        if PS and not PS.get("stale"):
             A_, B_ = PS["A"], PS["B"]
-            w(f"Pre-screen on {PS['n_pairs']} simulated buyers (pass rule fixed in code before the run: conversion not more than {PS['gate']['conv_drop_max']} lower, failed calls not more than {PS['gate']['fatal_rise_max']} higher, bot turns not more than {int((PS['gate']['turns_ratio_max'] - 1) * 100)}% higher):\n")
-            w("| | Usable requirement | Targeted failure seen | Calls with a fatal fault | Bot turns (avg) |\n|---|---|---|---|---|")
-            w(f"| Prompt A (today) | {A_['converted']}/{A_['n']} | {A_['target_issue']} | {A_['fatal']} | {A_['bot_turns']} |")
-            w(f"| Prompt B (the fix) | {B_['converted']}/{B_['n']} | {B_['target_issue']} | {B_['fatal']} | {B_['bot_turns']} |")
-            sat = A_["target_issue"] == 0 and B_["target_issue"] == 0
-            w(f"\nGate: **{'passed' if PS['passed'] else 'failed'}**. Abrupt endings seen: {A_['target_issue']} under A, {B_['target_issue']} under B. Data-quality check: {PS['placeholder_lines']} bot lines contain an unfilled placeholder (the simulated VANI is given the buyer's name and product, as the real one is).\n")
-            w(("**Limit of this step:** the targeted failure (abrupt endings) did not occur under either prompt and conversion was almost equal, so it cannot tell A from B. It checks the fix does no harm; it does not show a gain. " if sat else "**Limit of this step:** 24 pairs is far too few to prove an improvement. ") + "The proof is the live test.\n")
+            w(f"Pre-check on {PS['n_pairs']} simulated buyers (pass rule fixed in code before the run): A {A_['converted']}/{A_['n']} usable requirements, B {B_['converted']}/{B_['n']}; calls with a fatal fault A {A_['fatal']}, B {B_['fatal']}; bot turns {A_['bot_turns']} vs {B_['bot_turns']}. Gate: **{'passed' if PS['passed'] else 'failed'}**. A smoke test only.\n")
+        else:
+            pc_ = _ps.plan()
+            w(f"Pre-check: **not run on the real prompt.** VANI's rendered prompt is about {pc_['prompt_tokens_per_vani_turn']:,} tokens and is sent on every turn, so {pc_['simulated_calls']} simulated calls would cost about Rs {pc_['est_inr']:.0f}. An earlier run used the stand-in prompt and is not shown.\n")
         dp = _fx.design_for_fix()
         if dp:
-            w(f"Live test plan from the measured baseline ({pct(dp['baseline'], 1)}) and the failure's ceiling (+{dp['mde'] * 100:.0f} pp): about {dp['n_max']:,} calls, {dp['days_needed']} days at {dp['leads_per_day']} calls a day with half the calls on B (600 calls a day is an assumption; change it in Plan a test).\n")
+            w(f"Live test plan (measured baseline {pct(dp['baseline'], 1)}, provisional; planned lift +{dp['mde'] * 100:.0f} pp, a planning choice; {dp['leads_per_day']} calls a day is an assumption; half the calls on B): about {dp['n_max']:,} calls, {dp['days_needed']} days. What other lifts cost to prove:\n")
+            w("| Lift | Calls needed | Days |\n|---|---|---|")
+            for t_ in dp["table"]:
+                w(f"| {t_['mde'] * 100:.0f} pp | {t_['n_max']:,} | {t_['days']} |")
+            w("")
+    ar = _arena.load()
+    if ar and ar.get("cases"):
+        if ar.get("stale"):
+            w("**6f. Voice arena.** The six recorded calls (Sarvam Bulbul voices) were made with our earlier stand-in prompt, which was wrong about VANI, so they demonstrate the voices only and are labelled so in the dashboard. They are not evidence about the real prompt.\n")
+        else:
+            w("**6f. Voice arena (illustrative).** Sarvam's chat model plays the buyer and VANI (real prompt, inbound call) under prompt A and prompt B; Bulbul voices speak both; the same tagger scores each call. Three buyers per prompt: a demonstration, not a statistical test.\n")
+            w("| Buyer | Turns A | Turns B | Outcome A | Outcome B |\n|---|---|---|---|---|")
+            for c in ar["cases"]:
+                w(f"| {c['title']} | {len(c['A']['lines'])} | {len(c['B']['lines'])} | {c['A']['tag']['label'].replace('_', ' ')} | {c['B']['tag']['label'].replace('_', ' ')} |")
+            w("")
+    C_ = _fx.costs()
+    w("**6g. Paid Sarvam steps not yet run (each needs `--yes` and a budget), with their exact estimates.** Credits are limited, so nothing here was spent after the real prompt arrived:\n")
+    w("| Step | Estimated cost | Command |\n|---|---|---|")
+    w(f"| Re-tag {C_['retag']['to_retag']} real calls with the real-prompt schema (about {C_['retag']['minutes']:.0f} min) | Rs {C_['retag']['est_inr']:.0f} | `autolabel retag --yes --budget N` |")
+    w(f"| Sarvam drafts an edit from the evidence | Rs {C_['draft']['est_inr']:.1f} | `fix propose --yes` |")
+    if C_.get("prescreen"):
+        w(f"| Pre-check: {C_['prescreen']['personas']} simulated buyers, prompts A and B | Rs {C_['prescreen']['est_inr']:.0f} | `fix prescreen --yes` |")
+    if C_.get("arena"):
+        w(f"| Voice arena: 3 buyers, A and B, Sarvam voices | Rs {C_['arena']['total_inr']:.0f} | `arena run --yes --force` |")
+    w("")
+    w("**Legacy synthetic benchmark.** Before any real labels existed we built a scripted set (" + str(bench['n']) + f" calls) and a rule tagger: overall accuracy {pct(o['accuracy'])} [{pct(o['accuracy_ci'][0])}, {pct(o['accuracy_ci'][1])}], easy {pct(e['accuracy'])}, hard {pct(h['accuracy'])}. It uses the earlier disposition vocabulary and is an optimistic bound written by us; it is kept only for the tests and is not evidence about real calls.\n")
     w(f"**Why tagger quality matters (model, not measurement):** a noisy tagger shrinks the observed lift and costs power (planned lift {round(P['config']['mde'] * 100)} points from a {pct(P['config']['baseline'], 0)} baseline).\n")
     w("| Tagger | Sensitivity | Specificity | Observed lift | Power | Calls for 80% power |\n|---|---|---|---|---|---|")
     for x in ev:
@@ -189,14 +277,19 @@ def write_report() -> Path:
     w("Primary goal is any disposition (`primary_goal`, direction `higher`/`lower`); the secondary is a guardrail (average handling time) with a tolerated relative change, or reported only (`secondary_role`). Conflict rule: **the primary decides; the guardrail can only veto.** Promotion needs the guardrail *proven* within its limit; a breach stops the test (scenario 6).\n")
     w("")
     w("## 7. How this differs from what other teams will likely build\n")
-    w("| Typical submission | Canary |\n|---|---|\n| Two-proportion z-test, p<0.05 | Alpha-spending sequential test with pre-registered rules, power-based sample size, an honest *inconclusive* |\n| Peeks without correction | Peeking priced in; proven by simulation against naive peeking |\n| `random()` per call or a hash, split reported once | Sticky hash and balanced modes, split + stickiness measured over thousands of runs, sample-ratio check that halts broken tests |\n| Early stop on a fixed threshold | Harm boundary with a controlled error rate, plus guardrail breach |\n| Duration shown as a second chart | Guardrail with a tolerated margin and a stated conflict rule |\n| Log lines | Hash-chained ledger, tamper test, reproducible from config + seed |\n| Numbers asserted on the slide | QA table above, re-run with one command |\n| Summarise the failures and fix the biggest group | Ranks failures by what they cost in BuyLeads (the most common one is not the costly one), has Sarvam draft the edit from real evidence, pre-checks it, and lets the A/B engine decide |\n| Assumes the tagger is right | Measures it (synthetic now, real labels when available) and shows what its errors cost |\n| Starts without asking if the test can finish | Planner warns when the window cannot reach a conclusion |")
+    w("| Typical submission | Canary |\n|---|---|\n| Two-proportion z-test, p<0.05 | Alpha-spending sequential test with pre-registered rules, power-based sample size, an honest *inconclusive* |\n| Peeks without correction | Peeking priced in; proven by simulation against naive peeking |\n| `random()` per call or a hash, split reported once | Sticky hash and balanced modes, split + stickiness measured over thousands of runs, sample-ratio check that halts broken tests |\n| Early stop on a fixed threshold | Harm boundary with a controlled error rate, plus guardrail breach |\n| Duration shown as a second chart | Guardrail with a tolerated margin and a stated conflict rule |\n| Log lines | Hash-chained ledger, tamper test, reproducible from config + seed |\n| Numbers asserted on the slide | QA table above, re-run with one command |\n| Summarise the failures and fix the biggest group | Finds evidence in three independent places (the real prompt itself, a tagger-free scan of the real calls, the machine labels), derives or drafts a small edit, rejects any edit that contradicts the prompt, pre-checks it, and lets the A/B engine decide |\n| Assumes the tagger is right | Measures it (synthetic now, real labels when available) and shows what its errors cost |\n| Starts without asking if the test can finish | Planner warns when the window cannot reach a conclusion |")
     w("")
     w("## 8. Known limitations (read before the demo)\n")
-    w("- Outcomes are **simulated** with an injected known difference; the proof lab uses a 45% baseline, inside the 35-60% benchmark and inside the 42-53% range measured on the real calls (47.5% on the looser definition); the fix-loop scenarios use the measured baseline; durations are resampled from real recordings (median 64 s, inside the stated 44-68 s ideal handling time). We cannot claim a real-world lift for any prompt. The Sarvam voice agents / LLM-simulated sellers are not wired in (platform deliberately untouched for now); the hooks are the `LLMEvaluator(complete)` interface and the simulator's `observe()`.")
-    w("- Real tagger accuracy is **not measured** until people label calls and transcripts exist.")
+    w("- Outcomes in the A/B test are **simulated** with an injected known difference; the proof lab uses a 45% baseline, inside the 35-60% benchmark and inside the 42-53% range measured on the real calls (47.5% on a proxy definition); the fix-loop scenarios use the measured baseline and a 3-point planning lift; durations are resampled from real recordings (median 64 s, inside the stated 44-68 s ideal). We cannot claim a real-world lift for any prompt.")
+    w("- The real-call labels are **machine labels made before the real prompt arrived**: provisional until the re-tag (about Rs 23) and a person's 40-call spot-check. The earlier tagger over-flagged (it called a rule the real prompt forbids a failure), which is why we publish the correction.")
+    w("- The prompt-derived fix is a consistency edit. Verbatim loops are rare in the real calls (6c), so we expect a safety gain of about a point at most, which would need tens of thousands of calls to prove on conversion; it is judged mainly on safety. The Sarvam-drafted alternative, the pre-check on the real prompt and the voice arena are not run (credits); their costs are in 6g.")
+    w("- The simulated VANI uses the rendered real prompt but cannot run its tools (transfer, variable updates); the opening message and call variables are our assumptions (the real system fills them from the lead).")
     w(f"- False-win rate is slightly above nominal in small test slices ({pct(worst)} worst cell vs 2.5%); disclosed in §3.")
     w("- With a 10% slice, detecting a harm takes about 3,000 calls; the planner shows the trade-off. Balanced assignment needs a persisted ledger; hash assignment does not.")
-    w("- The base prompt is a stand-in written by us from the VANI description; segment analysis, CUPED and post-promotion holdout were deliberately not built (see `DEMO_SCRIPT.md`, Q&A).")
+    w("- Segment analysis, CUPED and a post-promotion holdout were deliberately not built (see `DEMO_SCRIPT.md`, Q&A). The engine guards handling time and, optionally, one rate (a fatal-call or early-hang-up share) given by a column or a threshold; fatal calls are only available from files that carry them.")
+    w("- Results files: the format the PM's files will take is not known, so the reader is flexible and every assumption is printed. A lead that appears in both prompts is counted once, in its first arm, and reported. Leads after the planned maximum are not used (to use more data, plan for a smaller lift). A file with no lead id counts every call, which makes results look surer than they are, and says so.")
+    w("- The decision record is **tamper-evident, not tamper-proof**: editing, removing or re-ordering an entry is detected; someone who rewrites the whole chain is detected only if the head hash was written down somewhere else (the head hash is printed by the command line and shown when you press Verify chain, so it can be written down). An independent review of the file reader found and we fixed a set of decision-safety issues (a missing duration could drop the guardrail; results 'up to day d' could use later calls; the plan could be read off the data; one day could overshoot the planned maximum; several bad inputs crashed instead of explaining); each has a regression test.")
+    w("- Not built from the dashboard spec: the 6-step New Experiment wizard, History with frozen reports, Prompt Library screen, Settings, Overview, LLM-written summaries (we do not let a language model write numbers). Their data exists (versions, ledger, rollback, decision log) but not the screens.")
     w("")
     w("## 9. Reproduce\n")
     w("```\npip install -r requirements.txt\npython -m unittest discover -s tests   # tests: " + run_tests() + "\npython -m canary proof                  # ~10 s, writes out/proof.json\npython -m canary build                  # dist/canary_demo.html (offline)\npython -m canary qa                     # this report\npython -m canary serve                  # live engine + Label Lab\n```")

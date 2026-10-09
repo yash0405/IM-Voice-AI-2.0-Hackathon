@@ -20,7 +20,19 @@ def load_base() -> dict:
 
 
 def apply_patch(base_text: str, patch: dict) -> str:
+    """Patch operations, applied in this order:
+      edit    [{"in_line": text that identifies exactly one line, "find": text inside it, "replace": new text}]  (real prompt lines are long)
+      remove  [exact line, ...]
+      add     [{"after": exact line, "text": new line}]
+    Anything that does not match exactly raises, so a stale patch can never silently change nothing."""
     lines = base_text.splitlines()
+    for e in patch.get("edit", []):
+        hits = [i for i, l in enumerate(lines) if e["in_line"] in l]
+        if len(hits) != 1:
+            raise ValueError(f"edit anchor {e['in_line']!r} matches {len(hits)} lines (need exactly 1)")
+        if e["find"] not in lines[hits[0]]:
+            raise ValueError(f"{e['find']!r} is not in the line identified by {e['in_line']!r}")
+        lines[hits[0]] = lines[hits[0]].replace(e["find"], e["replace"], 1)
     for rem in patch.get("remove", []):
         if rem not in lines:
             raise ValueError(f"patch removes a line that is not in the base prompt: {rem!r}")
@@ -34,13 +46,13 @@ def apply_patch(base_text: str, patch: dict) -> str:
 
 
 def _candidates() -> dict:
-    """Hand-written candidates plus the AI-drafted fix (data/proposal.json, written by `python -m canary fix propose`)."""
+    """Hand-written candidates plus the fix candidate (data/proposal.json: derived from the prompt lint, or drafted by Sarvam)."""
     c = json.loads((DATA / "variants.json").read_text())["candidates"]
     prop = DATA / "proposal.json"
     if prop.exists():
         p = json.loads(prop.read_text())
-        c["ai_fix"] = {"name": p["name"], "origin": p.get("origin", "ai-mined"), "remove": p["remove"], "add": p["add"],
-                       "evidence": p.get("evidence"), "why": p.get("why"), "risk": p.get("risk")}
+        c["fix_candidate"] = {"name": p["name"], "origin": p.get("origin", "ai-mined"), "remove": p.get("remove", []), "add": p.get("add", []),
+                              "edit": p.get("edit", []), "evidence": p.get("evidence"), "why": p.get("why"), "risk": p.get("risk")}
     return c
 
 

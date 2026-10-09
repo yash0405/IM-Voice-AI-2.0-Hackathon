@@ -1,41 +1,59 @@
 {
+ "schema": 2,
+ "note": "Schema 2 follows the real VANI buyer-side prompt and IndiaMART's call-quality matrix. Labels made before the real prompt arrived are schema 1 (see 'legacy').",
  "dispositions": [
   {
    "key": "buylead_created",
    "name": "BuyLead created",
-   "goal": true,
    "noun": "BuyLead",
-   "hint": "Buyer still wants it AND gave the requirement (at least quantity and what exactly they need, plus location or timeline), so a verified BuyLead can be created"
+   "hint": "The buyer confirmed a genuine product requirement and VANI took it forward: details captured, the buyer connected to a live seller, or seller details promised on WhatsApp (BL Approved / BL Enriched)."
   },
   {
-   "key": "partial",
-   "name": "Partial details",
-   "goal": false,
-   "hint": "Buyer talked but key details (quantity, specification, location, timeline) are still missing"
+   "key": "requirement_unconfirmed",
+   "name": "Requirement not confirmed",
+   "noun": "unconfirmed requirement",
+   "hint": "Someone spoke, but the buyer never clearly confirmed a product requirement: dropped early, ambiguous, language barrier."
   },
   {
-   "key": "callback_fixed",
-   "name": "Callback requested",
-   "goal": false,
-   "hint": "Buyer is busy and asked to be called back later"
+   "key": "particular_seller_only",
+   "name": "Wanted the original seller only",
+   "noun": "original-seller call",
+   "hint": "The buyer only wanted the seller they called, or refused to talk to an AI, and VANI closed the call (BL Deleted: Particular Seller)."
   },
   {
-   "key": "not_interested",
-   "name": "Not interested",
-   "goal": false,
-   "hint": "Buyer no longer needs it, refuses, or asks not to be called"
+   "key": "no_requirement",
+   "name": "No product requirement",
+   "noun": "no-requirement call",
+   "hint": "Status enquiry, job seeker, someone selling or listing, complaint, banned product or off-topic: no buying requirement (BL Deleted)."
   },
   {
    "key": "no_connect",
-   "name": "No conversation",
-   "goal": false,
-   "hint": "Voicemail, silence, wrong number, line cut at once"
+   "name": "Nobody spoke",
+   "noun": "silent call",
+   "hint": "Silence, dead air, ringing or voicemail: no conversation."
   },
   {
    "key": "other",
    "name": "Other / unclear",
-   "goal": false,
-   "hint": "They talked, but none of the above fits, or you cannot tell"
+   "noun": "unclear call",
+   "hint": "Cannot tell from the transcript."
+  }
+ ],
+ "legacy": [
+  {
+   "key": "partial",
+   "name": "Partial details (earlier label)",
+   "legacy": true
+  },
+  {
+   "key": "callback_fixed",
+   "name": "Callback fixed (earlier label)",
+   "legacy": true
+  },
+  {
+   "key": "not_interested",
+   "name": "Not interested (earlier label)",
+   "legacy": true
   }
  ],
  "fields": [
@@ -48,12 +66,22 @@
    "name": "Specification"
   },
   {
+   "key": "name",
+   "name": "Buyer name"
+  },
+  {
+   "key": "city_state",
+   "name": "City and state"
+  }
+ ],
+ "legacy_fields": [
+  {
    "key": "location",
-   "name": "Delivery location"
+   "name": "Location (earlier label)"
   },
   {
    "key": "timeline",
-   "name": "Timeline"
+   "name": "Timeline (earlier label)"
   }
  ],
  "flags": [
@@ -63,58 +91,76 @@
    "hint": "looped, hallucinated, misheard badly or wrote down wrong details"
   }
  ],
- "note": "VANI BuyLead qualification: the seller is unavailable, VANI calls the buyer and captures Quantity, Specification, Delivery location and Timeline so the lead is not lost. Add a disposition by adding it here and adding cue words in rules.json. Any disposition can be a test goal.",
  "taxonomy": {
+  "flow": {
+   "inbound_redirect": "the buyer called a seller, the seller was unavailable, the call was redirected to VANI",
+   "enrichment": "the buyer already has a lead and called a seller who was unavailable",
+   "redial": "VANI called the buyer back after a dropped call",
+   "unknown": "cannot tell"
+  },
   "bot_issues": {
-   "repeated_question": "bot asked again something the buyer already answered",
-   "ignored_answer": "bot did not use or acknowledge what the buyer said",
-   "wrong_detail_recorded": "bot repeated back or implied a detail different from what the buyer said",
-   "misheard_product_or_number": "speech recognition clearly misunderstood a product, quantity or city",
-   "hallucinated_info": "bot stated facts or promises it could not know (price, stock, seller details)",
-   "did_not_confirm_details": "no read-back of the captured details at the end",
-   "abrupt_end": "bot ended while the buyer was still talking or before capturing the details",
-   "language_mismatch": "bot kept a language the buyer struggled with",
-   "too_verbose": "long bot turns that lost the buyer's patience",
-   "stuck_loop": "conversation circled with no progress"
+   "looping_behavior": "VANI asked for the same parameter more than 1+2 times, or circled without progress (matrix: fatal if the buyer got irritated or the opportunity was missed)",
+   "quantity_probing_error": "quantity asked when already given, not asked when it should have been, or the nudge was improper",
+   "qty_missed_opportunity": "the buyer gave a quantity and VANI did not capture it",
+   "quantity_accuracy": "quantity captured with a wrong value or unit",
+   "spec_missed_opportunity": "the buyer gave a specification and VANI did not capture it",
+   "spec_accuracy": "a specification captured as a different value than the buyer said",
+   "wer_error": "speech recognition wrote a wrong word that changed a captured detail",
+   "additional_details_error": "irrelevant or wrong information stored as the buyer's additional details",
+   "oncall_astbuy_error": "a live seller was available but VANI did not offer the transfer, or the outcome was recorded wrongly",
+   "product_accuracy": "the wrong product was confirmed or approved",
+   "dead_air": "silence of more than 5 seconds that VANI did not handle",
+   "echoed_value": "VANI repeated or paraphrased a value the buyer had just given (breaks the No-Echo rule)",
+   "open_ended_question": "VANI asked 'anything else?' or another unneeded open question",
+   "ignored_buyer_question": "the buyer asked something and VANI did not answer or acknowledge it",
+   "abrupt_end": "VANI ended the call before a proper closing, when it should not have",
+   "language_problem": "VANI kept a language the buyer struggled with, or mishandled a language switch"
   },
   "fatal": {
    "none": "no fatal failure",
-   "buylead_fatal": "the captured BuyLead data would be wrong or corrupt",
-   "oncall_fatal": "the bot flow broke down: looped, hallucinated or ended abruptly"
+   "buylead_fatal": "the captured BuyLead data is wrong or corrupt (outcome, quantity, specification or product)",
+   "oncall_fatal": "the bot flow broke down: looped, hallucinated, ended wrongly or ignored a live-seller opportunity"
   },
-  "call_end": [
-   "completed_with_readback",
-   "buyer_hung_up",
-   "bot_ended_early",
-   "buyer_declined",
-   "no_response",
-   "unclear"
-  ],
-  "sentiment": [
-   "positive",
-   "neutral",
-   "frustrated"
-  ],
-  "buyer_requests": [
-   "human_agent",
-   "seller_contact",
-   "price_quote",
-   "callback",
-   "stop_calling",
-   "other_product"
-  ],
-  "language": [
-   "hindi",
-   "english",
-   "hinglish",
-   "other"
-  ],
+  "call_end": {
+   "transferred_to_seller": "buyer agreed and was connected to a live seller",
+   "seller_details_by_whatsapp": "VANI promised seller details on WhatsApp",
+   "buyer_declined": "the buyer declined or refused",
+   "buyer_hung_up": "the buyer hung up",
+   "bot_ended_early": "VANI ended the call",
+   "no_response": "nobody answered",
+   "unclear": "cannot tell"
+  },
+  "sentiment": {
+   "positive": "",
+   "neutral": "",
+   "frustrated": ""
+  },
+  "buyer_requests": {
+   "seller_contact": "asked for the original seller or their number",
+   "alternate_seller": "asked to be connected to another seller",
+   "price_query": "asked for a price",
+   "status_inquiry": "asked about an existing order",
+   "job_related": "asked about a job",
+   "selling_related": "wants to sell or list on IndiaMART",
+   "complaint": "complained about something outside the call",
+   "talking_to_ai": "asked if it is a bot or refused to talk to one",
+   "product_change": "asked for a different product",
+   "connectivity_issue": "could not hear properly"
+  },
+  "language": {
+   "hindi": "",
+   "english": "",
+   "hinglish": "",
+   "telugu": "",
+   "other": ""
+  },
   "captured": [
    "product",
    "quantity",
    "specification",
-   "location",
-   "timeline"
+   "name",
+   "city",
+   "state"
   ]
  }
 }

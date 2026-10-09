@@ -39,9 +39,18 @@ class ArenaTests(unittest.TestCase):
     def test_call_ends_on_the_end_marker_and_alternates_speakers(self):
         a = ar.Arena(Fake(), sleep=lambda s: None)
         lines = a.simulate("PROMPT", ar.PERSONAS[0])
-        self.assertEqual(lines[0], {"speaker": "buyer", "text": "हेलो?"})
-        self.assertEqual([l["speaker"] for l in lines], ["buyer", "bot", "buyer", "bot", "buyer", "bot"])
+        self.assertEqual(lines[0], {"speaker": "bot", "text": ar.opening(ar.PERSONAS[0])})      # an inbound call: VANI's predefined opening comes first
+        self.assertEqual([l["speaker"] for l in lines], ["bot", "buyer", "bot", "buyer", "bot", "buyer", "bot"])
         self.assertNotIn("[END]", lines[-1]["text"])
+
+    def test_vani_is_given_the_real_prompt_rendered_for_the_call(self):
+        from canary.variants import load_base
+        for p in ar.PERSONAS:
+            sp_ = ar.sim_prompt(load_base()["text"], p)
+            self.assertIn(p["product"], sp_ + ar.opening(p))
+            self.assertNotIn("{%", sp_); self.assertNotIn("{{", sp_)                        # the Jinja template is fully resolved
+            self.assertEqual("Live Seller Available" in sp_, bool(p["live_seller"]))        # the transfer branch is rendered only when a live seller exists
+        self.assertIn("no tools exist", ar.BOT_SUFFIX)
 
     def test_every_line_is_spoken_with_the_right_voice_and_mp3_is_concatenated(self):
         f = Fake(); a = ar.Arena(f, sleep=lambda s: None); ar.ARENA.mkdir()
@@ -59,7 +68,7 @@ class ArenaTests(unittest.TestCase):
         data = ar.load(); self.assertEqual({c["key"] for c in data["cases"]}, {"cooperative", "busy", "unsure"})
         self.assertEqual(data["cases"][0]["B"]["tag"]["label"], "buylead_created")
         n = f.chat_n; a.run(budget=100); self.assertEqual(f.chat_n, n)               # cached: no new spend
-        self.tmp2 = ar.LEDGER.read_text()
+        self.assertTrue(ar.load()["stale"] is False or ar.load()["stale"] is True)
     def test_budget_cap_stops_before_a_case_that_would_cross_it(self):
         a = ar.Arena(Fake(), sleep=lambda s: None)
         r = a.run(budget=0.5)

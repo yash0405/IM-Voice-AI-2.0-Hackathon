@@ -4,9 +4,9 @@
  "aa_runs": 12000,
  "config": {
   "exp_id": "exp-001",
-  "name": "Ask quantity and location together",
+  "name": "Make the ask limits agree with each other",
   "agent": "VANI BuyLead qualification agent",
-  "variant_b": "ask_together",
+  "variant_b": "reconcile_limits",
   "share_b": 0.1,
   "assignment": "balanced",
   "salt": "s1",
@@ -29,12 +29,21 @@
   "srm_alpha": 0.001,
   "srm_min_n": 300,
   "loss_check": true,
-  "approval": "auto"
+  "approval": "auto",
+  "rule_set": "sequential",
+  "alpha_harm_daily": 0.001,
+  "guard_rate": "",
+  "guard_rate_margin": 0.02,
+  "guard_rate_worse_when": "higher",
+  "version": 1,
+  "parent_hash": "",
+  "goal_definition": "",
+  "guard_definition": ""
  },
  "design": {
   "n_max": 4703,
   "n_fixed": 4439,
-  "inflation": 1.0594397449042332,
+  "inflation": 1.059472854246452,
   "looks": 40,
   "efficacy_bounds_first_last": [
    63.13155487026458,
@@ -57,6 +66,13 @@
         0.011673793476563667
        ]
       },
+      "HOLD_FOR_APPROVAL": {
+       "rate": 0.001,
+       "ci": [
+        0.0005168179636963563,
+        0.0017461465118491048
+       ]
+      },
       "INCONCLUSIVE": {
        "rate": 0.9459166666666666,
        "ci": [
@@ -64,18 +80,11 @@
         0.949896602122468
        ]
       },
-      "NO_PROMOTE_GUARDRAIL": {
-       "rate": 0.0005833333333333334,
-       "ci": [
-        0.00023456139209942651,
-        0.001201517922586807
-       ]
-      },
       "PROMOTE": {
-       "rate": 0.02275,
+       "rate": 0.022333333333333334,
        "ci": [
-        0.02015680835170385,
-        0.025578110255947705
+        0.019764226811154743,
+        0.02513760605774283
        ]
       },
       "STOP_HARM": {
@@ -87,9 +96,9 @@
       }
      },
      "median_n": 4703.0,
-     "mean_exposure_b": 460.2246666666667,
+     "mean_exposure_b": 460.2969166666667,
      "runs": 12000,
-     "median_n_when_promoted": 3776.0
+     "median_n_when_promoted": 3894.0
     },
     "naive_peek": {
      "outcomes": {
@@ -183,6 +192,13 @@
         0.014166709123621585
        ]
       },
+      "HOLD_FOR_APPROVAL": {
+       "rate": 0.01425,
+       "ci": [
+        0.01081020096561345,
+        0.018423561799404593
+       ]
+      },
       "INCONCLUSIVE": {
        "rate": 0.20275,
        "ci": [
@@ -190,23 +206,16 @@
         0.21554945882318177
        ]
       },
-      "NO_PROMOTE_GUARDRAIL": {
-       "rate": 0.01325,
-       "ci": [
-        0.009940486760908314,
-        0.01729589408057713
-       ]
-      },
       "PROMOTE": {
-       "rate": 0.7735,
+       "rate": 0.7725,
        "ci": [
-        0.7602065071793025,
-        0.7863928054932157
+        0.7591870610113283,
+        0.7854137244469845
        ]
       }
      },
      "median_n": 3658.0,
-     "mean_exposure_b": 363.404,
+     "mean_exposure_b": 364.194,
      "runs": 4000,
      "median_n_when_promoted": 3304.0
     },
@@ -400,6 +409,13 @@
         0.012148308215230027
        ]
       },
+      "HOLD_FOR_APPROVAL": {
+       "rate": 0.0025,
+       "ci": [
+        0.0011994778920505907,
+        0.004592767680114255
+       ]
+      },
       "INCONCLUSIVE": {
        "rate": 0.92125,
        "ci": [
@@ -407,18 +423,11 @@
         0.9294120264302226
        ]
       },
-      "NO_PROMOTE_GUARDRAIL": {
-       "rate": 0.0015,
-       "ci": [
-        0.0005506662182675169,
-        0.0032619881899597467
-       ]
-      },
       "PROMOTE": {
-       "rate": 0.05925,
+       "rate": 0.05825,
        "ci": [
-        0.05213269638143985,
-        0.06701922024956826
+        0.051191573321500296,
+        0.06596193607690344
        ]
       },
       "STOP_HARM": {
@@ -430,7 +439,7 @@
       }
      },
      "median_n": 4703.0,
-     "mean_exposure_b": 460.18575,
+     "mean_exposure_b": 460.3225,
      "runs": 4000,
      "median_n_when_promoted": 3894.0
     },
@@ -617,18 +626,18 @@
         0.010689537416458155
        ]
       },
+      "HOLD_FOR_APPROVAL": {
+       "rate": 0.12425,
+       "ci": [
+        0.11417971649028755,
+        0.13487261610289086
+       ]
+      },
       "INCONCLUSIVE": {
        "rate": 0.0295,
        "ci": [
         0.024477473866273847,
         0.03522439181486319
-       ]
-      },
-      "NO_PROMOTE_GUARDRAIL": {
-       "rate": 0.12425,
-       "ci": [
-        0.11417971649028755,
-        0.13487261610289086
        ]
       },
       "STOP_GUARDRAIL": {
@@ -852,7 +861,7 @@
   "0.05": {
    "share_check_only": {
     "halts": 0.013,
-    "ships": 0.06925
+    "ships": 0.0675
    },
    "with_completeness_check": {
     "halts": 0.99925,
@@ -864,7 +873,7 @@
   "0.1": {
    "share_check_only": {
     "halts": 0.03625,
-    "ships": 0.16225
+    "ships": 0.15975
    },
    "with_completeness_check": {
     "halts": 1.0,
@@ -875,8 +884,8 @@
   },
   "0.2": {
    "share_check_only": {
-    "halts": 0.16725,
-    "ships": 0.4765
+    "halts": 0.1675,
+    "ships": 0.474
    },
    "with_completeness_check": {
     "halts": 1.0,
@@ -887,8 +896,8 @@
   },
   "0.35": {
    "share_check_only": {
-    "halts": 0.55625,
-    "ships": 0.436
+    "halts": 0.55725,
+    "ships": 0.435
    },
    "with_completeness_check": {
     "halts": 1.0,
@@ -899,8 +908,8 @@
   },
   "0.5": {
    "share_check_only": {
-    "halts": 0.863,
-    "ships": 0.137
+    "halts": 0.86325,
+    "ships": 0.13675
    },
    "with_completeness_check": {
     "halts": 1.0,
@@ -1313,6 +1322,682 @@
    }
   }
  ],
+ "files": {
+  "aa": {
+   "label": "No real difference (A = B)",
+   "outcomes": {
+    "INCONCLUSIVE": {
+     "rate": 0.9544658493870403,
+     "ci": [
+      0.9339913039916392,
+      0.9700432623844185
+     ]
+    },
+    "PROMOTE": {
+     "rate": 0.02626970227670753,
+     "ci": [
+      0.014775852113120273,
+      0.04295815792630504
+     ]
+    },
+    "STOP_HARM": {
+     "rate": 0.01926444833625219,
+     "ci": [
+      0.009655005714271102,
+      0.03420752420100161
+     ]
+    }
+   },
+   "median_n": 2012.0,
+   "mean_exposure_b": 575.5516637478108,
+   "runs": 571,
+   "median_n_when_promoted": 1800.0,
+   "ledger_ok": 571,
+   "files_with_two_prompt_leads": 0
+  },
+  "win": {
+   "label": "B truly +7 points",
+   "outcomes": {
+    "HOLD_FOR_APPROVAL": {
+     "rate": 0.042105263157894736,
+     "ci": [
+      0.021942704164352535,
+      0.07239381669524725
+     ]
+    },
+    "INCONCLUSIVE": {
+     "rate": 0.18596491228070175,
+     "ci": [
+      0.14251436643826115,
+      0.2360804603746505
+     ]
+    },
+    "PROMOTE": {
+     "rate": 0.7719298245614035,
+     "ci": [
+      0.7187639318252079,
+      0.8193438606222995
+     ]
+    }
+   },
+   "median_n": 1800.0,
+   "mean_exposure_b": 473.6842105263158,
+   "runs": 285,
+   "median_n_when_promoted": 1500.0,
+   "ledger_ok": 285,
+   "files_with_two_prompt_leads": 0
+  },
+  "harm": {
+   "label": "B truly 10 points worse",
+   "outcomes": {
+    "INCONCLUSIVE": {
+     "rate": 0.03508771929824561,
+     "ci": [
+      0.01695182027611587,
+      0.06357931527224657
+     ]
+    },
+    "STOP_HARM": {
+     "rate": 0.9649122807017544,
+     "ci": [
+      0.9364206847277534,
+      0.9830481797238841
+     ]
+    }
+   },
+   "median_n": 900.0,
+   "mean_exposure_b": 256.3578947368421,
+   "runs": 285,
+   "median_n_when_promoted": null,
+   "ledger_ok": 285,
+   "files_with_two_prompt_leads": 0
+  },
+  "small": {
+   "label": "B truly +1 point",
+   "outcomes": {
+    "INCONCLUSIVE": {
+     "rate": 0.9295774647887324,
+     "ci": [
+      0.8743042612317997,
+      0.9657150310346607
+     ]
+    },
+    "PROMOTE": {
+     "rate": 0.04929577464788732,
+     "ci": [
+      0.020046394900153794,
+      0.0989296531356832
+     ]
+    },
+    "STOP_HARM": {
+     "rate": 0.02112676056338028,
+     "ci": [
+      0.004378218036954268,
+      0.06049859125056429
+     ]
+    }
+   },
+   "median_n": 2012.0,
+   "mean_exposure_b": 570.4014084507043,
+   "runs": 142,
+   "median_n_when_promoted": 1800.0,
+   "ledger_ok": 142,
+   "files_with_two_prompt_leads": 0
+  }
+ },
+ "rulesets": {
+  "aa": {
+   "label": "No real difference (A = B)",
+   "true_a": 0.45,
+   "true_b": 0.45,
+   "sequential": {
+    "canary": {
+     "outcomes": {
+      "HALT_SRM": {
+       "rate": 0.008,
+       "ci": [
+        0.005478244460750936,
+        0.01127499964551593
+       ]
+      },
+      "INCONCLUSIVE": {
+       "rate": 0.95025,
+       "ci": [
+        0.9430508020048037,
+        0.9567819897368999
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.02225,
+       "ci": [
+        0.01790575340508548,
+        0.02731004010587386
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.0195,
+       "ci": [
+        0.015443693335441258,
+        0.024277841082055815
+       ]
+      }
+     },
+     "median_n": 4200.0,
+     "mean_exposure_b": 1247.836,
+     "runs": 4000,
+     "median_n_when_promoted": 4200.0
+    },
+    "naive_peek": {
+     "outcomes": {
+      "NO_SHIP": {
+       "rate": 0.783,
+       "ci": [
+        0.7698965792824788,
+        0.7956887356302662
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.10675,
+       "ci": [
+        0.09734532328255192,
+        0.11673335390848637
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.11025,
+       "ci": [
+        0.10070626099193629,
+        0.1203671304810205
+       ]
+      }
+     },
+     "median_n": 4200.0,
+     "mean_exposure_b": 1076.393,
+     "runs": 4000,
+     "median_n_when_promoted": 1096.0
+    },
+    "looks": 16,
+    "final_n": 4200
+   },
+   "final_look": {
+    "canary": {
+     "outcomes": {
+      "HALT_SRM": {
+       "rate": 0.00775,
+       "ci": [
+        0.0052716477962154755,
+        0.010982614201427007
+       ]
+      },
+      "INCONCLUSIVE": {
+       "rate": 0.96025,
+       "ci": [
+        0.9537250535336924,
+        0.9660911137686461
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.02625,
+       "ci": [
+        0.021518936333700268,
+        0.03168900275702971
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.00575,
+       "ci": [
+        0.0036483946687871235,
+        0.00861540361948066
+       ]
+      }
+     },
+     "median_n": 4200.0,
+     "mean_exposure_b": 1250.19225,
+     "runs": 4000,
+     "median_n_when_promoted": 4200.0
+    },
+    "naive_peek": {
+     "outcomes": {
+      "NO_SHIP": {
+       "rate": 0.772,
+       "ci": [
+        0.7586773773363902,
+        0.7849241444694625
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.1115,
+       "ci": [
+        0.10190735142754288,
+        0.12166415451512794
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.1165,
+       "ci": [
+        0.10671554022477957,
+        0.12684843450196318
+       ]
+      }
+     },
+     "median_n": 4200.0,
+     "mean_exposure_b": 1075.368,
+     "runs": 4000,
+     "median_n_when_promoted": 1200.0
+    },
+    "looks": 14,
+    "final_n": 4200
+   }
+  },
+  "small": {
+   "label": "B truly +3 points",
+   "true_a": 0.45,
+   "true_b": 0.48,
+   "sequential": {
+    "canary": {
+     "outcomes": {
+      "HALT_SRM": {
+       "rate": 0.0065,
+       "ci": [
+        0.004250280354683753,
+        0.009509598060023636
+       ]
+      },
+      "INCONCLUSIVE": {
+       "rate": 0.56725,
+       "ci": [
+        0.5517264402953905,
+        0.5826752271397974
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.426,
+       "ci": [
+        0.41060953681010215,
+        0.4414986677976091
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.00025,
+       "ci": [
+        6.3294319651334515e-06,
+        0.0013921151219662678
+       ]
+      }
+     },
+     "median_n": 4200.0,
+     "mean_exposure_b": 1248.84975,
+     "runs": 4000,
+     "median_n_when_promoted": 4200.0
+    },
+    "naive_peek": {
+     "outcomes": {
+      "NO_SHIP": {
+       "rate": 0.3945,
+       "ci": [
+        0.3793106749748408,
+        0.4098436089582411
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.587,
+       "ci": [
+        0.5715575080971713,
+        0.6023152725641956
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.0185,
+       "ci": [
+        0.014553687920146573,
+        0.02317002600281637
+       ]
+      }
+     },
+     "median_n": 3288.0,
+     "mean_exposure_b": 832.98275,
+     "runs": 4000,
+     "median_n_when_promoted": 1644.0
+    },
+    "looks": 16,
+    "final_n": 4200
+   },
+   "final_look": {
+    "canary": {
+     "outcomes": {
+      "HALT_SRM": {
+       "rate": 0.00575,
+       "ci": [
+        0.0036483946687871235,
+        0.00861540361948066
+       ]
+      },
+      "INCONCLUSIVE": {
+       "rate": 0.57425,
+       "ci": [
+        0.5587523100396073,
+        0.5896391197092714
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.4195,
+       "ci": [
+        0.4041457708341627,
+        0.4349719408046356
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.0005,
+       "ci": [
+        6.0558056420514547e-05,
+        0.0018049927162640356
+       ]
+      }
+     },
+     "median_n": 4200.0,
+     "mean_exposure_b": 1254.88675,
+     "runs": 4000,
+     "median_n_when_promoted": 4200.0
+    },
+    "naive_peek": {
+     "outcomes": {
+      "NO_SHIP": {
+       "rate": 0.41225,
+       "ci": [
+        0.3969393984416247,
+        0.42768891798512904
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.57425,
+       "ci": [
+        0.5587523100396073,
+        0.5896391197092714
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.0135,
+       "ci": [
+        0.010157449354282576,
+        0.017578265209449627
+       ]
+      }
+     },
+     "median_n": 3600.0,
+     "mean_exposure_b": 859.615,
+     "runs": 4000,
+     "median_n_when_promoted": 1800.0
+    },
+    "looks": 14,
+    "final_n": 4200
+   }
+  },
+  "win": {
+   "label": "B truly +7 points",
+   "true_a": 0.45,
+   "true_b": 0.52,
+   "sequential": {
+    "canary": {
+     "outcomes": {
+      "HALT_SRM": {
+       "rate": 0.00625,
+       "ci": [
+        0.004048633837598227,
+        0.009212496550317828
+       ]
+      },
+      "INCONCLUSIVE": {
+       "rate": 0.016,
+       "ci": [
+        0.012343182026330717,
+        0.02038626155428847
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.97775,
+       "ci": [
+        0.9726899598941261,
+        0.9820942465949145
+       ]
+      }
+     },
+     "median_n": 3562.0,
+     "mean_exposure_b": 1060.87125,
+     "runs": 4000,
+     "median_n_when_promoted": 3562.0
+    },
+    "naive_peek": {
+     "outcomes": {
+      "NO_SHIP": {
+       "rate": 0.008,
+       "ci": [
+        0.005478244460750936,
+        0.01127499964551593
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.99125,
+       "ci": [
+        0.98785169178477,
+        0.9938979519659598
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.00075,
+       "ci": [
+        0.00015469474465804446,
+        0.0021902386628751907
+       ]
+      }
+     },
+     "median_n": 822.0,
+     "mean_exposure_b": 340.58575,
+     "runs": 4000,
+     "median_n_when_promoted": 822.0
+    },
+    "looks": 16,
+    "final_n": 4200
+   },
+   "final_look": {
+    "canary": {
+     "outcomes": {
+      "HALT_SRM": {
+       "rate": 0.007,
+       "ci": [
+        0.004656342164423746,
+        0.010101172191990485
+       ]
+      },
+      "INCONCLUSIVE": {
+       "rate": 0.016,
+       "ci": [
+        0.012343182026330717,
+        0.02038626155428847
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.97675,
+       "ci": [
+        0.9715919950305143,
+        0.98119422285068
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.00025,
+       "ci": [
+        6.3294319651334515e-06,
+        0.0013921151219662678
+       ]
+      }
+     },
+     "median_n": 4200.0,
+     "mean_exposure_b": 1255.19,
+     "runs": 4000,
+     "median_n_when_promoted": 4200.0
+    },
+    "naive_peek": {
+     "outcomes": {
+      "NO_SHIP": {
+       "rate": 0.00725,
+       "ci": [
+        0.0048606587694577826,
+        0.01039573559497989
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.9915,
+       "ci": [
+        0.9881421811817079,
+        0.9941065255955459
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.00125,
+       "ci": [
+        0.0004059922299675105,
+        0.002914652177068153
+       ]
+      }
+     },
+     "median_n": 900.0,
+     "mean_exposure_b": 359.9625,
+     "runs": 4000,
+     "median_n_when_promoted": 900.0
+    },
+    "looks": 14,
+    "final_n": 4200
+   }
+  },
+  "harm": {
+   "label": "B truly 7 points worse",
+   "true_a": 0.45,
+   "true_b": 0.38,
+   "sequential": {
+    "canary": {
+     "outcomes": {
+      "HALT_SRM": {
+       "rate": 0.0035,
+       "ci": [
+        0.0019147630118462316,
+        0.005865439254924303
+       ]
+      },
+      "INCONCLUSIVE": {
+       "rate": 0.015,
+       "ci": [
+        0.011465581449996863,
+        0.019266293256295423
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.9815,
+       "ci": [
+        0.9768299739971836,
+        0.9854463120798534
+       ]
+      }
+     },
+     "median_n": 1918.0,
+     "mean_exposure_b": 622.93025,
+     "runs": 4000,
+     "median_n_when_promoted": null
+    },
+    "naive_peek": {
+     "outcomes": {
+      "NO_SHIP": {
+       "rate": 0.0065,
+       "ci": [
+        0.004250280354683753,
+        0.009509598060023636
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.0005,
+       "ci": [
+        6.0558056420514547e-05,
+        0.0018049927162640356
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.993,
+       "ci": [
+        0.9898988278080095,
+        0.9953436578355762
+       ]
+      }
+     },
+     "median_n": 822.0,
+     "mean_exposure_b": 337.75875,
+     "runs": 4000,
+     "median_n_when_promoted": 274.0
+    },
+    "looks": 16,
+    "final_n": 4200
+   },
+   "final_look": {
+    "canary": {
+     "outcomes": {
+      "HALT_SRM": {
+       "rate": 0.0055,
+       "ci": [
+        0.0034499346777028452,
+        0.00831529135332833
+       ]
+      },
+      "INCONCLUSIVE": {
+       "rate": 0.10225,
+       "ci": [
+        0.09302887568613437,
+        0.11205661191838662
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.89225,
+       "ci": [
+        0.8822281022280433,
+        0.9016947317501331
+       ]
+      }
+     },
+     "median_n": 2400.0,
+     "mean_exposure_b": 704.33575,
+     "runs": 4000,
+     "median_n_when_promoted": null
+    },
+    "naive_peek": {
+     "outcomes": {
+      "NO_SHIP": {
+       "rate": 0.007,
+       "ci": [
+        0.004656342164423746,
+        0.010101172191990485
+       ]
+      },
+      "PROMOTE": {
+       "rate": 0.001,
+       "ci": [
+        0.00027253142615528186,
+        0.002558400143375155
+       ]
+      },
+      "STOP_HARM": {
+       "rate": 0.992,
+       "ci": [
+        0.9887250003544841,
+        0.994521755539249
+       ]
+      }
+     },
+     "median_n": 900.0,
+     "mean_exposure_b": 348.92925,
+     "runs": 4000,
+     "median_n_when_promoted": 300.0
+    },
+    "looks": 14,
+    "final_n": 4200
+   }
+  }
+ },
  "stickiness": {
   "calls": 20000,
   "distinct_leads": 13891,
@@ -1380,5 +2065,5 @@
    "extra_calls_factor": 2.0301934935147776
   }
  ],
- "seconds": 10.8
+ "seconds": 69.7
 }

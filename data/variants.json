@@ -1,29 +1,86 @@
 {
-  "base": {"id": "vani-base", "version": "v1 (stand-in)", "file": "base_prompt.md"},
-  "candidates": {
-    "ask_together": {
-      "name": "Ask quantity and delivery location in one question",
-      "origin": "human",
-      "remove": ["3. Ask the quantity required.", "5. Ask the delivery location."],
-      "add": [{"after": "2. Confirm the buyer still needs the product.", "text": "3. Ask the quantity required and the delivery location together, in one short question."}]
+ "base": {
+  "id": "vani-buyer-side",
+  "version": "real prompt (Resources/Sarvam Prompt - Buyer Side VANI.docx.pdf)",
+  "file": "base_prompt.md"
+ },
+ "candidates": {
+  "reconcile_limits": {
+   "name": "Make the ask limits agree with each other",
+   "origin": "lint-derived",
+   "edit": [
+    {
+     "in_line": "Total ask limits:",
+     "find": "buyer name = 3",
+     "replace": "buyer name = 2"
     },
-    "insist_specs": {
-      "name": "Keep asking until the specification is given",
-      "origin": "human",
-      "remove": ["4. Ask for the specifications (size, material, brand or grade)."],
-      "add": [{"after": "3. Ask the quantity required.", "text": "4. Ask for the specifications. If the buyer does not answer, ask again up to three times before moving on."}]
+    {
+     "in_line": "Total ask limits:",
+     "find": "foure-ask",
+     "replace": "four-ask"
     },
-    "warmer_greeting": {
-      "name": "Warmer greeting wording",
-      "origin": "human",
-      "remove": ["1. Greet the buyer by name and say you are calling from IndiaMART about their enquiry for the product."],
-      "add": [{"after": "## Flow", "text": "1. Greet the buyer warmly by name and say you are calling from IndiaMART about the enquiry they sent."}]
+    {
+     "in_line": "five-ask product allowance",
+     "find": "five-ask",
+     "replace": "four-ask"
     },
-    "long_intro": {
-      "name": "Explain how the seller will use the details before asking",
-      "origin": "llm-draft",
-      "remove": ["2. Confirm the buyer still needs the product."],
-      "add": [{"after": "1. Greet the buyer by name and say you are calling from IndiaMART about their enquiry for the product.", "text": "2. Explain why the details are needed and how the seller will use them, then confirm the buyer still needs the product."}]
+    {
+     "in_line": "STRICT MAX 3 ATTEMPTS PER SLOT",
+     "find": "STRICT MAX 3",
+     "replace": "STRICT MAX 2"
     }
+   ]
+  },
+  "cap_two_asks": {
+   "name": "Ask for any single detail at most twice",
+   "origin": "human",
+   "edit": [
+    {
+     "in_line": "Total ask limits:",
+     "find": "quantity = 3",
+     "replace": "quantity = 2"
+    },
+    {
+     "in_line": "Total ask limits:",
+     "find": "buyer name = 3",
+     "replace": "buyer name = 2"
+    },
+    {
+     "in_line": "Total ask limits:",
+     "find": "buyer city = 3",
+     "replace": "buyer city = 2"
+    },
+    {
+     "in_line": "Total ask limits:",
+     "find": "buyer state = 3",
+     "replace": "buyer state = 2"
+    },
+    {
+     "in_line": "each city/state has a three-ask limit",
+     "find": "three-ask",
+     "replace": "two-ask"
+    },
+    {
+     "in_line": "If below 3 and the objective is open",
+     "find": "If below 3",
+     "replace": "If below 2"
+    },
+    {
+     "in_line": "If below 2 and the objective is open",
+     "find": "If already 3",
+     "replace": "If already 2"
+    },
+    {
+     "in_line": "Allow one initial question and at most two follow-ups",
+     "find": "at most two follow-ups",
+     "replace": "at most one follow-up"
+    },
+    {
+     "in_line": "city question even after trying for more then 2 times",
+     "find": "more then 2 times",
+     "replace": "more then 1 time"
+    }
+   ]
   }
+ }
 }

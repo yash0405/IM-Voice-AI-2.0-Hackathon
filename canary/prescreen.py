@@ -4,7 +4,7 @@
 buyer and VANI; the same Sarvam tagger that labelled the real recordings scores every call. Text only (no voice), so it is cheap.
 
 What this is: a smoke test that catches an edit that makes the bot clearly worse, and shows the direction on the targeted failure.
-What it is not: proof. 24 simulated buyers cannot prove a lift, and the stand-in prompt is not the real VANI prompt. The proof
+What it is not: proof. 24 simulated buyers cannot prove a lift, and the simulated buyers are far more cooperative than real ones. The proof
 comes from the A/B engine on live traffic.
 
 The pass rule is fixed here, before any result exists, so it cannot be tuned after seeing the numbers (see GATE).
@@ -51,16 +51,17 @@ _lock = threading.Lock()
 NAMES = ["Rajesh Kumar", "Sunil Patel", "Vikram Singh", "Anil Sharma", "Mohit Jain", "Deepak Verma", "Suresh Reddy", "Karan Mehta"]
 
 
-def personas() -> list[dict]:
+def personas(n: int | None = None) -> list[dict]:
+    """The first n personas of a fixed order (all 24 when n is None). Every second persona has a live seller available."""
     out = []
     for i, (b, bh) in enumerate(BEHAVIOURS):
-        for p, product, facts in PRODUCTS:
-            out.append({"key": f"{b}_{p}", "behaviour": b, "facts": facts, "how": bh, "name": NAMES[i], "product": product})
-    return out
+        for j, (p, product, facts) in enumerate(PRODUCTS):
+            out.append({"key": f"{b}_{p}", "behaviour": b, "facts": facts, "how": bh, "name": NAMES[i], "product": product, "live_seller": (i + j) % 2 == 0})
+    return out[:n] if n else out
 
 
 def _persona_obj(p: dict) -> dict:
-    return {"key": p["key"], "facts": p["facts"], "behaviour": p["how"], "name": p["name"], "product": p["product"]}
+    return {"key": p["key"], "facts": p["facts"], "behaviour": p["how"], "name": p["name"], "product": p["product"], "live_seller": p["live_seller"]}
 
 
 def placeholder_lines(results: list[dict]) -> int:
@@ -68,12 +69,15 @@ def placeholder_lines(results: list[dict]) -> int:
     return sum(1 for r in results for l in r["lines"] if l["speaker"] == "bot" and "[" in l["text"])
 
 
-def plan() -> dict:
-    n = len(personas()) * 2
-    req = n * (ar.MAX_TURNS * 2 + 1)
-    inr = sp.llm_cost(n * ar.MAX_TURNS * 2 * 1100, n * ar.MAX_TURNS * 2 * 60) + sp.llm_cost(n * 1300, n * 350)
-    return {"simulated_calls": n, "chat_requests": req, "est_inr": round(inr, 2), "est_minutes": round(req / 25, 0),
-            "arena_ledger_inr_so_far": round(ar.spent(), 2), "workers": WORKERS}
+DEFAULT_PERSONAS = 12
+
+
+def plan(n: int = DEFAULT_PERSONAS) -> dict:
+    """Free. Exact-enough cost before anything is spent. n personas, each heard under prompt A and prompt B."""
+    c = ar.sim_cost(n * 2)
+    return {"personas": n, "simulated_calls": n * 2, "chat_requests": c["chat_requests"], "prompt_tokens_per_vani_turn": c["prompt_tokens_per_vani_turn"],
+            "est_inr": c["total_inr"], "est_minutes": round(c["chat_requests"] / 25, 0), "arena_ledger_inr_so_far": round(ar.spent(), 2), "workers": WORKERS,
+            "all_24_personas_inr": ar.sim_cost(48)["total_inr"]}
 
 
 def _load() -> dict:
@@ -86,15 +90,20 @@ def _save(d: dict) -> None:
     os.replace(tmp, PS)
 
 
-def run(budget: float, client=None) -> dict:
+def run(budget: float, client=None, n: int = DEFAULT_PERSONAS) -> dict:
     """Spends credits. Resumable: finished (persona, arm) pairs are never repeated. Failed ones are recorded, not retried."""
+    base = load_base()
     d = _load()
-    d["b_variant"] = "ai_fix"
-    d["b_name"] = make_variant("ai_fix")["name"]
+    if d.get("base_hash") not in (None, base["hash"]) or (d["results"] and "base_hash" not in d):
+        d = {"results": [], "errors": []}                          # made with another base prompt (e.g. the earlier stand-in): start clean
+    d["b_variant"] = "fix_candidate"
+    d["b_name"] = make_variant("fix_candidate")["name"]
+    d["base_hash"] = base["hash"]
     done = {(r["persona"], r["arm"]) for r in d["results"]}
-    prompts = {"A": load_base()["text"], "B": make_variant("ai_fix")["text"]}
+    prompts = {"A": base["text"], "B": make_variant("fix_candidate")["text"]}
     a = ar.Arena(client)
-    per_call = plan()["est_inr"] / plan()["simulated_calls"]
+    pl = plan(n)
+    per_call = pl["est_inr"] / pl["simulated_calls"]
     stop = threading.Event()
 
     def task(p: dict, arm: str):
@@ -104,7 +113,7 @@ def run(budget: float, client=None) -> dict:
             if ar.spent() + per_call * 2 > budget:
                 stop.set(); print(f"STOP: next call would exceed the Rs {budget:.2f} budget."); return
         try:
-            lines = a.simulate(prompts[arm], _persona_obj(p))
+            lines = a.simulate(ar.sim_prompt(prompts[arm], p), _persona_obj(p))
             text = "\n".join(f"[Speaker {0 if l['speaker'] == 'bot' else 1}] {l['text']}" for l in lines)
             tag = a.pipe.tag_text(text, ledger=ar._spend)
             tag.pop("raw_reply", None)
@@ -118,7 +127,7 @@ def run(budget: float, client=None) -> dict:
                 d["errors"].append({"persona": p["key"], "arm": arm, "error": str(e)[:200]}); _save(d)
             print(f"ERROR {p['key']} {arm}: {str(e)[:120]}", flush=True)
 
-    todo = [(p, arm) for p in personas() for arm in ("A", "B") if (p["key"], arm) not in done]
+    todo = [(p, arm) for p in personas(n) for arm in ("A", "B") if (p["key"], arm) not in done]
     with ThreadPoolExecutor(WORKERS) as ex:
         list(ex.map(lambda t: task(*t), todo))
     return {"results": len(_load()["results"]), "errors": len(_load()["errors"]), "arena_ledger_inr": round(ar.spent(), 2)}
@@ -135,6 +144,7 @@ def summary() -> dict | None:
         return None
     from .fixloop import mine
     target = mine().get("target")
+    stale = d.get("base_hash") != load_base()["hash"]            # run with a different base prompt, e.g. the earlier stand-in
     by = {}
     for r in R:
         by.setdefault(r["persona"], {})[r["arm"]] = r
@@ -159,6 +169,6 @@ def summary() -> dict | None:
     return {"n_pairs": len(pairs), "A": A, "B": B, "target": target, "b_better": b_only, "a_better": a_only,
             "gate": GATE, "checks": checks, "passed": all(checks.values()),
             "target_issue_fell": B["target_issue"] < A["target_issue"],
-            "errors": len(d.get("errors", [])), "placeholder_lines": placeholder_lines(R), "b_name": d.get("b_name"), "generated": d.get("generated"),
-            "note": ("Simulated buyers played by Sarvam's language model against a stand-in prompt. A smoke test that catches an edit that "
+            "errors": len(d.get("errors", [])), "stale": stale, "placeholder_lines": placeholder_lines(R), "b_name": d.get("b_name"), "generated": d.get("generated"),
+            "note": ("Simulated buyers played by Sarvam's language model against the real VANI prompt. A smoke test that catches an edit that "
                      "makes the bot clearly worse. It cannot prove a lift: that takes the live A/B test.")}

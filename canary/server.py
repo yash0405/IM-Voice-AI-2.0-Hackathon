@@ -37,6 +37,21 @@ def bundle_live() -> dict:
     return b
 
 
+def run_decide(body: dict) -> dict:
+    """Decide from results files sent by the dashboard: {"files": [{"name", "text", "arm"}], "opts": {...}}."""
+    from . import decide
+    files = body.get("files") or []
+    if len(files) > 4 or sum(len(f.get("text", "")) for f in files) > 12_000_000:
+        raise ValueError("send at most 4 files, 12 MB in total")
+    try:
+        rec = decide.decide([{"name": str(f.get("name", "file")), "text": str(f.get("text", "")), "arm": f.get("arm") or None} for f in files], body.get("opts") or {})
+    except decide.DataError as e:
+        raise ValueError(str(e))
+    meta = {"key": "files", "title": "Results from files", "story": "The test ran elsewhere; these are its results, judged by the same rules.", "expect": "-",
+            "true_a": None, "true_b": None, "seed": None, "source": "files"}
+    return {"meta": meta, "record": rec, "replay": {"same_decision": True, "same_ledger_head": True}}
+
+
 def run_custom(body: dict) -> dict:
     sc_over, cfg_over = {}, {}
     for k, t in RUN_FIELDS.items():
@@ -99,6 +114,16 @@ class H(BaseHTTPRequestHandler):
                 self._file(WEB / u.path[1:])
             elif u.path == "/api/bundle":
                 self._json(bundle_live())
+            elif u.path == "/api/samples":
+                from . import samples
+                self._json({k: {"title": v["title"], "note": v["note"], "lpd": v["lpd"], "days": v["days"]} for k, v in samples.SAMPLES.items()})
+            elif (m := re.fullmatch(r"/api/sample/([a-z_]+)", u.path)):
+                from . import samples
+                key = m.group(1)
+                if key not in samples.SAMPLES:
+                    self.send_error(404)
+                else:
+                    self._json({"name": f"results_{key}.csv", "text": samples.to_csv(samples.make_rows(key))})
             elif u.path == "/api/labels/summary":
                 self._json(labels.summary())
             elif u.path == "/api/labels/next":
@@ -126,12 +151,20 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
-        if n > 20000:
+        if n > (14_000_000 if self.path in ("/api/decide", "/api/inspect") else 20000):
             return self._json({"error": "body too large"}, 413)
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
             if self.path == "/api/run":
                 self._json(run_custom(body))
+            elif self.path == "/api/decide":
+                self._json(run_decide(body))
+            elif self.path == "/api/inspect":
+                from . import decide
+                try:
+                    self._json(decide.inspect(str(body.get("text", "")), str(body.get("name", "file"))))
+                except decide.DataError as e:
+                    self._json({"error": str(e)}, 400)
             elif self.path == "/api/labels":
                 row = labels.add(body["idx"], body["labeler"], body["label"], body.get("note", ""), body.get("fields"), body.get("flags"))
                 self._json({"ok": True, "row": row, "summary": labels.summary()})

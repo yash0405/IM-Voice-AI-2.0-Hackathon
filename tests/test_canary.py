@@ -16,7 +16,7 @@ from canary.evaluator import LLMEvaluator, RuleEvaluator, metrics
 from canary.router import NaiveRouter, Router
 from canary.scenarios import ORDER, SCENARIOS
 from canary.stats import pooled_z, score_diff_ci, srm_pvalue
-from canary.variants import make_variant
+from canary.variants import make_variant, load_base
 
 
 class SeqDesign(unittest.TestCase):
@@ -118,7 +118,10 @@ class Engine(unittest.TestCase):
     def test_promotion_only_in_the_winning_scenario_and_routing_follows_decision(self):
         for k in ORDER:
             r = self.b[k]["record"]["result"]
-            self.assertEqual(r["routing_after"]["B"], 1.0 if r["kind"] == "PROMOTE" else 0.0, k)
+            share = self.b[k]["record"]["config"]["share_b"]
+            # promoted: everyone gets B; held for a person: the test split is left alone meanwhile; anything else: all back to A
+            want = 1.0 if r["kind"] == "PROMOTE" else share if r["kind"] == "HOLD_FOR_APPROVAL" else 0.0
+            self.assertEqual(r["routing_after"]["B"], want, k)
         self.assertEqual([k for k in ORDER if self.b[k]["record"]["result"]["kind"] == "PROMOTE"], ["b_wins"])
 
     def test_decisions_are_logged_with_evidence(self):
@@ -135,8 +138,11 @@ class Engine(unittest.TestCase):
             Config(baseline=0.97, mde=0.05).validate()
 
     def test_variants_are_small_reviewable_patches(self):
-        v = make_variant("ask_together")
-        self.assertLess(len([l for l in v["diff"] if l[:1] in "+-" and not l.startswith(("+++ B", "--- A"))]), 6)
+        for key in ("reconcile_limits", "cap_two_asks"):
+            v = make_variant(key)
+            changed = [l for l in v["diff"] if l[:1] in "+-" and not l.startswith(("+++ B", "--- A"))]
+            self.assertLess(len(changed), 14)                    # a handful of changed lines in a 2,300-line prompt
+            self.assertNotEqual(v["hash"], load_base()["hash"])
 
 
 class Evaluator(unittest.TestCase):

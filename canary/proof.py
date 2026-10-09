@@ -274,6 +274,64 @@ def evaluator_error_study(runs: int, seed: int):
     return out
 
 
+# ---------------------------------------------------------------------------- decisions from files, and the spec's single-look rule
+
+FILE_CASES = {"aa": ("No real difference (A = B)", 0.45, 0.45), "win": ("B truly +7 points", 0.45, 0.52),
+              "harm": ("B truly 10 points worse", 0.45, 0.35), "small": ("B truly +1 point", 0.45, 0.46)}
+
+
+def _file_run(args):
+    """One synthetic results file -> CSV text -> decide(): the whole file path, end to end."""
+    case, seed = args
+    from . import decide, samples
+    _, ta, tb = FILE_CASES[case]
+    rows = samples.make_rows("b_wins", seed=seed, true_a=ta, true_b=tb, lpd=300, days=14)
+    rec = decide.decide([{"name": "f.csv", "text": samples.to_csv(rows), "arm": None}],
+                        {"goal": "buylead_created", "share_b": 0.30, "baseline": 0.45, "mde": 0.07, "window_days": 14})
+    r = rec["result"]
+    return case, r["kind"], r["calls_analysed"], int(r["exposed_b_calls"]), rec["ledger_ok"], rec["source"]["leads_in_both_arms"]
+
+
+def run_files(runs: int, seed: int, pool) -> dict:
+    """Does a decision made from a results file behave like the proven engine? A/A files must rarely crown a winner."""
+    n = {"aa": runs, "win": runs // 2, "harm": runs // 2, "small": runs // 4}
+    jobs = [(c, seed + 10_000 * i + j) for i, (c, m) in enumerate(n.items()) for j in range(m)]
+    out = {c: {"label": FILE_CASES[c][0], "kinds": [], "n": [], "expB": [], "ledger_ok": 0, "contaminated": 0} for c in FILE_CASES}
+    for case, kind, nn, eb, ok, cont in pool.map(_file_run, jobs, chunksize=8):
+        o = out[case]
+        o["kinds"].append(kind); o["n"].append(nn); o["expB"].append(eb); o["ledger_ok"] += int(ok); o["contaminated"] += int(cont or 0)
+    res = {}
+    for c, o in out.items():
+        res[c] = {"label": o["label"], **_summ(o["kinds"], o["n"], o["expB"]), "ledger_ok": o["ledger_ok"], "files_with_two_prompt_leads": o["contaminated"]}
+    return res
+
+
+RULESETS = {"aa": ("No real difference (A = B)", 0.45, 0.45), "small": ("B truly +3 points", 0.45, 0.48),
+            "win": ("B truly +7 points", 0.45, 0.52), "harm": ("B truly 7 points worse", 0.45, 0.38)}
+
+
+def run_ruleset_case(args):
+    key, runs, seed = args
+    _, ta, tb = RULESETS[key]
+    out = {}
+    base = dict(share_b=0.30, baseline=0.45, mde=0.03, window_days=14, leads_per_day=300, secondary_role="none")   # same window, same data volume
+    for rs, methods in (("sequential", ["canary", "naive_peek"]), ("final_look", ["canary", "naive_peek"])):
+        cfg = Config(**{**base, "rule_set": rs})
+        d = build_design(cfg)
+        rng = np.random.default_rng(seed)
+        a = _gen(rng, runs, d, cfg, ta, tb, with_dur=False)
+        res = evaluate(a, runs, d, cfg, False, methods=methods)
+        out[rs] = {m: _summ(r["kind"], r["n"], r["expB"]) for m, r in res.items()}
+        out[rs]["looks"] = len(d.look_n); out[rs]["final_n"] = d.look_n[-1]
+    return key, out
+
+
+def run_rulesets(runs: int, seed: int, pool) -> dict:
+    """The dashboard spec's rule (one winner call at the end + a strict daily harm check) against ours, on identical traffic."""
+    cases = dict(pool.map(run_ruleset_case, [(k, runs, seed + 50 * i) for i, k in enumerate(RULESETS)]))
+    return {k: {"label": RULESETS[k][0], "true_a": RULESETS[k][1], "true_b": RULESETS[k][2], **v} for k, v in cases.items()}
+
+
 def run_all(runs: int = 4000, aa_runs: int = 12000, seed: int = 20261009, progress=print) -> dict:
     t0 = time.time()
     proof = {"seed": seed, "runs": runs, "aa_runs": aa_runs,
@@ -297,6 +355,10 @@ def run_all(runs: int = 4000, aa_runs: int = 12000, seed: int = 20261009, progre
         sp = pool.map(run_split_cell, [(s, n, 100 if n <= 1100 else 60, 300 + i) for i, (s, n) in enumerate(
             [(s, n) for s in (0.05, 0.10, 0.20, 0.30, 0.45) for n in (237, 1037, 5037)])])
         proof["split_accuracy"] = [{"share": s, "n": n, **v} for (s, n), v in sp]
+        progress("decisions from files (end to end)...")
+        proof["files"] = run_files(max(200, runs // 7), seed + 3000, pool)
+        progress("spec's single-look rule vs ours...")
+        proof["rulesets"] = run_rulesets(runs, seed + 4000, pool)
     progress("stickiness...")
     proof["stickiness"] = stickiness_test()
     progress("evaluator error...")

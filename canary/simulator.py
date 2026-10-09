@@ -38,6 +38,8 @@ class Scenario:
     dur_mult_b: float = 1.0
     log_drop_b: float = 0.0
     repeat_rate: float = 0.12
+    event_a: float = 0.0        # optional rate guardrail (e.g. fatal calls): true rate in arm A ...
+    event_b: float = 0.0        # ... and in arm B
     cfg: dict = field(default_factory=dict)
 
 
@@ -58,6 +60,7 @@ class TrafficSim:
         self._u_drop = rng.random(m)
         u_rep = rng.random(m)
         u_pick = rng.random(m)
+        self._u_evt = rng.random(m)       # drawn last, so adding it leaves every earlier stream (and every earlier result) unchanged
         n_leads = 0
         for i in range(m):
             if n_leads > 0 and u_rep[i] < sc.repeat_rate:
@@ -75,3 +78,8 @@ class TrafficSim:
         dur = float(self._dur[i]) * (sc.dur_mult_b if arm == "B" else 1.0)
         logged = not (arm == "B" and not converted and self._u_drop[i] < sc.log_drop_b)
         return logged, converted, dur
+
+    def event(self, arm: str, call: dict) -> int:
+        """1 if this call has the guardrail event (a fatal call, an early hang-up ...). Used only when a rate guardrail is configured."""
+        p = self.sc.event_a if arm == "A" else self.sc.event_b
+        return 1 if self._u_evt[call["i"]] < p else 0

@@ -106,7 +106,7 @@ class Pipeline(Base):
         self.assertEqual(len(set(r["idx"] for r in sp.order())), 60)
 
     def test_tagging_parses_json_counts_tokens_and_survives_bad_replies(self):
-        c = FakeClient(replies=['noise {"label":"buylead_created","fields":["quantity","bogus"],"confidence":0.8,"bot_issues":["stuck_loop"]} noise',
+        c = FakeClient(replies=['noise {"label":"buylead_created","fields":["quantity","bogus"],"confidence":0.8,"bot_issues":["looping_behavior"]} noise',
                                 'not json at all', '{"label":"made_up"}', RuntimeError("boom")])
         pipe = sp.Pipe(c, sleep=lambda s: None); pipe.transcribe(4, budget=100)
         r = pipe.tag(4, budget=100)
@@ -119,19 +119,21 @@ class Pipeline(Base):
 
     def test_rich_labels_are_validated_against_the_taxonomy_and_thinking_is_off(self):
         seen = {}
-        c = FakeClient(replies=['{"label":"partial","confidence":0.7,"fields":["quantity"],"captured":{"product":"steel pipes","quantity":"500","location":null},'
-                                '"language":"hinglish","call_end":"buyer_hung_up","sentiment":"frustrated","buyer_requests":["price_quote","nonsense"],'
-                                '"bot_issues":["repeated_question","made_up_issue"],"fatal":"oncall_fatal","fix_hint":"Do not ask the same question twice.","evidence":"x"}'])
+        c = FakeClient(replies=['{"label":"buylead_created","confidence":0.7,"fields":["quantity"],"captured":{"product":"steel pipes","quantity":"500","city":null},'
+                                '"language":"hinglish","call_end":"buyer_hung_up","sentiment":"frustrated","buyer_requests":["price_query","nonsense"],'
+                                '"bot_issues":["looping_behavior","made_up_issue"],"fatal":"oncall_fatal","fix_hint":"Do not ask the same question twice.","evidence":"x",'
+                                '"transfer":{"offered":true,"accepted":false},"flow":"inbound_redirect"}'])
         orig = c.chat.completions
         def spy(**kw): seen.update(kw); return orig(**kw)
         c.chat = SimpleNamespace(completions=spy)
         pipe = sp.Pipe(c, sleep=lambda s: None); pipe.transcribe(1, budget=100); pipe.tag(1, budget=100)
         d = sp.labelled()[0]
         self.assertIsNone(seen["reasoning_effort"])
-        self.assertEqual(d["bot_issues"], ["repeated_question"]); self.assertEqual(d["buyer_requests"], ["price_quote"])
+        self.assertEqual(d["bot_issues"], ["looping_behavior"]); self.assertEqual(d["buyer_requests"], ["price_query"])
+        self.assertEqual((d["schema"], d["flow"], d["overall_call"], d["transfer"]), (2, "inbound_redirect", "fatal", {"offered": True, "accepted": False}))
         self.assertEqual((d["fatal"], d["language"], d["call_end"]), ("oncall_fatal", "hinglish", "buyer_hung_up"))
-        self.assertTrue(d["bot_error"]); self.assertEqual(d["captured"]["quantity"], "500"); self.assertIsNone(d["captured"]["location"])
-        self.assertEqual(sp.backlog()["issue_counts"], {"repeated_question": 1})
+        self.assertTrue(d["bot_error"]); self.assertEqual(d["captured"]["quantity"], "500"); self.assertIsNone(d["captured"]["city"])
+        self.assertEqual(sp.backlog()["issue_counts"], {"looping_behavior": 1})
         self.assertIn("rich", sp.report())
 
     def test_diarized_output_becomes_one_line_per_speaker_turn_and_costs_more(self):

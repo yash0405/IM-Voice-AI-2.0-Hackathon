@@ -26,8 +26,14 @@ def load_schema() -> dict:
     return json.loads((DATA / "dispositions.json").read_text())
 
 
+def all_dispositions() -> list[dict]:
+    """Active (schema 2) dispositions plus the earlier labels, so old machine labels can still be displayed by name."""
+    sch = load_schema()
+    return sch["dispositions"] + sch.get("legacy", [])
+
+
 def goal_info(key: str = "buylead_created") -> dict:
-    return next((d for d in load_dispositions() if d["key"] == key), {"key": key, "name": key, "noun": key})
+    return next((d for d in all_dispositions() if d["key"] == key), {"key": key, "name": key, "noun": key})
 
 
 _CLOCK = re.compile(r"\b(within|in|next|agle|is)\s\d{0,3}\s?(day|days|week|weeks|month|months|hafte|hafta|mahine|din)\b")
@@ -111,6 +117,16 @@ def _snippet(t: str, pos: int, w: int = 40) -> str:
 PROMPT = DATA / "evaluator_prompt.md"
 
 
+def build_prompt(transcript: str) -> str:
+    """The tagger prompt with the schema filled in. One place, used by the Sarvam pipeline and by LLMEvaluator."""
+    sch = load_schema(); tx = sch["taxonomy"]
+    disp = "\n".join(f"- {d['key']}: {d['hint']}" for d in sch["dispositions"])
+    issues = "\n  " + "\n  ".join(f"{k}: {v}" for k, v in tx["bot_issues"].items())
+    return (PROMPT.read_text().replace("{{DISPOSITIONS}}", disp).replace("{{BOT_ISSUES}}", issues)
+            .replace("{{BUYER_REQUESTS}}", ", ".join(tx["buyer_requests"])).replace("{{CALL_END}}", " | ".join(tx["call_end"]))
+            .replace("{{TRANSCRIPT}}", transcript))
+
+
 class LLMEvaluator:
     """Plug a model in with `complete(prompt)->str`. Expected reply: JSON {"label","evidence"}."""
 
@@ -119,9 +135,7 @@ class LLMEvaluator:
 
     def classify(self, transcript) -> dict:
         text = transcript if isinstance(transcript, str) else "\n".join(f"{t.get('speaker','?')}: {t['text']}" for t in transcript)
-        disp = "\n".join(f"- {d['key']}: {d['hint']}" for d in load_dispositions())
-        prompt = PROMPT.read_text().replace("{{DISPOSITIONS}}", disp).replace("{{TRANSCRIPT}}", text)
-        raw = self.complete(prompt)
+        raw = self.complete(build_prompt(text))
         m = re.search(r"\{.*\}", raw, re.S)
         keys = {d["key"] for d in load_dispositions()}
         try:

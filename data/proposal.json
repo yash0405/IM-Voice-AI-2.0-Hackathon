@@ -1,35 +1,42 @@
 {
- "key": "ai_fix",
- "name": "Ask for missing details before closing",
- "origin": "ai-mined",
- "remove": [],
- "add": [
+ "key": "fix_candidate",
+ "name": "Make the ask limits agree with each other",
+ "origin": "lint-derived",
+ "edit": [
   {
-   "after": "- Never share another seller's or buyer's contact details.",
-   "text": "- Ask for the next missing requirement detail before ending the call."
+   "in_line": "Total ask limits:",
+   "find": "buyer name = 3",
+   "replace": "buyer name = 2"
+  },
+  {
+   "in_line": "Total ask limits:",
+   "find": "foure-ask",
+   "replace": "four-ask"
+  },
+  {
+   "in_line": "five-ask product allowance",
+   "find": "five-ask",
+   "replace": "four-ask"
+  },
+  {
+   "in_line": "STRICT MAX 3 ATTEMPTS PER SLOT",
+   "find": "STRICT MAX 3",
+   "replace": "STRICT MAX 2"
   }
  ],
- "why": "It forces the bot to capture all required fields before ending the call, reducing abrupt closures.",
- "risk": "The bot might delay closing slightly if the buyer is in a hurry, but it will avoid losing incomplete leads.",
+ "remove": [],
+ "add": [],
+ "why": "The real prompt states different ask limits for the same thing (any slot 2 vs 3; name 2 vs 3; product 4 vs 5). IndiaMART's quality matrix grades probing a parameter more than 1+2 times as fatal looping behaviour, so the limits have to agree. This edit makes each pair agree on the more specific statement.",
+ "risk": "It changes no intended behaviour, but a model that was following the looser limit will now stop a little sooner, so slightly less name or product detail may be captured. Verbatim loops are rare in the real calls (1.7% reach three repeats; a lower bound), so the expected gain is small and mostly protects against fatal looping.",
  "evidence": {
-  "issue": "abrupt_end",
-  "issue_name": "Ended the call abruptly",
-  "calls_with_issue": 61,
-  "connected_calls": 271,
-  "converted_with": 0.377,
-  "converted_without": 0.5667,
-  "ceiling_pp": 3.9,
-  "hints_used": 40,
-  "call_ids_sha256": "53f81bb20ec9fc66",
-  "base_prompt_hash": "42b67f0d5c9b",
-  "labels_are_human_verified": false
+  "source": "prompt lint",
+  "conflicts_before": 3,
+  "conflicts_after": 0,
+  "introduced": 0,
+  "base_prompt_hash": "a7c691f3a2f9",
+  "loops_bot_repeat3": 0.0171
  },
- "model": "sarvam-105b",
- "tokens": {
-  "in": 1478,
-  "out": 132
- },
- "inr": 0.0529,
- "generated": "2026-10-09 04:54",
- "hash": "984be85accd6"
+ "model": null,
+ "generated": "2026-10-09 10:38",
+ "hash": "31993f80c625"
 }

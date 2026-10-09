@@ -31,7 +31,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from .evaluator import PROMPT, load_dispositions, load_schema
+from .evaluator import PROMPT, build_prompt, load_dispositions, load_schema
 from .stats import wilson
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,7 +50,7 @@ STT_MODEL, STT_MODE, STT_LANG = "saaras:v4", "codemix", "unknown"
 LLM_MODEL = "sarvam-105b"
 CHUNK = 20                           # batch API limit: 20 files per job
 LLM_GAP_S = 1.7                      # 105B is limited to ~40 requests/minute on the starter plan
-EST_PROMPT_TOKENS, EST_OUT_TOKENS = 1300, 350   # planning estimate for the LLM step only (thinking switched off)
+EST_PROMPT_TOKENS, EST_OUT_TOKENS = 2300, 350   # planning estimate for the LLM step only (thinking switched off)
 
 
 class BudgetExceeded(RuntimeError):
@@ -235,8 +235,13 @@ class Pipe:
         f.write_text(json.dumps(cur))
 
     # -------------------------------------------------------------- tagging
-    def tag(self, n: int, budget: float) -> dict:
-        rows = [r for r in order()[:n] if (TR / f"{r['idx']}.json").exists() and not (AL / f"{r['idx']}.json").exists()]
+    def tag(self, n: int, budget: float, redo: bool = False) -> dict:
+        """Tag transcripts. redo=True re-tags calls whose label is from an earlier schema (the old labels are kept in data/auto_labels_v1)."""
+        if redo:
+            backup_v1()
+            rows = [r for r in order()[:n] if (TR / f"{r['idx']}.json").exists() and not is_current(r["idx"])]
+        else:
+            rows = [r for r in order()[:n] if (TR / f"{r['idx']}.json").exists() and not (AL / f"{r['idx']}.json").exists()]
         done = bad = 0
         for r in rows:
             if _load_spend()["inr"] + llm_cost(EST_PROMPT_TOKENS, EST_OUT_TOKENS) > budget:
@@ -256,7 +261,8 @@ class Pipe:
         if not text.strip():           # silence: a certain, free label (no model call, no tokens)
             (AL / f"{r['idx']}.json").write_text(json.dumps({"idx": r["idx"], "label": "no_connect", "fields": [], "captured": {},
                 "language": None, "call_end": "no_response", "sentiment": None, "buyer_requests": [], "bot_issues": [], "fatal": "none",
-                "bot_error": False, "fix_hint": None, "confidence": 0.95, "evidence": "empty transcript", "valid": True,
+                "bot_error": False, "fix_hint": None, "confidence": 0.95, "evidence": "empty transcript", "valid": True, "schema": 2, "flow": "unknown",
+                "transfer": {"offered": False, "accepted": False}, "overall_call": "pass",
                 "rule": "empty_transcript", "tokens": {"in": 0, "out": 0}, "finish": None}))
             return
         out = self.tag_text(text, r["idx"])
@@ -264,9 +270,7 @@ class Pipe:
 
     def tag_text(self, text: str, idx=None, ledger=None) -> dict:
         """Tag one transcript with the Sarvam chat model (thinking off). Returns the rich label dict."""
-        disp = "\n".join(f"- {d['key']}: {d['hint']}" for d in load_dispositions())
-        bi = ", ".join(load_schema()["taxonomy"]["bot_issues"])
-        prompt = PROMPT.read_text().replace("{{DISPOSITIONS}}", disp).replace("{{BOT_ISSUES}}", bi).replace("{{TRANSCRIPT}}", text)
+        prompt = build_prompt(text)
         resp, tries = None, 0
         while resp is None:
             try:
@@ -291,7 +295,11 @@ class Pipe:
         fatal = obj.get("fatal") if obj.get("fatal") in tx["fatal"] else "none"
         cap = obj.get("captured") if isinstance(obj.get("captured"), dict) else {}
         pick = lambda v, allowed, default=None: v if v in allowed else default
-        out = {"idx": idx, "label": label, "fields": [f for f in (obj.get("fields") or []) if f in fk],
+        tr = obj.get("transfer") if isinstance(obj.get("transfer"), dict) else {}
+        overall = "fatal" if fatal != "none" else ("non_fatal" if issues else "pass")          # IndiaMART's matrix: Overall Call = pass / non fatal / fatal
+        out = {"idx": idx, "schema": 2, "flow": pick(obj.get("flow"), tx["flow"], "unknown"), "overall_call": overall,
+               "transfer": {"offered": bool(tr.get("offered")), "accepted": bool(tr.get("accepted"))},
+               "label": label, "fields": [f for f in (obj.get("fields") or []) if f in fk],
                "captured": {k: (str(cap[k])[:60] if cap.get(k) else None) for k in tx["captured"]},
                "language": pick(obj.get("language"), tx["language"]), "call_end": pick(obj.get("call_end"), tx["call_end"]),
                "sentiment": pick(obj.get("sentiment"), tx["sentiment"]),
@@ -314,6 +322,39 @@ def _num(x, default):
 
 
 # ------------------------------------------------------------------ queue, status, report (all free)
+AL_V1 = DATA / "auto_labels_v1"
+
+
+def is_current(idx) -> bool:
+    f = AL / f"{idx}.json"
+    if not f.exists():
+        return False
+    d = json.loads(f.read_text())
+    return d.get("schema", 1) >= 2 and bool(d.get("valid"))
+
+
+def backup_v1() -> None:
+    """Keep the labels made before the real prompt arrived, once, before any re-tagging overwrites them."""
+    import shutil
+    if AL.exists() and not AL_V1.exists():
+        shutil.copytree(AL, AL_V1)
+
+
+def retag_plan() -> dict:
+    """Free. What re-tagging every cached transcript with the schema-2 prompt would cost. Uses the transcripts already on disk."""
+    chars = n = 0
+    todo = 0
+    for f in sorted(TR.glob("*.json")) if TR.exists() else []:
+        d = json.loads(f.read_text())
+        n += 1
+        if (d.get("text") or "").strip() and not is_current(d["idx"]):
+            todo += 1; chars += len(d["text"])
+    base = len(build_prompt("")) / 3.6
+    tin = int(todo * base + chars / 3.2); tout = todo * EST_OUT_TOKENS
+    return {"transcripts": n, "to_retag": todo, "est_tokens_in": tin, "est_tokens_out": tout, "est_inr": round(llm_cost(tin, tout), 2),
+            "minutes": round(todo * 4.5 / 60, 0), "needs_stt": False, "command": "python -m canary autolabel retag --yes --budget N"}
+
+
 def labelled() -> list[dict]:
     out = []
     for f in sorted(AL.glob("*.json")) if AL.exists() else []:
@@ -347,33 +388,45 @@ def status() -> dict:
 
 
 def report() -> dict:
-    """Free. Machine-label results, checked against human labels where they exist."""
+    """Free. Machine-label results, checked against human labels where they exist. Works on both label schemas:
+    schema 1 = labelled before the real VANI prompt arrived (provisional), schema 2 = real prompt + quality matrix."""
     from . import labels as human
     from .evaluator import metrics
     L = labelled()
     out = {"machine_labelled": len(L)}
     if not L:
         return out
+    n = len(L)
+    cur = [d for d in L if d.get("schema", 1) >= 2]
+    out["schema"] = {"current": len(cur), "earlier": n - len(cur)}
+    out["provisional"] = len(cur) < n
     goal = "buylead_created"
     dist = Counter(d["label"] for d in L)
-    k, n = dist.get(goal, 0), len(L)
+    k = dist.get(goal, 0)
     lo, hi = wilson(k, n)
     out["distribution"] = dict(dist)
     out["buylead_rate_machine"] = {"rate": k / n, "ci": [lo, hi], "n": n}
     out["bot_error_rate_machine"] = sum(1 for d in L if d["bot_error"]) / n
-    # The strict goal label needs quantity + specification + (location or timeline). IndiaMART's "BL conversion" is probably closer to this
-    # looser reading, which is the one that matches the stated 35-60% benchmark. Confirm the official definition with the organisers.
+    # "details complete" = quantity AND specification captured. For the earlier labels this is the proxy that matched the stated 35-60%
+    # BL-conversion benchmark; for schema-2 labels the real BuyLead disposition is the headline and this is a secondary measure.
     loose = sum(1 for d in L if {"quantity", "specification"} <= set(d.get("fields", [])))
     llo, lhi = wilson(loose, n)
     out["buylead_rate_loose"] = {"rate": loose / n, "ci": [llo, lhi], "n": n, "definition": "quantity AND specification captured"}
     conn = [d for d in L if d["label"] != "no_connect"]
+    keys = [f["key"] for f in load_schema()["fields"]] if len(cur) == n else ["quantity", "specification", "location", "timeline"]
     if conn:
-        out["capture_connected"] = {"n": len(conn), **{f: sum(1 for d in conn if f in d.get("fields", [])) / len(conn) for f in ("quantity", "specification", "location", "timeline")}}
+        out["capture_connected"] = {"n": len(conn), **{f: sum(1 for d in conn if f in d.get("fields", [])) / len(conn) for f in keys}}
     got = [d for d in L if d["label"] in (goal, "partial")]
     if got:
-        out["field_capture_machine"] = {f["key"]: sum(1 for d in got if f["key"] in d["fields"]) / len(got) for f in load_schema()["fields"]}
+        out["field_capture_machine"] = {f: sum(1 for d in got if f in d["fields"]) / len(got) for f in keys}
+    tr = [d for d in cur if d.get("transfer")]
+    if tr:
+        offered = sum(1 for d in tr if d["transfer"]["offered"])
+        out["transfer"] = {"offered": offered, "accepted": sum(1 for d in tr if d["transfer"]["accepted"]), "calls": len(tr)}
     out["rich"] = {
         "fatal": dict(Counter(d.get("fatal", "none") for d in L)),
+        "overall_call": dict(Counter(d.get("overall_call") for d in cur if d.get("overall_call"))),
+        "flow": dict(Counter(d.get("flow") for d in cur if d.get("flow"))),
         "bot_issue_counts": dict(Counter(i for d in L for i in d.get("bot_issues", [])).most_common()),
         "bot_issue_rate": sum(1 for d in L if d.get("bot_issues")) / n,
         "call_end": dict(Counter(d.get("call_end") for d in L if d.get("call_end"))),
@@ -383,7 +436,7 @@ def report() -> dict:
     }
     q = json.loads(QUEUE.read_text()) if QUEUE.exists() else {"blind": [], "hard": []}
     human_lab = human.consensus_labels()
-    mach = {d["idx"]: d["label"] for d in L}
+    mach = {d["idx"]: d["label"] for d in cur}                       # only labels in the current vocabulary can be compared with people
     for name, ids in (("blind", q["blind"]), ("all_checked", q["blind"] + q["hard"])):
         both = [i for i in ids if i in human_lab and i in mach]
         if both:

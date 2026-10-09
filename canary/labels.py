@@ -82,6 +82,8 @@ def next_review(labeler: str) -> dict | None:
             if i not in done and i in rows:
                 f = sp.AL / f"{i}.json"
                 machine = json.loads(f.read_text()) if (kind == "hard" and f.exists()) else None
+                if machine and machine.get("schema", 1) < 2:
+                    machine = None                    # labels from before the real prompt use another vocabulary: no hint
                 return {**rows[i], "review": True, "blind": kind == "blind", "machine": machine,
                         "queue_left": sum(1 for k in ("blind", "hard") for j in q.get(k, []) if j not in done)}
     return None
