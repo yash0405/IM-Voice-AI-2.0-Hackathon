@@ -30,7 +30,7 @@
   <button id="go" type="submit">Open</button>
   <div class="bar" id="bar"><i id="fill"></i></div>
   <div id="msg" role="status"></div>
-  <div class="foot">Branch main &middot; 3bbe597. The first open downloads the engine (about 30 MB, then cached); it runs entirely in your browser.</div>
+  <div class="foot">Branch main &middot; ad7e7f5. The first open downloads the engine (about 30 MB, then cached); it runs entirely in your browser.</div>
 </form>
 <script>
 (() => {                                                                 // own scope: the app declares its own $ and helpers
@@ -88,7 +88,7 @@ $("gate").addEventListener("submit", async ev => {
     document.dispatchEvent(new Event("DOMContentLoaded"));              // the console waits for it to attach its tooltip
     const tag = document.createElement("div");
     tag.style.cssText = "position:fixed;right:8px;bottom:6px;font:11px/1 system-ui,sans-serif;color:#627d98;background:#ffffffd9;padding:3px 6px;border-radius:6px";
-    tag.textContent = "branch main · 3bbe597"; document.body.appendChild(tag);
+    tag.textContent = "branch main · ad7e7f5"; document.body.appendChild(tag);
   } catch (e) {
     $("bar").style.display = "none"; say("Could not start: " + e.message, true); $("go").disabled = false;
   }
