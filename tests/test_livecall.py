@@ -394,6 +394,33 @@ class Server(Env):
         self.assertTrue(res["all_ok"], res)
         self.assertTrue(all(s["path"].endswith("/url?interaction_type=call&version=1") or s["path"].endswith("/url?interaction_type=call&version=2") for s in self.seen))
 
+    def test_the_live_server_is_the_console_plus_one_screen(self):
+        code, page = self.req("/")
+        self.assertEqual(code, 200)
+        self.assertIn(b"window.CANARY_LIVECALL=true", page)                          # the screen and its menu entry switch on only here
+        self.assertIn(b'<script src="console.js">', page)                            # it is the normal console page
+        code, js = self.req("/console.js")
+        self.assertEqual(code, 200)
+        self.assertIn(b"ROUTES.livecall", js)
+        self.assertIn(b"ROUTES.overview", js)                                        # main's screens are all still there
+        code, body = self.req("/api/console")                                        # and main's own data endpoint answers
+        self.assertEqual(code, 200)
+        self.assertIn("demo", json.loads(body))
+        self.assertEqual(self.req("/", headers={"Host": "evil.example.com"})[0], 403)
+        # the normal console server does not show the screen
+        from canary import server as console_server
+        plain = ThreadingHTTPServer(("127.0.0.1", 0), console_server.H)
+        threading.Thread(target=plain.serve_forever, daemon=True).start()
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{plain.server_address[1]}/", timeout=10) as r:
+                self.assertNotIn(b"CANARY_LIVECALL", r.read())
+        finally:
+            plain.shutdown(); plain.server_close()
+
+    def test_console_posts_still_work_through_the_live_server(self):
+        code, body = self.req("/api/inspect", {"text": "variant,disposition\nA,x\nB,y\n", "name": "f.csv"})
+        self.assertIn(code, (200, 400))                                              # reaches main's handler (a plain answer, not a 404/403)
+
     def test_prompt_downloads(self):
         code, body = self.req("/api/live/prompt/B?candidate=cap_two_asks")
         self.assertEqual(code, 200)

@@ -1,4 +1,4 @@
-// End-to-end browser test of the live call test against a mock of Sarvam's voice runtime (see mock_sarvam.mjs).
+// End-to-end browser test of the Live call test screen of the console, against a mock of Sarvam's voice runtime (see mock_sarvam.mjs).
 //   npm install puppeteer-core ws        # once; Chrome at /usr/bin/google-chrome, python venv in $PY (default python3)
 //   PY=/path/to/python node tests/browser/live_flow.mjs
 // Starts the real live server on a free port with a temp state folder, drives the page with a fake microphone, and checks: the setup screen,
@@ -40,57 +40,66 @@ const txt = s => p.$eval(s, e => e.innerText.replace(/\s+/g, ' ').trim()).catch(
 const click = async s => { await p.$eval(s, e => e.scrollIntoView({ block: 'center' })); await sleep(80); await p.click(s); await sleep(200); };
 const waitText = (s, re, ms = 15000) => p.waitForFunction((s, re) => { const e = document.querySelector(s); return e && new RegExp(re).test(e.innerText); }, { timeout: ms }, s, re);
 try {
-  await p.goto(base, { waitUntil: 'load' });
-  await p.waitForSelector('#cand'); await sleep(1200);
-  ok((await txt('#conn')).includes('agent ids missing'), 'setup: key set but agent ids missing is shown plainly -> ' + (await txt('#conn')));
-  ok((await p.$$('#pair .change')).length >= 1, 'setup: what the patch changes is listed (' + (await p.$$('#pair .change')).length + ' change(s))');
-  ok((await txt('#plan')).includes('false winner'), 'setup: threshold panel says what N can and cannot detect');
+  await p.goto(base + '/#/overview', { waitUntil: 'load' }); await sleep(800);
+  // the console is the normal one, with one extra menu entry right after Live Experiments
+  const navs = await p.$$eval('#nav a span:first-child', e => e.map(x => x.innerText));
+  ok(navs.join('|').startsWith('Overview|New Experiment|Live Experiments|Live call test|History'), 'the console menu is main\'s, plus "Live call test" after Live Experiments -> ' + navs.join(', '));
+  ok((await txt('.page-head h1')).length > 0 && (await p.$$('.card')).length > 0, 'the Overview screen still renders');
+  await p.click('#nav a[href="#/livecall"]');
+  await p.waitForSelector('#lc-cand'); await sleep(1200);
+  ok((await txt('.page-head .pill')).includes('agent ids missing'), 'setup: key set but agent ids missing is shown plainly -> ' + (await txt('.page-head .pill')));
+  ok((await p.$$('#lc-pair .lc-change')).length >= 1, 'setup: what the patch changes is listed (' + (await p.$$('#lc-pair .lc-change')).length + ' change(s))');
+  ok((await txt('#lc-plan')).includes('false winner'), 'setup: threshold panel says what N can and cannot detect');
   await p.screenshot({ path: path.join(shots, '1_setup.png'), fullPage: true });
 
   // connection: a wrong agent id is reported plainly, then fix it
-  await p.type('#org', 'org1'); await p.type('#ws', 'ws1'); await p.type('#appA', 'missing-app'); await p.type('#verA', '1'); await p.type('#appB', 'agentB'); await p.type('#verB', '2');
-  await click('[data-act=check-conn]'); await sleep(800);
-  const bad = await txt('#checkres'); ok(/Prompt A:.*not found/.test(bad) && /Prompt B: ready/.test(bad), 'connection check: bad agent A reported, agent B ready -> ' + bad.slice(0, 120));
-  await p.$eval('#appA', e => e.value = ''); await p.type('#appA', 'agentA'); await click('[data-act=check-conn]'); await sleep(800);
-  ok((await txt('#conn')).includes('ready'), 'connection: ready after fixing -> ' + (await txt('#conn')));
+  await p.type('#lc-org', 'org1'); await p.type('#lc-ws', 'ws1'); await p.type('#lc-appA', 'missing-app'); await p.type('#lc-verA', '1'); await p.type('#lc-appB', 'agentB'); await p.type('#lc-verB', '2');
+  await click('[data-lc=check-conn]'); await sleep(800);
+  const bad = await txt('#lc-checkres'); ok(/Prompt A:.*not found/.test(bad) && /Prompt B: ready/.test(bad), 'connection check: bad agent A reported, agent B ready -> ' + bad.slice(0, 120));
+  await p.$eval('#lc-appA', e => e.value = ''); await p.type('#lc-appA', 'agentA'); await click('[data-lc=check-conn]'); await sleep(800);
+  ok((await txt('.page-head .pill')).includes('ready'), 'connection: ready after fixing -> ' + (await txt('.page-head .pill')));
 
   // threshold + lock
-  await p.$eval('#n', (e, v) => { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }, String(PER)); await sleep(900);
-  ok((await txt('#plan')).includes(`${PER} finished calls per prompt`), 'plan follows the threshold you type');
-  await click('[data-act=lock]'); await p.waitForSelector('#callcard'); await sleep(500);
-  ok((await txt('.hero h1')) === 'Live call test', 'locked: run screen shown');
-  ok((await txt('.locked')).includes('Result locked'), 'run: result shown as locked');
+  await p.$eval('#lc-n', (e, v) => { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }, String(PER)); await sleep(900);
+  ok((await txt('#lc-plan')).includes(`${PER} finished calls per prompt`), 'plan follows the threshold you type');
+  await click('[data-lc=lock]'); await p.waitForSelector('#lc-callcard'); await sleep(500);
+  ok((await txt('.page-head h1')) === 'Live call test', 'locked: run screen shown');
+  ok((await txt('.lc-locked')).includes('Result locked'), 'run: result shown as locked');
   await p.screenshot({ path: path.join(shots, '2_run.png'), fullPage: true });
 
   // calls
   const total = PER * 2;
   for (let i = 1; i <= total; i++) {
-    await click('[data-act=next-call]');
-    await waitText('#callcard', 'End call');
-    await waitText('#transcript', 'stainless steel pipes');
-    ok((await txt('#callcard')).includes(`Call ${i} of ${total}`) && /Line [12]/.test(await txt('#callcard')), `call ${i}: connected through the proxy, blind label shown`);
-    await waitText('#transcript', 'Haan, mujhe 500 pieces', 8000);                       // wait for the layout to settle: the transcript grows as people talk
+    await click('[data-lc=next-call]');
+    await waitText('#lc-callcard', 'End call');
+    await waitText('#lc-transcript', 'stainless steel pipes');
+    ok((await txt('#lc-callcard')).includes(`Call ${i} of ${total}`) && /Line [12]/.test(await txt('#lc-callcard')), `call ${i}: connected through the proxy, blind label shown`);
+    await waitText('#lc-transcript', 'Haan, mujhe 500 pieces', 8000);                       // wait for the layout to settle: the transcript grows as people talk
     if (i === 1) await p.screenshot({ path: path.join(shots, '3_call.png'), fullPage: true });
     await sleep(500);
-    await click('[data-act=sdk-end]'); await waitText('#callcard', 'Your signal');
-    const seconds = await txt('#callcard');
+    await click('[data-lc=sdk-end]'); await waitText('#lc-callcard', 'Your signal');
+    const seconds = await txt('#lc-callcard');
     ok(/lasted \d+:\d\d/.test(seconds), `call ${i}: length measured`);
     if (i === 1) await p.screenshot({ path: path.join(shots, '4_signal.png'), fullPage: true });
     // listener: Line with even i says yes... any pattern works; the verdict is checked against the server's own reveal below
-    await click(`[data-act=sig][data-v="${i % 2 === 0 ? 1 : 0}"]`);
-    if (i === 3) await p.click('#fatal');
-    await click('[data-act=save-sig]'); await sleep(500);
+    await click(`[data-lc=sig][data-v="${i % 2 === 0 ? 1 : 0}"]`);
+    if (i === 3) await p.click('#lc-fatal');
+    await click('[data-lc=save-sig]'); await sleep(500);
     if (i < total) {
       const t = await p.evaluate(() => document.body.innerText);
       ok(!/Prompt B wins|No clear winner|plausible range/.test(t), `call ${i}: nothing about the result is visible yet`);
     }
   }
-  await p.waitForSelector('.verdict', { timeout: 8000 }); await sleep(300);
-  const head = await txt('.verdict h2'); ok(head.length > 0, 'released: verdict shown -> ' + head);
-  ok((await txt('.verdict')).includes('Reveal:'), 'released: blind reveal shown');
+  await p.waitForSelector('.lc-verdict', { timeout: 8000 }); await sleep(300);
+  const head = await txt('.lc-verdict h2'); ok(head.length > 0, 'released: verdict shown -> ' + head);
+  ok((await txt('.lc-verdict')).includes('Reveal:'), 'released: blind reveal shown');
   ok((await txt('body')).includes('chain verified'), 'released: log chain verified');
   await p.screenshot({ path: path.join(shots, '5_result.png'), fullPage: true });
-  await click('[data-act=tr]'); ok((await p.$$('.transcript .bub')).length >= 2, 'released: transcript of a call opens');
+  await p.evaluate(() => { location.hash = '#/history'; }); await sleep(500);
+  ok((await p.$$('.tbl-wrap')).length > 0, 'History screen still renders after the live test');
+  await p.evaluate(() => { location.hash = '#/livecall'; }); await p.waitForSelector('.lc-verdict', { timeout: 8000 });
+  ok(true, 'coming back to the Live call test screen shows the released result again');
+  await click('[data-lc=tr]'); ok((await p.$$('.lc-transcript .lc-bub')).length >= 2, 'released: transcript of a call opens');
   const csv = await p.evaluate(async id => (await fetch(`/api/live/test/${id}/csv`)).text(), (await p.$eval('a[href$="/csv"]', a => a.getAttribute('href'))).split('/')[4]);
   ok(csv.split('\n').filter(Boolean).length === total + 1, `CSV has ${total} call rows`);
   // what the mock saw: only the server's key ever reached Sarvam, and the browser never held one

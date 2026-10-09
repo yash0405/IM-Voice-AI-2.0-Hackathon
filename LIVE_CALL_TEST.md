@@ -1,13 +1,13 @@
 # Live call test: hear prompt A and prompt B, let your signals decide
 
-Runs on its own port (**8790**), separate from the main Canary console (8765). Branch: `feature/live-call-test`.
+It is **a screen of the Canary console** (menu entry "Live call test", right after Live Experiments) and runs on its own port (**8790**): the same console as the main one on 8765 (same menu, theme and screens), plus this feature. Branch: `feature/live-call-test`, which already contains everything from `main` up to the New Experiment overhaul.
 
 **What it does, in plain words.** You talk to two real Sarvam voice agents: A (today's prompt) and B (today's prompt plus the patch). After each call you press one button: *good call* or *not good* (plus a tick if something fatal happened). Before the first call you fix **how many finished calls each prompt needs**. Until that number is reached the page shows no result at all, so nobody can stop early on a lucky streak. When the last call is signalled, the result appears by itself: winner, loser, or "no clear winner", with the numbers and the reasons.
 
 ## Run it
 
 ```bash
-./live.sh                      # sets itself up, opens http://127.0.0.1:8790
+./live.sh                      # sets itself up, opens http://127.0.0.1:8790 (the whole console; click "Live call test")
 # or: python -m canary live --port 8790
 ```
 
@@ -83,12 +83,12 @@ The server only answers requests addressed to `localhost`; POSTs must come from 
 | Tested | How |
 |---|---|
 | Statistics: exact power, false-win never above the error rate (enumeration), interval agrees with verdict, guardrails | 9 unit tests |
-| Rules: locked result, balanced pairs, void re-issue, blind no-leak, log tamper detection, CSV, key never in any response, proxy refuses unknown agents, foreign Host/Origin refused | 24 unit tests (`tests/test_livecall.py`) |
-| The real Sarvam browser SDK (v0.0.42, MIT, vendored in `web/live/vendor`), fake microphone, 6 calls in headless Chrome, locked-until-release, verdict, reveal, CSV, phone width | `tests/browser/live_flow.mjs` against `tests/browser/mock_sarvam.mjs` |
+| Rules: locked result, balanced pairs, void re-issue, blind no-leak, log tamper detection, CSV, key never in any response, proxy refuses unknown agents, foreign Host/Origin refused, the console still works through the live server and the normal server does not show the screen | 26 unit tests (`tests/test_livecall.py`) |
+| The real Sarvam browser SDK (v0.0.42, MIT, vendored in `web/live/vendor`), fake microphone, 6 calls in headless Chrome inside the console, menu intact, locked-until-release, verdict, reveal, CSV, phone width | `tests/browser/live_flow.mjs` against `tests/browser/mock_sarvam.mjs` |
 | **NOT tested: a call to real Sarvam.** No Voice Agents API key exists on this machine (the key here is the model-API key; Sarvam's voice endpoint answers it with "Invalid API key format"). The mock follows the SDK's own source, so the proxy path, signed-URL step, WebSocket handshake and event handling are exercised, but Sarvam's real server may differ in small ways (for example the exact shape of transcript events). | Do **Check connection**, then one practice call, before the demo. If anything is off, switch to *Talk somewhere else, log it here*: the same test, threshold and result work with calls made on Sarvam's own test page or a phone number. |
 | Recording playback ("listen") after the result uses Sarvam's recordings API; its response shape is undocumented, so it is best effort and falls back to the interaction id for Sarvam > Monitor > Call Logs. | untested |
 
-Pre-existing and unrelated: `tests/test_console.py` needs the git-ignored label data and errors in a fresh checkout; 151 of 152 tests pass there.
+Pre-existing and unrelated: four tests of main (`test_console.ConsoleData`, `test_export_db` x2, `test_metrics_overhaul.QaFixes`) fail in a fresh checkout because they need git-ignored label data; they fail identically on a pristine copy of `main`. Everything else passes.
 
 ## Where things are
 
@@ -96,6 +96,8 @@ Pre-existing and unrelated: `tests/test_console.py` needs the git-ignored label 
 |---|---|
 | `canary/livestats.py` | exact tests, power table, verdict |
 | `canary/livecall.py` | the test: plan, secret order, calls, signals, release, log, CSV |
-| `canary/liveserver.py` | the page's server (port 8790) and the key-holding proxy |
-| `web/live/` | the page (`live.js`, `live.css`) and the vendored Sarvam SDK |
+| `canary/liveserver.py` | the normal console server plus the live-call routes (port 8790) and the key-holding proxy |
+| `web/console/80-livecall.js` | the console screen (setup, run, result). It switches itself on only when the page is served by `python -m canary live`; on the normal server, the offline file and the hosted app it does nothing and the menu is unchanged |
+| `web/live/livecall.css` | the few styles the console does not already have; everything else uses the console's own components |
+| `web/live/vendor/` | the vendored Sarvam browser SDK (loaded the first time a call starts) |
 | `data/live/` | saved tests (git-ignored) |

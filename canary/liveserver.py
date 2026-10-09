@@ -1,11 +1,11 @@
-"""Server for the live call test (its own port, separate from the main Canary console). Standard library only.
+"""Server for the live call test: the whole Canary console on its own port (default 8790), plus the "Live call test" screen. Standard library only.
 
-It does four jobs: serves the call page, exposes the test API (livecall.py), and holds the Sarvam Voice Agents key so the browser never
-sees it. The browser SDK asks for a short-lived signed WebSocket URL; this server makes that one GET for it (the SDK's documented
-`baseUrl` proxy pattern) and the browser then talks to Sarvam's voice servers directly with the signed URL.
+It is the normal console server (canary/server.py) with extra routes: the test API (livecall.py), the page assets, and the Sarvam Voice Agents
+key-holding proxy. The browser SDK asks for a short-lived signed WebSocket URL; this server makes that one GET for it (the SDK's documented
+`baseUrl` proxy pattern) and the browser then talks to Sarvam's voice servers directly with the signed URL, so the browser never holds the key.
 
-Because this process holds a key that can start billable calls, it only answers requests addressed to 127.0.0.1/localhost, and POSTs
-must come from this same page (checked with the Origin header and a JSON content type), so another web page cannot drive it.
+Because this process holds a key that can start billable calls, it only answers requests addressed to 127.0.0.1/localhost, and the live-call
+POSTs must come from this same page (Origin header and JSON content type), so another web page cannot drive them.
 """
 from __future__ import annotations
 
@@ -17,10 +17,11 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from . import livecall, livestats
+from . import build, livecall, livestats
+from . import server as console_server
 
 WEB = Path(__file__).resolve().parent.parent / "web" / "live"
 RUNTIME_BASE = os.environ.get("SARVAM_VOICE_RUNTIME_BASE", "https://apps.sarvam.ai/api/app-runtime/")
@@ -95,11 +96,8 @@ def _short_error(code: int, body: bytes) -> str:
     return hints.get(code, f"error {code}") + (f" ({msg[:120]})" if msg else "")
 
 
-class H(BaseHTTPRequestHandler):
-    server_version = "CanaryLive/1"
-
-    def log_message(self, *a):
-        pass
+class H(console_server.H):
+    server_version = "CanaryLive/2"
 
     # ---- plumbing
     def _send(self, code: int, ctype: str, data: bytes, extra: dict | None = None):
@@ -111,9 +109,6 @@ class H(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(data)
-
-    def _json(self, obj, code: int = 200):
-        self._send(code, "application/json", json.dumps(obj, separators=(",", ":")).encode())
 
     def _host_ok(self) -> bool:
         """Only answer requests addressed to this machine (blocks DNS-rebinding pages from reaching a server that holds a key)."""
@@ -134,57 +129,72 @@ class H(BaseHTTPRequestHandler):
             return self._send(404, "text/plain", b"not found")
         self._send(200, mimetypes.guess_type(str(p))[0] or "application/octet-stream", p.read_bytes())
 
+    def _console_page(self):
+        """The normal console page, told that the live call test is available (the screen and its menu entry only exist when this flag is set)."""
+        html = (console_server.WEB / "index.html").read_text()
+        flag = "window.CANARY_LIVE=true;window.CANARY_LIVECALL=true;"
+        html = html.replace('<script src="console.js"></script>', f'<script>{flag}</script><script src="console.js"></script>')
+        self._send(200, "text/html; charset=utf-8", html.encode())
+
     # ---- GET
     def do_GET(self):
         if not self._host_ok():
             return self._send(403, "text/plain", b"this server only answers requests addressed to localhost")
         u = urllib.parse.urlparse(self.path)
+        try:
+            if self._live_get(u):
+                return
+        except (livecall.LiveError, ValueError) as e:
+            return self._json({"error": str(e)}, 400)
+        except Exception as e:  # pragma: no cover
+            return self._json({"error": f"{type(e).__name__}: {e}"}, 500)
+        super().do_GET()                                    # everything else is the normal console server
+
+    def _live_get(self, u) -> bool:
+        """Handle the live-call routes. True if this request was one of them (the answer has been sent)."""
         q = urllib.parse.parse_qs(u.query)
         one = lambda k, d="": (q.get(k) or [d])[0]
-        try:
-            if u.path in ("/", "/index.html"):
-                return self._static("index.html")
-            if u.path in ("/live.css", "/live.js"):
-                return self._static(u.path[1:])
-            if u.path == "/vendor/sarvam-conv-ai-sdk.browser.js":
-                return self._static("vendor/sarvam-conv-ai-sdk.browser.js")
-            if u.path == "/api/live/state":
-                con = livecall.connection()
-                return self._json({"connection": con, "active": livecall.active_test(), "tests": livecall.list_tests()[-8:][::-1],
-                                   "candidates": livecall.candidates(), "default_candidate": livecall.default_candidate(),
-                                   "confidence": {str(int(k * 100)): v for k, v in livecall.CONFIDENCE.items()}, "limits": livecall.LIMITS, "roles": livecall.BUYER_ROLES,
-                                   "port": SERVER_PORT[0]})
-            if u.path == "/api/live/pair":
-                return self._json(livecall.prompt_pair(one("candidate", livecall.default_candidate())))
-            if u.path == "/api/live/plan":
-                return self._json(livecall.plan_info(int(one("n", "10")), float(one("conf", "0.9"))))
-            if u.path == "/api/live/plan_table":
-                conf = float(one("conf", "0.9"))
-                if round(conf, 2) not in livecall.CONFIDENCE:
-                    raise livecall.LiveError("confidence must be 80, 90 or 95")
-                return self._json({"rows": plan_table(round(conf, 2))})
-            if (m := re.fullmatch(r"/api/live/prompt/([AB])", u.path)):
-                text = livecall.agent_prompt(m.group(1), one("candidate", livecall.default_candidate()))
-                return self._send(200, "text/plain; charset=utf-8", text.encode(), {"Content-Disposition": f'attachment; filename="vani_prompt_{m.group(1)}.md"'})
-            if (m := re.fullmatch(r"/api/live/test/(lt-[0-9a-f-]+)", u.path)):
-                return self._json(livecall.get_test(m.group(1)))
-            if (m := re.fullmatch(r"/api/live/test/(lt-[0-9a-f-]+)/csv", u.path)):
-                return self._send(200, "text/csv; charset=utf-8", livecall.export_csv(m.group(1)).encode(),
-                                  {"Content-Disposition": f'attachment; filename="{m.group(1)}_results.csv"'})
-            if (m := re.fullmatch(rf"/sarvam/orgs/({_ID})/workspaces/({_ID})/apps/({_ID})/url", u.path)):
-                con = livecall.connection()
-                org, ws, app = m.groups()
-                if org != con["org_id"] or ws != con["workspace_id"] or app not in {con["arms"]["A"]["app_id"], con["arms"]["B"]["app_id"]}:
-                    return self._json({"error": "this agent is not one of the two configured for the test"}, 403)
+        path = u.path
+        if path in ("/", "/index.html"):
+            self._console_page()
+        elif path == "/livecall.css":
+            self._static("livecall.css")
+        elif path == "/vendor/sarvam-conv-ai-sdk.browser.js":
+            self._static("vendor/sarvam-conv-ai-sdk.browser.js")
+        elif path == "/api/live/state":
+            self._json({"connection": livecall.connection(), "active": livecall.active_test(), "tests": livecall.list_tests()[-8:][::-1],
+                        "candidates": livecall.candidates(), "default_candidate": livecall.default_candidate(),
+                        "confidence": {str(int(k * 100)): v for k, v in livecall.CONFIDENCE.items()}, "limits": livecall.LIMITS, "roles": livecall.BUYER_ROLES,
+                        "port": SERVER_PORT[0]})
+        elif path == "/api/live/pair":
+            self._json(livecall.prompt_pair(one("candidate", livecall.default_candidate())))
+        elif path == "/api/live/plan":
+            self._json(livecall.plan_info(int(one("n", "10")), float(one("conf", "0.9"))))
+        elif path == "/api/live/plan_table":
+            conf = float(one("conf", "0.9"))
+            if round(conf, 2) not in livecall.CONFIDENCE:
+                raise livecall.LiveError("confidence must be 80, 90 or 95")
+            self._json({"rows": plan_table(round(conf, 2))})
+        elif (m := re.fullmatch(r"/api/live/prompt/([AB])", path)):
+            text = livecall.agent_prompt(m.group(1), one("candidate", livecall.default_candidate()))
+            self._send(200, "text/plain; charset=utf-8", text.encode(), {"Content-Disposition": f'attachment; filename="vani_prompt_{m.group(1)}.md"'})
+        elif (m := re.fullmatch(r"/api/live/test/(lt-[0-9a-f-]+)", path)):
+            self._json(livecall.get_test(m.group(1)))
+        elif (m := re.fullmatch(r"/api/live/test/(lt-[0-9a-f-]+)/csv", path)):
+            self._send(200, "text/csv; charset=utf-8", livecall.export_csv(m.group(1)).encode(), {"Content-Disposition": f'attachment; filename="{m.group(1)}_results.csv"'})
+        elif (m := re.fullmatch(rf"/sarvam/orgs/({_ID})/workspaces/({_ID})/apps/({_ID})/url", path)):
+            con = livecall.connection()
+            org, ws, app = m.groups()
+            if org != con["org_id"] or ws != con["workspace_id"] or app not in {con["arms"]["A"]["app_id"], con["arms"]["B"]["app_id"]}:
+                self._json({"error": "this agent is not one of the two configured for the test"}, 403)
+            else:
                 code, ctype, body = signed_url_request(org, ws, app, {k: v[0] for k, v in q.items()})
-                return self._send(code, ctype, body)
-            if (m := re.fullmatch(r"/api/live/recording/(lt-[0-9a-f-]+)/(c\d{3})", u.path)):
-                return self._recording(m.group(1), m.group(2))
-            self._send(404, "text/plain", b"not found")
-        except (livecall.LiveError, ValueError) as e:
-            self._json({"error": str(e)}, 400)
-        except Exception as e:  # pragma: no cover
-            self._json({"error": f"{type(e).__name__}: {e}"}, 500)
+                self._send(code, ctype, body)
+        elif (m := re.fullmatch(r"/api/live/recording/(lt-[0-9a-f-]+)/(c\d{3})", path)):
+            self._recording(m.group(1), m.group(2))
+        else:
+            return False
+        return True
 
     def _recording(self, tid: str, cid: str):
         t = livecall.get_test(tid)
@@ -214,8 +224,11 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._host_ok():
             return self._send(403, "text/plain", b"this server only answers requests addressed to localhost")
+        p = self.path.split("?")[0]
+        if not (p.startswith("/api/live/")):
+            return super().do_POST()                         # the normal console endpoints (wizard, file import ...)
         if not self._origin_ok() or "application/json" not in (self.headers.get("Content-Type") or ""):
-            return self._json({"error": "requests must come from the live call page"}, 403)
+            return self._json({"error": "requests must come from the live call screen"}, 403)
         n = int(self.headers.get("Content-Length") or 0)
         if n > 400_000:
             return self._json({"error": "body too large"}, 413)
@@ -223,7 +236,6 @@ class H(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
             if not isinstance(body, dict):
                 raise livecall.LiveError("expected a JSON object")
-            p = self.path.split("?")[0]
             if p == "/api/live/connection":
                 return self._json(livecall.save_connection(body))
             if p == "/api/live/check":
@@ -252,11 +264,13 @@ class H(BaseHTTPRequestHandler):
 
 def serve(port: int = DEFAULT_PORT, host: str = "127.0.0.1"):
     SERVER_PORT[0] = port
+    build.assemble_console_js()                                                    # web/console.js from its parts (includes the live call screen)
     srv = ThreadingHTTPServer((host, port), H)
     srv.open_host = host not in ("127.0.0.1", "localhost")
     threading.Thread(target=lambda: [plan_table(0.9)], daemon=True).start()       # warm the pre-test table
+    threading.Thread(target=console_server.console_live, daemon=True).start()      # warm the console data
     con = livecall.connection()
-    print(f"Canary live call test on http://{host}:{port}   (Ctrl+C to stop)")
+    print(f"Canary (console + live call test) on http://{host}:{port}   (Ctrl+C to stop)")
     print(f"  Sarvam Voice Agents key: {'set' if con['key_set'] else 'NOT set (add SARVAM_VOICE_API_KEY to .env; see LIVE_CALL_TEST.md)'}")
     if host not in ("127.0.0.1", "localhost"):
         print("WARNING: this server holds a Sarvam key that can start billable calls. Do not expose it beyond a network you trust.")
