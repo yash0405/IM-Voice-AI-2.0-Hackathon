@@ -1,66 +1,108 @@
-"""The variable catalog and segment rules (BRD section 0 and 2).
+"""The factor catalog and segment rules (one config: display name, data column, allowed values).
 
-The catalog is the one list the router, the segment builder and the balance check all read. Each entry says what a variable means, what
-values it can take, and whether it is known BEFORE the call. Only pre-call variables can pick leads for a test: anything decided during the
-call (the disposition, the call length) would bias the result, so the builder refuses them.
+The catalog is the one list the router, the segment builder, the balance check and the dashboard all read. Each factor says what it means,
+which column of the lead data holds it, which values it can take, and whether it is known BEFORE the call. Only pre-call factors can pick
+leads for a test: anything decided during the call (the disposition, the call length) would bias the result, so the builder refuses them.
 
-HONEST LABEL. The recordings we were given carry no lead attributes at all. The four pre-call variables below use the names and values
-the BRD gives as examples; the mix (how common each value is) is a PLACEHOLDER so that the simulator has something to split. Every screen
-that shows it says "synthetic". When real lead data arrives, replace CATALOG (or load it from a lead file) and nothing else changes.
+A segment is a list of rules, AND between rules and OR within a rule's values, saved as JSON: [{"factor", "column", "values"}].
+No rules (None or []) means all traffic (a neutral test).
+
+HONEST LABEL. The recordings we were given carry no lead attributes. The factors and values below are the ones the New Experiment spec
+lists; how common each value is (the mix) is a PLACEHOLDER so that the simulator and the 30-day history (canary/history.py) have something
+to split. Every screen that shows it says "synthetic". When the real lead table arrives, replace the mix (or load it) and nothing else changes.
 """
 from __future__ import annotations
 
 import hashlib
+import itertools
 
-SYNTHETIC_NOTE = ("The recordings carry no lead attributes. These variables use the BRD's example names and values; how common each value is "
-                  "(the mix) is a placeholder so the simulator has something to split. Replace it with the real lead data when it arrives.")
+SYNTHETIC_NOTE = ("The recordings carry no lead attributes. These factors and values follow the New Experiment spec; how common each value is "
+                  "(the mix) and the 30-day history are placeholders so the simulator has something to split. Replace them with the real lead table when it arrives.")
 
-# `balance`: shown in the split-health balance table. `strata`: used to stratify the split (the BRD's Hot Lead type x Nature of Business).
+HL_TOP3 = ["UA", "PNSM", "PNSR"]       # the three most common Hot Lead types in the placeholder mix: HL Bucket "Top 3" is derived from HL Type
+
+# `column`: the column of the lead data that holds the factor. `strata`: the router deals blocks inside each HL Type x GST Nature of Business
+# group (the BRD's Hot Lead type x Nature of Business). `balance`: shown in the split-health balance table. A `derived_from` factor is a
+# function of another factor (`derive` maps the other factor's value to this one's), so the two can never disagree.
 CATALOG = [
-    {"name": "hot_lead_type", "label": "Hot Lead type", "short": "HL", "meaning": "Source of the lead", "type": "pick-list",
-     "values": ["UA", "PUA", "ENQR", "PNS"], "mix": [0.30, 0.20, 0.20, 0.30], "pre_call": True, "balance": True, "strata": True, "rule_order": 3},
-    {"name": "nature_of_business", "label": "Nature of Business", "short": "NOB", "meaning": "What kind of firm the lead is", "type": "pick-list",
-     "values": ["Proprietor", "Pvt Ltd", "Partnership", "Other"], "mix": [0.45, 0.25, 0.12, 0.18], "pre_call": True, "balance": True, "strata": True, "rule_order": 2},
-    {"name": "city", "label": "City", "short": "City", "meaning": "City the buyer is in, from the lead record", "type": "pick-list",
-     "values": ["Mumbai", "Delhi", "Bengaluru", "Pune", "Chennai", "Other"], "mix": [0.14, 0.16, 0.10, 0.07, 0.06, 0.47], "pre_call": True, "balance": True, "strata": False, "rule_order": 1},
+    {"name": "assigned_status", "column": "assigned_status", "label": "Assigned Status", "short": "Assigned", "meaning": "Whether the lead is assigned to a seller or still in the pool",
+     "type": "pick-list", "values": ["Assigned", "Pool", "Others"], "mix": [0.55, 0.35, 0.10], "pre_call": True, "balance": False, "strata": False},
+    {"name": "gst_nature_of_business", "column": "gst_nature_of_business", "label": "GST Nature of Business", "short": "GST NOB", "meaning": "What kind of firm the buyer is, from GST",
+     "type": "pick-list", "values": ["Retailer", "Service Provider", "Wholesaler", "Manufacturer", "NA"], "mix": [0.30, 0.15, 0.20, 0.20, 0.15], "pre_call": True, "balance": True, "strata": True},
+    {"name": "gst_turnover", "column": "gst_turnover", "label": "GST Turnover", "short": "Turnover", "meaning": "The buyer's annual turnover band, from GST",
+     "type": "pick-list", "values": ["0-40L", "40L-1.5Cr", "1.5-5Cr", "5-25Cr", "25-100Cr", "100-500Cr", ">500Cr", "NA"],
+     "mix": [0.35, 0.22, 0.15, 0.10, 0.05, 0.02, 0.01, 0.10], "pre_call": True, "balance": False, "strata": False},
+    {"name": "hl_bucket", "column": "hl_bucket", "label": "HL Bucket", "short": "HL Bucket", "meaning": "Top 3 Hot Lead types (" + ", ".join(HL_TOP3) + ") or the rest",
+     "type": "pick-list", "values": ["Top 3", "Rest"], "mix": None, "pre_call": True, "balance": False, "strata": False, "derived_from": "hl_type"},
+    {"name": "hl_type", "column": "hl_type", "label": "HL Type", "short": "HL Type", "meaning": "Source of the lead (Hot Lead type)",
+     "type": "pick-list", "values": ["UA", "PNSM", "PNSR", "PIM", "PUA", "PAM", "SCHD", "ENQR", "NUR", "PANF", "OLP", "PNCHF", "OLPR", "PUT", "NVGT", "TF", "UATF"],
+     "mix": [0.20, 0.12, 0.10, 0.08, 0.08, 0.06, 0.05, 0.07, 0.04, 0.04, 0.04, 0.03, 0.02, 0.02, 0.02, 0.02, 0.01], "pre_call": True, "balance": True, "strata": True},
+    {"name": "legal_status", "column": "legal_status", "label": "Legal Status", "short": "Legal", "meaning": "The firm's legal form",
+     "type": "pick-list", "values": ["Limited Company", "Partnership", "Proprietorship", "Others", "NA"], "mix": [0.15, 0.10, 0.45, 0.10, 0.20], "pre_call": True, "balance": True, "strata": False},
+    {"name": "vendor", "column": "vendor", "label": "Vendor", "short": "Vendor", "meaning": "Which calling vendor handles the lead",
+     "type": "pick-list", "values": ["arrowhead", "squadstack"], "mix": [0.60, 0.40], "pre_call": True, "balance": False, "strata": False},
+    {"name": "vertical", "column": "vertical", "label": "Vertical", "short": "Vertical", "meaning": "The business vertical the lead belongs to",
+     "type": "pick-list", "values": ["Top Cities - Inhouse", "Top Cities - Channel", "Emerging Market - Channel", "NA"], "mix": [0.35, 0.25, 0.30, 0.10], "pre_call": True, "balance": True, "strata": False},
     # decided during the call: listed so the catalog is complete, refused by the segment builder
-    {"name": "disposition", "label": "Call disposition", "short": "Disposition", "meaning": "How the call ended", "type": "pick-list",
-     "values": ["BuyLead created", "Callback fixed", "Not interested"], "mix": None, "pre_call": False, "balance": False, "strata": False},
-    {"name": "call_duration", "label": "Call duration", "short": "Duration", "meaning": "Talk time of the call", "type": "number",
+    {"name": "disposition", "column": "disposition", "label": "Call disposition", "short": "Disposition", "meaning": "How the call ended", "type": "pick-list",
+     "values": [], "mix": None, "pre_call": False, "balance": False, "strata": False},
+    {"name": "call_duration", "column": "call_duration", "label": "Call duration", "short": "Duration", "meaning": "Talk time of the call", "type": "number",
      "values": [], "mix": None, "pre_call": False, "balance": False, "strata": False},
 ]
-# plain-English words the dashboard's rule-based reader recognises for each value (no language model is used to read a segment)
-SYNONYMS = {
-    "hot_lead_type": {"UA": ["ua"], "PUA": ["pua"], "ENQR": ["enqr", "enquiry", "enquiries"], "PNS": ["pns"]},
-    "nature_of_business": {"Proprietor": ["proprietor", "proprietors", "proprietorship", "proprietorships", "sole proprietor", "sole proprietors"],
-                           "Pvt Ltd": ["pvt ltd", "pvt. ltd", "pvt ltd.", "private limited", "private ltd", "pvt", "pvt-ltd"],
-                           "Partnership": ["partnership", "partnerships", "partner firm", "partnership firm"], "Other": []},
-    "city": {"Mumbai": ["mumbai", "bombay"], "Delhi": ["delhi", "new delhi"], "Bengaluru": ["bengaluru", "bangalore", "bengalore"], "Pune": ["pune"],
-             "Chennai": ["chennai", "madras"], "Other": []},
-}
-# words that mean the user is describing something that happens DURING the call: refused with a plain explanation
-IN_CALL_WORDS = ["answered", "picked up", "pick up", "connected", "disposition", "duration", "long call", "short call", "hung up", "hang up", "hangup", "interested",
-                 "converted", "meeting fixed", "callback", "not interested", "talk time", "asked for"]
 VARS = {v["name"]: v for v in CATALOG}
+ORDER = {v["name"]: i for i, v in enumerate(CATALOG)}
 PRE_CALL = [v["name"] for v in CATALOG if v["pre_call"]]
+DRAWN = [n for n in PRE_CALL if not VARS[n].get("derived_from")]       # drawn independently; the rest are derived from these
 STRATA_VARS = [v["name"] for v in CATALOG if v.get("strata")]
 BALANCE_VARS = [v["name"] for v in CATALOG if v.get("balance")]
 MIN_STRATUM = 30      # fewer expected leads than 3 blocks of 10 in a stratum: merge it into "Other" before splitting (BRD risk table)
 MIN_SHARE = 0.02      # a segment below 2% of traffic is refused: the simulator would have to replay 50x the traffic to find its leads
 
 
-def bundle(pre_call_overrides: dict | None = None) -> dict:
-    """The catalog as the dashboard shows it."""
-    return {"variables": [{k: v for k, v in c.items()} for c in CATALOG], "note": SYNTHETIC_NOTE, "synthetic": True, "synonyms": SYNONYMS, "in_call_words": IN_CALL_WORDS,
-            "strata": STRATA_VARS, "balance": BALANCE_VARS, "min_stratum": MIN_STRATUM, "min_share": MIN_SHARE}
+def derive(name: str, base_value: str) -> str:
+    """The value of a derived factor from its base factor's value (HL Bucket from HL Type)."""
+    if name == "hl_bucket":
+        return "Top 3" if base_value in HL_TOP3 else "Rest"
+    raise KeyError(name)
+
+
+def _mix_of(name: str) -> list:
+    """How common each value is. A derived factor's mix follows from its base factor's mix."""
+    v = VARS[name]
+    if v.get("derived_from"):
+        base = VARS[v["derived_from"]]
+        out = {x: 0.0 for x in v["values"]}
+        for bv, p in zip(base["values"], base["mix"]):
+            out[derive(name, bv)] += p
+        return [round(out[x], 10) for x in v["values"]]
+    return v["mix"]
+
+
+for _v in CATALOG:
+    if _v.get("derived_from"):
+        _v["mix"] = _mix_of(_v["name"])
+        _v["derive"] = {bv: derive(_v["name"], bv) for bv in VARS[_v["derived_from"]]["values"]}
+
+
+def bundle(columns: list | None = None) -> dict:
+    """The catalog as the dashboard shows it. `columns`: the columns present in the lead data; a factor whose column is missing is shown
+    disabled ("Not in data yet")."""
+    cols = set(columns) if columns is not None else None
+    variables = []
+    for c in CATALOG:
+        v = {k: val for k, val in c.items()}
+        v["in_data"] = cols is None or c["column"] in cols
+        variables.append(v)
+    return {"variables": variables, "note": SYNTHETIC_NOTE, "synthetic": True, "strata": STRATA_VARS, "balance": BALANCE_VARS,
+            "min_stratum": MIN_STRATUM, "min_share": MIN_SHARE}
 
 
 def lead_vars(lead: str) -> dict:
-    """A lead's pre-call variables. In production these arrive with the lead; here they are a fixed pseudo-random function of the lead ID
-    (so the router and the checks always agree, and a run is repeatable)."""
+    """A lead's pre-call factors. In production these arrive with the lead; here they are a fixed pseudo-random function of the lead ID
+    (so the router, the checks and the 30-day history always agree, and a run is repeatable)."""
     h = hashlib.sha256(f"mix:{lead}".encode()).digest()
     out = {}
-    for i, name in enumerate(PRE_CALL):
+    for i, name in enumerate(DRAWN):
         u = int.from_bytes(h[4 * i:4 * i + 4], "big") / 2 ** 32
         v = VARS[name]
         acc = 0.0
@@ -71,79 +113,107 @@ def lead_vars(lead: str) -> dict:
                 pick = val
                 break
         out[name] = pick
-    return out
+    for name in PRE_CALL:
+        v = VARS[name]
+        if v.get("derived_from"):
+            out[name] = derive(name, out[v["derived_from"]])
+    return {n: out[n] for n in PRE_CALL}
 
 
 # ---------------------------------------------------------------------------- segment rules
 
-def validate_segment(seg) -> dict | None:
-    """A segment is {"rules": [{"var": name, "values": [...]}], "text": "what the user typed"}: every rule must hold (AND), a rule holds when the
-    lead's value is one of its values (IN). Returns the cleaned segment, or None for 'all leads'. Raises ValueError with a plain message."""
+def _rules_in(seg) -> list:
+    """Accepts the saved JSON list [{"factor", "column", "values"}] or the earlier {"rules": [{"var", "values"}]} form."""
     if not seg:
-        return None
-    rules = seg.get("rules") if isinstance(seg, dict) else None
+        return []
+    if isinstance(seg, dict):
+        return [{"column": r.get("var") or r.get("column"), "values": r.get("values")} for r in (seg.get("rules") or [])]
+    if isinstance(seg, list):
+        return [{"column": r.get("column") or r.get("var"), "values": r.get("values")} for r in seg]
+    raise ValueError("a segment is a list of rules: [{factor, column, values}]")
+
+
+def validate_segment(seg) -> list | None:
+    """Every rule must hold (AND); a rule holds when the lead's value is one of its values (OR). Returns the cleaned segment as
+    [{"factor", "column", "values"}] in catalog order, or None for all traffic. Raises ValueError with a plain message."""
+    rules = _rules_in(seg)
     if not rules:
         return None
     clean, seen = [], set()
     for r in rules:
-        name, vals = str(r.get("var", "")), r.get("values") or []
+        name, vals = str(r.get("column") or ""), r.get("values") or []
         v = VARS.get(name)
         if v is None:
-            raise ValueError(f"'{name}' is not in the variable catalog")
+            raise ValueError(f"'{name}' is not a column in the factor catalog")
         if not v["pre_call"]:
             raise ValueError(f"{v['label']} is only known during the call, so it cannot pick leads before the call (it would bias the result)")
         if name in seen:
-            raise ValueError(f"{v['label']} appears twice: put its values in one rule")
+            raise ValueError(f"{v['label']} is used twice: a factor can be used only once; put its values in one condition")
         bad = [x for x in vals if x not in v["values"]]
         if not vals or bad:
             raise ValueError(f"{v['label']}: " + (f"{', '.join(map(str, bad))} is not an allowed value" if bad else "choose at least one value"))
         seen.add(name)
-        clean.append({"var": name, "values": [x for x in v["values"] if x in vals]})        # catalog order: the same segment always hashes the same
-    clean.sort(key=lambda r: VARS[r["var"]].get("rule_order", 9))                                 # City, then Nature of Business, then Hot Lead type: the BRD's order
-    out = {"rules": clean, "text": str(seg.get("text", ""))[:300]}
-    if segment_share(out) < MIN_SHARE:
-        raise ValueError(f"this segment is only {segment_share(out):.1%} of traffic; widen it (at least {MIN_SHARE:.0%})")
-    return out
+        clean.append({"factor": v["label"], "column": name, "values": [x for x in v["values"] if x in vals]})      # catalog order inside a rule
+    clean.sort(key=lambda r: ORDER[r["column"]])                                                                     # catalog order across rules: one segment, one hash
+    share = segment_share(clean)
+    if share < MIN_SHARE:
+        raise ValueError(f"this audience is only {share:.1%} of traffic; widen it (at least {MIN_SHARE:.0%})" if share > 0
+                         else "no lead can match this rule (the conditions contradict each other, for example an HL Type outside the chosen HL Bucket)")
+    return clean
 
 
 def matches(seg, attrs: dict) -> bool:
-    return not seg or all(attrs[r["var"]] in r["values"] for r in seg["rules"])
+    return all(attrs[r["column"]] in r["values"] for r in _rules_in(seg))
 
 
 def allowed(seg, name: str) -> list:
-    v = VARS[name]
-    for r in (seg or {}).get("rules", []):
-        if r["var"] == name:
-            return list(r["values"])
-    return list(v["values"])
+    """Values of `name` the segment allows on that factor's own rule (catalog order)."""
+    for r in _rules_in(seg):
+        if r["column"] == name:
+            return [x for x in VARS[name]["values"] if x in r["values"]]
+    return list(VARS[name]["values"])
+
+
+def allowed_eff(seg, name: str) -> list:
+    """Values of a drawn factor that can occur in the segment once the rules on its derived factors are applied too."""
+    ok = allowed(seg, name)
+    for d in PRE_CALL:
+        if VARS[d].get("derived_from") == name:
+            okd = allowed(seg, d)
+            ok = [x for x in ok if derive(d, x) in okd]
+    return ok
 
 
 def value_prob(name: str, value: str, seg=None) -> float:
-    """P(value | the lead is in the segment)."""
+    """P(value | the lead is in the segment) for a drawn factor."""
     v = VARS[name]
-    ok = allowed(seg, name)
+    ok = allowed_eff(seg, name)
     tot = sum(p for x, p in zip(v["values"], v["mix"]) if x in ok)
     return (v["mix"][v["values"].index(value)] / tot) if value in ok and tot else 0.0
 
 
 def segment_share(seg) -> float:
-    """Share of all traffic that matches the segment (the variables are drawn independently, so shares multiply)."""
+    """Share of all traffic that matches the segment. Drawn factors are independent, so their shares multiply; a derived factor narrows
+    the factor it is derived from."""
     s = 1.0
-    for r in (seg or {}).get("rules", []):
-        v = VARS[r["var"]]
-        s *= sum(p for x, p in zip(v["values"], v["mix"]) if x in r["values"])
+    for name in DRAWN:
+        v = VARS[name]
+        ok = allowed_eff(seg, name)
+        s *= sum(p for x, p in zip(v["values"], v["mix"]) if x in ok)
     return s
 
 
+def _or(vals: list) -> str:
+    return vals[0] if len(vals) == 1 else ", ".join(vals[:-1]) + " or " + vals[-1]
+
+
 def describe(seg) -> str:
-    """The exact rule, as the BRD writes it: City = Mumbai AND NOB = Proprietor AND HL IN (UA, PNS)."""
-    if not seg or not seg.get("rules"):
-        return "All leads (neutral test)"
-    parts = []
-    for r in seg["rules"]:
-        short = VARS[r["var"]]["short"]
-        parts.append(f"{short} = {r['values'][0]}" if len(r["values"]) == 1 else f"{short} IN ({', '.join(r['values'])})")
-    return " AND ".join(parts)
+    """The rule in plain words: Leads where HL Type is UA or PNSM AND Legal Status is Proprietorship."""
+    rules = _rules_in(seg)
+    if not rules:
+        return "All traffic (neutral test)"
+    rules = sorted(rules, key=lambda r: ORDER.get(r["column"], 99))
+    return "Leads where " + " AND ".join(f"{VARS[r['column']]['label']} is {_or(list(r['values']))}" for r in rules)
 
 
 # ---------------------------------------------------------------------------- strata
@@ -153,11 +223,10 @@ def stratum_key(attrs: dict) -> tuple:
 
 
 def plan_strata(eligible_total: float, seg=None) -> dict:
-    """Every stratum (Hot Lead type x Nature of Business) the segment allows, with the leads expected in it during the test. A stratum with fewer than
+    """Every stratum (HL Type x GST Nature of Business) the segment allows, with the leads expected in it during the test. A stratum with fewer than
     MIN_STRATUM expected leads is merged into one 'Other' stratum before splitting, so blocks of 10 are not left half empty."""
-    import itertools
     rows = []
-    for combo in itertools.product(*[allowed(seg, n) for n in STRATA_VARS]):
+    for combo in itertools.product(*[allowed_eff(seg, n) for n in STRATA_VARS]):
         p = 1.0
         for n, val in zip(STRATA_VARS, combo):
             p *= value_prob(n, val, seg)
