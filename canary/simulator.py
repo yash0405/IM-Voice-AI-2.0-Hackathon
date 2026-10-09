@@ -44,6 +44,7 @@ class Scenario:
     repeat_rate: float = 0.12
     event_a: float = 0.0        # optional rate guardrail (e.g. fatal calls): true rate in arm A ...
     event_b: float = 0.0        # ... and in arm B
+    true_b_after: float | None = None   # B's true rate after it is promoted (the holdback week); None = unchanged
     cfg: dict = field(default_factory=dict)
 
 

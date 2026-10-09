@@ -789,7 +789,7 @@ def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict
         bad = sum(1 for lead in router.ledger if seg and not catalog.matches(seg, catalog.lead_vars(lead)))       # re-read every counted lead's variables
         seg_check = {"rule": catalog.describe(seg), "counted_leads": len(router.ledger), "matching": len(router.ledger) - bad, "out_of_segment_leads": len(oos_leads),
                      "share_of_traffic": catalog.segment_share(seg), "eligible_per_day": cfg.eligible_per_day, "strata": strat_plan["strata"], "merged": strat_plan["merged"]}
-    tails = decision_tails(ledger.entries, kind, hold_cause, base_hash, variants["B"]["hash"], looks[-1]["time"] if looks else cfg.start, holdback=cfg.holdback_share, holdback_days=cfg.holdback_days, scope_rule=catalog.describe(cfg.segment) if cfg.segment else "")
+    tails = decision_tails(ledger.entries, kind, hold_cause, base_hash, variants["B"]["hash"], looks[-1]["time"] if looks else cfg.start, holdback=cfg.holdback_share, holdback_days=cfg.holdback_days, scope_rule=catalog.describe(cfg.segment) if cfg.segment else "", autopilot=True)
     result = {
         "kind": kind, "reason": decision["reason"], "hold_cause": hold_cause, "cause": decision.get("cause"), "at_look": len(looks), "of_looks": len(d.look_n),
         "calls_analysed": final_row["n"] if final_row else 0, "n_max": d.n_max,
@@ -807,7 +807,8 @@ def run_experiment(cfg: Config, sim, design: Design | None = None, capture: dict
     sc = getattr(sim, "sc", None)
     proportion = not mp or cfg.primary_type == "rate"     # the holdback week is a proportion check: not run for an average primary
     if kind in ("PROMOTE", "HOLD_FOR_APPROVAL") and sc is not None and cfg.holdback_days > 0 and cfg.holdback_share > 0 and proportion:
-        rec["holdback"] = holdback_week(cfg, sc.true_a, sc.true_b, sc.seed)         # starts when B is promoted (for a held test: when a person approves)
+        rec["holdback"] = holdback_week(cfg, sc.true_a, sc.true_b, sc.seed, getattr(sc, "true_b_after", None))   # starts when B is promoted (for a held test: when a person approves)
+    autopilot_rollback(rec)
     return rec
 
 
@@ -906,36 +907,63 @@ def promoted_reason(cfg_or_share, days: int | None = None, scope_rule: str = "")
             f"winner promoted: B is the production prompt{scope}; {h:.0%} of leads stay on A for {d} days to confirm the gain holds")
 
 
-def decision_tails(entries: list, kind: str, hold_cause, base_hash: str, b_hash: str, when: str, demo: bool = True, holdback: float = 0.05, holdback_days: int = 7, scope_rule: str = "") -> dict:
-    """What the ledger would say next, for the two human actions: approve / reject a held test, or roll back a promotion.
+AUTOPILOT = "Canary autopilot"
+HELD_TIMEOUT_DAYS = 2          # a held test nobody answers is closed the safe way (keep A) after this many days
 
-    Both branches are chained from the real ledger head, so the dashboard can show the click and still verify the chain.
+
+def _branch(entries: list, when: str, steps: list, hours: float) -> list:
+    """Ledger entries that would follow `entries`, chained from its head and stamped `hours` after `when` (one minute apart)."""
+    t0, n = datetime.fromisoformat(when), {"i": 0}
+    lg = Ledger(lambda: (t0 + timedelta(hours=hours, minutes=n["i"])).isoformat(timespec="seconds"))
+    lg.entries = list(entries)
+    for et, payload in steps:
+        n["i"] += 1
+        lg.append(et, payload)
+    return lg.entries[len(entries):]
+
+
+def decision_tails(entries: list, kind: str, hold_cause, base_hash: str, b_hash: str, when: str, demo: bool = True, holdback: float = 0.05, holdback_days: int = 7, scope_rule: str = "", autopilot: bool = False) -> dict:
+    """What the ledger would say next, for the human actions: approve / reject a held test, or roll back a promotion.
+
+    Every branch is chained from the real ledger head, so the dashboard can show the click and still verify the chain.
     The person is a placeholder. For a simulated run the clicks are the demo's and say so; for results files (demo=False) they are written as
     the dashboard user's own click, which only enters the record when someone actually clicks.
+    With `autopilot`, a held test also gets `auto_reject`: nobody answered within HELD_TIMEOUT_DAYS, so the safe default keeps A.
     """
     if kind not in ("HOLD_FOR_APPROVAL", "PROMOTE"):
         return {}
-    t0 = datetime.fromisoformat(when)
-
-    def branch(steps: list, hours: float) -> list:
-        n = {"i": 0}
-        lg = Ledger(lambda: (t0 + timedelta(hours=hours, minutes=n["i"])).isoformat(timespec="seconds"))
-        lg.entries = list(entries)
-        for et, payload in steps:
-            n["i"] += 1
-            lg.append(et, payload)
-        return lg.entries[len(entries):]
-
+    branch = lambda steps, hours: _branch(entries, when, steps, hours)
     who = {"by": "reviewer (demo click)", "simulated": True} if demo else {"by": "reviewer (dashboard click)", "simulated": False}
     if kind == "HOLD_FOR_APPROVAL":
-        return {
+        out = {
             "approve": branch([("approval", {**who, "action": "approved", "candidate": b_hash}),
                                ("promotion", {"approval": "human", "production_before": base_hash, "production_after": b_hash}),
                                ("routing_changed", {**promoted_routing(holdback), "reason": "approved: " + promoted_reason(holdback, holdback_days, scope_rule)})], 2),
             "reject": branch([("approval", {**who, "action": "rejected", "candidate": b_hash}),
                               ("routing_changed", {"A": 1.0, "B": 0.0, "reason": "rejected: all traffic back to control A"})], 2)}
+        if autopilot:
+            out["auto_reject"] = branch([("approval", {"by": AUTOPILOT, "simulated": demo, "action": "rejected", "candidate": b_hash,
+                                                       "policy": f"no answer within {HELD_TIMEOUT_DAYS} days: the safe default keeps A"}),
+                                         ("routing_changed", {"A": 1.0, "B": 0.0, "reason": "autopilot: nobody answered, all traffic back to control A"})], 24 * HELD_TIMEOUT_DAYS)
+        return out
     return {"rollback": branch([("rollback", {**who, "from": b_hash, "to": base_hash, "reason": "one-click rollback of the promoted prompt"}),
                                 ("routing_changed", {"A": 1.0, "B": 0.0, "reason": "rolled back: all traffic on the previous prompt"})], 24)}
+
+
+def autopilot_rollback(rec: dict) -> None:
+    """After a promotion the holdback week watches B against the held-back A. If it raises an alert, the autopilot rolls B back that day
+    without waiting for a person. The entry is chained from the ledger head like the one-click rollback, so the record still verifies.
+    Only a promotion the engine made itself is covered (a held test a person approved is that person's to roll back)."""
+    tails, hb, res = rec.setdefault("tails", {}), rec.get("holdback") or {}, rec["result"]
+    tails.pop("auto_rollback", None)
+    if res["kind"] != "PROMOTE" or not hb.get("alert_day"):
+        return
+    r = hb["rows"][hb["alert_day"] - 1]
+    reason = (f"holdback alert on day {r['day']}: B {r['rateB']:.1%} against the held-back A {r['rateA']:.1%} (z={r['z']:.2f}, alert line "
+              f"-{r['bar']:.2f}); rolled back without waiting for a person")
+    tails["auto_rollback"] = _branch(rec["ledger"], res["time"], [
+        ("rollback", {"by": AUTOPILOT, "simulated": True, "from": res["production_after"], "to": res["production_before"], "reason": reason}),
+        ("routing_changed", {"A": 1.0, "B": 0.0, "reason": "autopilot rollback: all traffic on the previous prompt"})], 24 * r["day"])
 
 
 def more_leads(cfg: Config, d: Design, row: dict, leads_per_day: float) -> dict:

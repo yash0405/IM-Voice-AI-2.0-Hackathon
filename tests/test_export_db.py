@@ -77,10 +77,10 @@ class ExportDb(unittest.TestCase):
         self.assertIsNone(pri["past"])
         self.assertGreater(pri["gap"], 0)
 
-    def test_five_experiments_with_the_brd_status_words(self):
+    def test_six_experiments_with_the_brd_status_words(self):
         rows = {r[0]: r[1:] for r in self.q("SELECT id, status, decision, current_version, variant_b_version FROM experiments")}
-        self.assertEqual(set(rows), {"demo_win", "demo_worse", "demo_flat", "demo_segment", "demo_hold"})
-        self.assertEqual(self.one("SELECT COUNT(*) FROM experiments"), 5)
+        self.assertEqual(set(rows), {"demo_win", "demo_worse", "demo_flat", "demo_segment", "demo_hold", "demo_fade"})
+        self.assertEqual(self.one("SELECT COUNT(*) FROM experiments"), 6)
         self.assertEqual(rows["demo_win"][:2], ("Completed", "PROMOTE"))
         self.assertEqual(rows["demo_worse"][:2], ("Stopped", "STOP_HARM"))
         self.assertEqual(rows["demo_flat"][:2], ("Completed", "INCONCLUSIVE"))
@@ -88,13 +88,13 @@ class ExportDb(unittest.TestCase):
         for status, decision, version, b in rows.values():
             self.assertEqual(version, 1)
             self.assertIsNotNone(b)                                   # the demo's B prompt is in the library
-        self.assertEqual(self.one("SELECT COUNT(*) FROM experiment_versions"), 5)
+        self.assertEqual(self.one("SELECT COUNT(*) FROM experiment_versions"), 6)
         self.assertEqual(self.one("SELECT segment_rule FROM experiments WHERE id = 'demo_segment'"), "Leads where Legal Status is Proprietorship")
         # every experiment traces to a prompt version
-        self.assertEqual(self.one("SELECT COUNT(*) FROM experiments e JOIN prompts p ON p.version_id = e.variant_b_version AND p.hash = e.variant_b_hash"), 5)
+        self.assertEqual(self.one("SELECT COUNT(*) FROM experiments e JOIN prompts p ON p.version_id = e.variant_b_version AND p.hash = e.variant_b_hash"), 6)
 
     def test_the_rerun_matches_the_stored_ledger_head(self):
-        self.assertTrue(self.one("SELECT value FROM meta WHERE key = 'determinism_check'").startswith("ok: 5 of 5"))
+        self.assertTrue(self.one("SELECT value FROM meta WHERE key = 'determinism_check'").startswith("ok: 6 of 6"))
         for eid, e in self.demo.items():
             head = self.one("SELECT value FROM meta WHERE key = ?", f"rerun_ledger_head:{eid}")
             self.assertEqual(head, e["record"]["ledger_head"], eid)
@@ -208,7 +208,7 @@ class ExportDb(unittest.TestCase):
         con = sqlite3.connect(again)
         try:
             self.assertEqual(dump(con), dump(self.con))
-            self.assertEqual(con.execute("SELECT COUNT(*) FROM experiments").fetchone()[0], 5)
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM experiments").fetchone()[0], 6)
         finally:
             con.close()
 
@@ -216,7 +216,7 @@ class ExportDb(unittest.TestCase):
         p = str(Path(self.tmp.name) / "light.db")
         counts = export_db.export(p, include_past=False, with_calls=False)
         self.assertEqual((counts["assignments"], counts["calls"]), (0, 0))
-        self.assertEqual(counts["experiments"], 5)
+        self.assertEqual(counts["experiments"], 6)
         self.assertEqual(counts["decision_log"], self.counts["decision_log"])
         con = sqlite3.connect(p)
         try:
@@ -257,7 +257,7 @@ class ExportDb(unittest.TestCase):
         self.assertIn("synthetic", out.getvalue())
         con = sqlite3.connect(p)
         try:
-            self.assertEqual(con.execute("SELECT COUNT(*) FROM experiments").fetchone()[0], 5)
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM experiments").fetchone()[0], 6)
         finally:
             con.close()
 

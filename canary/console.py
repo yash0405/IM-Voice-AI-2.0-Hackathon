@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from . import catalog, decide, fixloop, history, metriclib, planner, promptlint, samples, variants
-from .engine import Config, run_experiment
+from .engine import AUTOPILOT, HELD_TIMEOUT_DAYS, Config, run_experiment
 from .evaluator import load_dispositions
 from .scenarios import make, order
 from .simulator import Scenario, TrafficSim
@@ -35,6 +35,10 @@ DEMO = [
          hypothesis="Only proprietors are in this test; every other lead keeps today's prompt and is not counted. (Demo truth: +15% BuyLeads for proprietors.)", day=2),
     dict(key="demo_hold", name="Offer the seller details on WhatsApp earlier", variant="whatsapp_after_call", preset="B wins, calls longer", effect=+0.15, seed=5, start="2026-10-08T09:00:00", dur_mult=1.12,
          hypothesis="Offering the WhatsApp details sooner should lift BuyLeads. (Demo truth: +15% BuyLeads, but calls run 12% longer, just past the 10% limit: the bonus scenario, held for a person.)", day=2),
+    # The autopilot's safety net: B wins the test, then drops after rollout (as if something outside the prompt changed). The 5% holdback catches
+    # it and the autopilot rolls back on its own. Seed 2 is the first seed (counting up) that promotes and raises the holdback alert within the week.
+    dict(key="demo_fade", name="Promise the seller's details right after the call", variant="whatsapp_after_call", preset="B wins, then fades", effect=+0.15, seed=2, start="2026-10-04T09:00:00", fade_to=-0.30,
+         hypothesis="Telling buyers the details arrive on WhatsApp right after the call should keep them on the line. (Demo truth: +15% BuyLeads during the test, then 30% fewer than A after rollout. The 5% holdback catches it and the autopilot rolls back without a person.)", day=2),
 ]
 
 
@@ -63,12 +67,13 @@ def early_hangup_share() -> float:
     return round(float((d < 15).mean()), 4)
 
 
-def run_preset(name: str, variant: str, start: str, exp_id: str, effect: float, seed: int, dur_mult: float = 1.0, hang_extra: float = 0.0, **over) -> dict:
+def run_preset(name: str, variant: str, start: str, exp_id: str, effect: float, seed: int, dur_mult: float = 1.0, hang_extra: float = 0.0, fade_to: float | None = None, **over) -> dict:
     """`hang_extra` (absolute, 0.03 = 3 points) is how much MORE often B's calls end in the first 15 seconds; it matters only when the early-hang-up guardrail is on."""
     cfg = demo_config(name, variant, start, exp_id, **over)
     ha = early_hangup_share() if cfg.guard_rate else 0.0
     sc = Scenario(key=exp_id, title=name, story="", expect="-", true_a=cfg.baseline, true_b=round(cfg.baseline * (1 + effect), 4), seed=seed, dur_mult_b=dur_mult,
-                  event_a=ha, event_b=min(0.99, ha + hang_extra) if cfg.guard_rate else 0.0)
+                  event_a=ha, event_b=min(0.99, ha + hang_extra) if cfg.guard_rate else 0.0,
+                  true_b_after=None if fade_to is None else round(cfg.baseline * (1 + fade_to), 4))
     rec = run_experiment(cfg, TrafficSim(sc))
     return rec
 
@@ -76,10 +81,11 @@ def run_preset(name: str, variant: str, start: str, exp_id: str, effect: float, 
 def demo_experiments() -> list[dict]:
     out = []
     for d in DEMO:
-        rec = run_preset(d["name"], d["variant"], d["start"], "exp-" + d["key"].replace("_", "-"), d["effect"], d["seed"], d.get("dur_mult", 1.0),
+        rec = run_preset(d["name"], d["variant"], d["start"], "exp-" + d["key"].replace("_", "-"), d["effect"], d["seed"], d.get("dur_mult", 1.0), fade_to=d.get("fade_to"),
                          **({"segment": catalog.validate_segment(d["segment"])} if d.get("segment") else {}), **d.get("over", {}))
         out.append({"id": d["key"], "kind": "simulated", "preset": d["preset"], "hypothesis": d["hypothesis"], "start_day": d["day"],
-                    "truth": {"effect_rel": d["effect"], "true_a": rec["config"]["baseline"], "true_b": round(rec["config"]["baseline"] * (1 + d["effect"]), 4)},
+                    "truth": {"effect_rel": d["effect"], "true_a": rec["config"]["baseline"], "true_b": round(rec["config"]["baseline"] * (1 + d["effect"]), 4),
+                              **({"true_b_after": round(rec["config"]["baseline"] * (1 + d["fade_to"]), 4)} if d.get("fade_to") is not None else {})},
                     "record": slim(rec)})
     return out
 
@@ -221,4 +227,5 @@ def console_bundle() -> dict:
             proof["split_brd"] = P["split_brd"]
     return {"version": "console-3", "defaults": {**DEFAULTS, "early_hangup_share": early_hangup_share()}, "catalog": catalog.bundle([c["name"] for c in history.COLUMNS]), "history": history.bundle(), "metric_catalog": metriclib.catalog_bundle(), "proof": proof, "demo": demo, "past": past, "library": library(), "suggestions": sg, "metrics": metrics(),
             "dispositions": load_dispositions(), "plans": planner.grid(), "spec_check": planner.spec_calculator_check(),
-            "tools": {"proof": (DATA.parent / "out" / "proof.json").exists()}}
+            "tools": {"proof": (DATA.parent / "out" / "proof.json").exists()},
+            "autopilot": {"by": AUTOPILOT, "held_timeout_days": HELD_TIMEOUT_DAYS}}
