@@ -9,7 +9,13 @@ The live app is `python -m canary serve`. On the internet it runs in **hosted mo
 
 The page still contains the real VANI prompt (Prompt Library, Overview), because that is what the repo carries today. The password is what keeps it from the open web. If the prompt is taken out of the repo, the hosted copy stops showing it.
 
-## One-time setup (about 5 minutes, free, no card)
+## Fastest: host it from this machine (no account, public https link)
+```bash
+./deploy/host_here.sh start      # prints the link and the password; ./deploy/host_here.sh status / stop
+```
+It starts hosted mode from an export of the tracked files of your current branch (so `.env`, transcripts, labels and recordings are not on disk where it runs) and opens a Cloudflare quick tunnel. Every 20 seconds it checks the branches: a commit or a push to any branch that has hosted mode redeploys that branch, and the corner label shows which. The link changes when you stop and start it, and it works only while this computer is on. A branch without hosted mode is skipped, never served.
+
+## Permanent hosting on Render: one-time setup (about 5 minutes, free, no card)
 1. **Render**: sign in at render.com with GitHub. New > Blueprint > pick this repo, branch `main`. Render reads `render.yaml`, asks for `CANARY_PASSWORD`, and builds. The link looks like `https://canary-xxxx.onrender.com`.
 2. **Any-branch updates**: in Render open Account Settings > API Keys and create a key. Open the service; its id is in the URL (`srv-...`). Then run, in this repo:
    ```bash
