@@ -61,64 +61,13 @@ function leadsNeeded(pA, lift, shareB, alpha, power, seq) {
 }
 function detectableLift(n, pA, shareB, alpha, power, seq) { let lo = 1e-4, hi = Math.min(0.9, 1 - pA - 1e-3); for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (leadsNeeded(pA, m, shareB, alpha, power, seq) > n) lo = m; else hi = m; } return (lo + hi) / 2; }
 
-/* ------------------------------------------------------------------ the variable catalog and segment rules (BRD section 0 and 2) */
+/* ------------------------------------------------------------------ the factor catalog (segment helpers are in 05-plan.js) */
 const TODAY = "2026-10-09";                                   // the demo's "today": a test that starts later is Scheduled
-const CAT = () => C.catalog || { variables: [], synonyms: {}, in_call_words: [], strata: [], balance: [], min_stratum: 30, min_share: 0.02 };
-const catVar = n => CAT().variables.find(v => v.name === n);
+const CAT = () => C.catalog || { variables: [], strata: [], balance: [], min_stratum: 30, min_share: 0.02 };
+const catVar = n => CAT().variables.find(v => v.name === n || v.column === n);
 const preCall = () => CAT().variables.filter(v => v.pre_call && !((DYN.settings || {}).preCallOff || []).includes(v.name));
-const segRules = seg => (seg && seg.rules) || [];
-function segShare(seg) { let s = 1; for (const r of segRules(seg)) { const v = catVar(r.var); s *= v.values.reduce((a, x, i) => a + (r.values.includes(x) ? v.mix[i] : 0), 0); } return s; }
-const ruleSort = rs => rs.slice().sort((a, b) => (catVar(a.var).rule_order || 9) - (catVar(b.var).rule_order || 9));      // City, then Nature of Business, then Hot Lead type: the BRD's order
-function segDescribe(seg) { if (!segRules(seg).length) return "All leads (neutral test)"; return ruleSort(segRules(seg)).map(r => { const v = catVar(r.var); return r.values.length === 1 ? `${v.short} = ${r.values[0]}` : `${v.short} IN (${r.values.join(", ")})`; }).join(" AND "); }
-const segChips = seg => segRules(seg).length ? ruleSort(segRules(seg)).map(r => `<span class="tag" title="${esc(catVar(r.var).label)}">${esc(catVar(r.var).short)}: ${esc(r.values.join(", "))}</span>`).join(" ") : `<span class="tag">All leads</span>`;
+const segChips = seg => segList(seg).length ? segList(seg).map(r => `<span class="tag" title="${esc(r.factor)} is ${esc(orWords(r.values))}">${esc(r.factor)}: ${esc(r.values.join(", "))}</span>`).join(" ") : `<span class="tag">All leads</span>`;
 const segOf = e => e.audience || (e.record && e.record.config && e.record.config.segment) || null;       // `audience` is what the person chose when an offline launch replays another test's run
-function segAllowed(seg, name) { const r = segRules(seg).find(x => x.var === name); return r ? r.values : catVar(name).values; }
-function planStrata(eligTotal, seg) {                          // the strata the router will deal blocks into; small ones merge into "Other"
-  const names = CAT().strata, lists = names.map(n => segAllowed(seg, n)), prob = (n, val) => { const v = catVar(n), ok = segAllowed(seg, n), tot = v.values.reduce((a, x, i) => a + (ok.includes(x) ? v.mix[i] : 0), 0); return ok.includes(val) ? v.mix[v.values.indexOf(val)] / tot : 0; };
-  let rows = [[]]; lists.forEach(l => { rows = rows.flatMap(r => l.map(x => [...r, x])); });
-  const out = rows.map(k => ({ label: k.join(" x "), expected: eligTotal * k.reduce((p, val, i) => p * prob(names[i], val), 1) })); out.forEach(r => r.merged = r.expected < CAT().min_stratum && out.length > 1);
-  return { strata: out, merged: out.filter(r => r.merged).map(r => r.label) };
-}
-const blockFor = share => { for (const size of [10, 20, 40, 50, 100]) { const k = share * size; if (Math.abs(k - Math.round(k)) < 1e-9 && Math.round(k) >= 1) return [size, Math.round(k)]; } return [100, Math.max(1, Math.round(share * 100))]; };
-/** A rule-based reader for a plain-English audience (no language model): finds catalog values by their names, shows the exact rule for the user to confirm,
-    and says which words it did NOT use. A negation ("not", "except", "excluding") covers the whole list that follows it, up to "but", a comma, or a new "in/on/from" phrase. */
-function parseSegment(text) {
-  const raw = String(text || "").trim(), out = { rules: [], errors: [], warnings: [], text: raw };
-  let t = " " + raw.toLowerCase().replace(/[;,()|/]/g, " | ").replace(/\.(?=\s|$)/g, " ").replace(/\./g, "").replace(/\s+/g, " ").trim() + " ";
-  if (!t.trim() || /^ ?(all|everyone|every lead|any)( the)?( leads?| traffic)?( ?)$/.test(t) || /^ ?(no segment|neutral|all the leads|all leads)( ?)$/.test(t)) return out;
-  const cat = CAT(), hit = cat.in_call_words.find(w => t.includes(" " + w + " ") || t.includes(" " + w));
-  if (hit) { out.errors.push(`"${hit}" is decided during the call, so it cannot pick leads before the call (it would bias the result). Use lead type, firm type or city.`); return out; }
-  // 1. mark every catalog word in the text, with its variable, value and position
-  const found = []; let masked = t;
-  for (const v of preCall()) { const syn = (cat.synonyms || {})[v.name] || {};
-    for (const val of v.values) for (const w of (syn[val] || []).slice().sort((a, b) => b.length - a.length)) {
-      const key = w.replace(/\./g, ""), re = new RegExp("(?<=^|\\s)" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=\\s|$)", "g"); let m;
-      while ((m = re.exec(masked))) { found.push({ v: v.name, val, at: m.index, len: key.length }); masked = masked.slice(0, m.index) + " ".repeat(key.length) + masked.slice(m.index + key.length); re.lastIndex = m.index + key.length; }
-    } }
-  found.sort((a, b) => a.at - b.at);
-  // 2. walk the words: a negator turns negation on; a comma, "but" or a later preposition turns it off
-  const words = []; const wre = /\S+/g; let m; while ((m = wre.exec(t))) words.push({ w: m[0], at: m.index });
-  const NEG = new Set(["not", "except", "excluding", "exclude", "without", "no"]), PREP = new Set(["in", "on", "from", "with", "only", "within"]), STOP = new Set(["but", "|"]);
-  let neg = false, justNeg = false; const mark = new Map();
-  words.forEach(({ w, at }, i) => {
-    if (w === "other" && words[i + 1] && words[i + 1].w === "than") { neg = true; justNeg = true; return; }
-    if (found.some(x => at > x.at && at < x.at + x.len)) return;           // the rest of a multi-word name such as "pvt ltd"
-    if (NEG.has(w)) { neg = true; justNeg = true; return; }
-    if (STOP.has(w)) { neg = false; justNeg = false; return; }
-    if (PREP.has(w)) { if (neg && !justNeg) neg = false; return; }
-    const f = found.find(x => x.at === at); if (f) { mark.set(f, neg); justNeg = false; } else if (!["and", "or", "the", "a", "an", "of", "that", "are", "is", "be", "leads", "lead", "than", "type", "types", "city", "cities", "firm", "firms", "business", "nature", "hot", "source", "customers", "buyers", "buyer", "all", "any", "to", "who", "which", "have", "has", "having", "test", "segment", "audience", "target", "only", "please", "want", "i", "we", "run", "for", "on", "in"].includes(w)) { out.warnings.push(w); justNeg = false; }
-    else if (!["and", "or", "the", "a", "an", "of", "than", "type", "types", "city", "cities", "firm", "firms", "hot", "source"].includes(w)) justNeg = false;
-  });
-  for (const v of preCall()) {
-    const pos = [], ng = []; for (const [f, isNeg] of mark) if (f.v === v.name) (isNeg ? ng : pos).includes(f.val) || (isNeg ? ng : pos).push(f.val);
-    const chosen = pos.length ? v.values.filter(x => pos.includes(x) && !ng.includes(x)) : ng.length ? v.values.filter(x => !ng.includes(x)) : [];
-    if (chosen.length && chosen.length < v.values.length) out.rules.push({ var: v.name, values: chosen });
-  }
-  out.rules = ruleSort(out.rules);
-  if (!out.rules.length) out.errors.push(`I could not find a variable from the catalog in that sentence. Try something like "Mumbai proprietors on UA and PNS leads", or use the lists.`);
-  out.warnings = [...new Set(out.warnings)];
-  return out;
-}
 
 /* ------------------------------------------------------------------ experiments and their demo state */
 const SK = "canary_console_v1";
@@ -139,40 +88,70 @@ const windowDays = e => e.record.config.window_days;
 const KIND_LABEL = { PROMOTE: "Promoted", STOP_HARM: "Stopped: B worse", LOSS: "Keep A: B was worse (a loss)", STOP_GUARDRAIL: "Stopped: guardrail", HOLD_FOR_APPROVAL: "Held for approval", INCONCLUSIVE: "Inconclusive, keep A", HALT_SRM: "Halted: broken test", CONTINUE: "Running", STOPPED_MANUAL: "Stopped by a person", REJECTED: "Rejected: kept A", ROLLED_BACK: "Promoted, then rolled back" };
 const KIND_CLASS = { PROMOTE: "pos", STOP_HARM: "neg", LOSS: "neg", STOP_GUARDRAIL: "neg", HOLD_FOR_APPROVAL: "warn", INCONCLUSIVE: "plain", HALT_SRM: "warn", CONTINUE: "run", STOPPED_MANUAL: "neg", REJECTED: "plain", ROLLED_BACK: "warn" };
 
+/** The primary metric of a test. Tests launched from the New Experiment page carry their locked metric list; older ones are lead-level rates. */
+const primaryDef = c => { const p = ((c && c.metrics) || []).find(x => x.role === "primary"); if (p) return p.def; const m = (C.metrics || []).find(x => x.key === (c && c.primary_goal)); return { type: "rate", key: c && c.primary_goal, name: m ? m.name : String((c && c.primary_goal) || "").replace(/_/g, " "), direction: (c && c.primary_direction) || "higher", leadLevel: true }; };
+const leadLevelRate = d => d.type === "rate" && (d.leadLevel || (d.num && d.den && d.num.unit === "leads" && d.den.unit === "leads"));
+const goalName = c => primaryDef(c).name;
+const fmtP = (v, c, d = 1) => fmtMetric(v, primaryDef(c), d);                 // a value of the primary goal: 45.1% or 69.9 s
+const fmtD = (v, c, d = 1) => fmtDelta(v, primaryDef(c), d);                  // a difference: +5.0 pts or −3.2 s
+const rangeD = (lo, hi, c, d = 1) => `${fmtD(lo, c, d)} to ${fmtD(hi, c, d)}`;
+/** One arm's 95% range: Wilson for a lead-level rate, value +- 1.96 SE otherwise. */
+function armCI(row, arm, c) {
+  const d = primaryDef(c), v = row["rate" + arm], se = row["se" + arm];
+  if (leadLevelRate(d) || se == null) return wilson(row["x" + arm], row["d" + arm] != null ? row["d" + arm] : row["n" + arm]);
+  return [v - 1.96 * se, v + 1.96 * se];
+}
 /** 95% range of the lift. The engine's range is used when it is usable (the end-of-test call, or an always-valid look); on early looks of the
     one-look rule the engine range is deliberately infinite, so a plain interim range is shown and labelled as such. */
 function liftRange(row, c) {
-  const w = row.rci ? Math.abs(row.rci[1] - row.rci[0]) : 9;
-  if (row.rci && w <= 0.6 && row.eff <= 50) return { lo: row.rci[0], hi: row.rci[1], interim: false };
-  const se = Math.sqrt(row.rateA * (1 - row.rateA) / Math.max(1, row.nA) + row.rateB * (1 - row.rateB) / Math.max(1, row.nB)), z = zOf(c);
+  const avg = primaryDef(c).type === "average", w = row.rci ? Math.abs(row.rci[1] - row.rci[0]) : 9e9;
+  if (row.rci && (avg ? isFinite(w) && w < 1e6 : w <= 0.6) && row.eff <= 50) return { lo: row.rci[0], hi: row.rci[1], interim: false };
+  const se = row.seA != null && row.seB != null ? Math.sqrt(row.seA ** 2 + row.seB ** 2) : Math.sqrt(row.rateA * (1 - row.rateA) / Math.max(1, row.dA || row.nA) + row.rateB * (1 - row.rateB) / Math.max(1, row.dB || row.nB)), z = zOf(c);
   return { lo: row.diff - z * se, hi: row.diff + z * se, interim: true };
 }
-/** One guardrail's state, used by the Live tile, the History column and the report so they can never disagree. */
-function guardStatus(g, margin, kind, v) {
-  const rel = kind === "rel", f = x => rel ? sgn(x * 100, 0) + "%" : sgn(x * 100, 1) + " pp", lim = rel ? "+" + (margin * 100).toFixed(0) + "%" : "+" + (margin * 100).toFixed(0) + " pp";
-  if (!g) return { label: "Not enough data", cls: "warn", short: "Not proven", value: "-", range: "", lim, f };
+/** One guardrail's state, used by the Live tile, the History column and the report so they can never disagree.
+    kind: "rel" (a relative change), "pts" (points of a rate) or "units" (an average's own unit, `unit`). */
+function guardStatus(g, margin, kind, v, unit) {
+  const f = x => kind === "rel" ? sgn(x * 100, 0) + "%" : kind === "units" ? sgn(x, 1) + (unit ? " " + unit : "") : sgn(x * 100, 1) + " pp", lim = kind === "rel" ? "+" + (margin * 100).toFixed(0) + "%" : kind === "units" ? "+" + (+margin).toFixed(1) + (unit ? " " + unit : "") : "+" + (margin * 100).toFixed(0) + " pp";
+  if (!g || g.se == null || !isFinite(g.se)) return { label: "Not enough data", cls: "warn", short: "Not proven", value: "-", range: "", lim, f };
   const zc = zOf(v.config), lo = g.worse - zc * g.se, hi = g.worse + zc * g.se, bad = g.z_breach >= (v.cur ? (v.cur.harm_g != null ? v.cur.harm_g : v.cur.harm) : 99), decided = v.decided;
   const stoppedElsewhere = decided && ["STOP_HARM", "HALT_SRM"].includes(v.res.kind);
   let label, cls, short;
-  if (bad) { label = "\u2715 Fail: limit breached"; cls = "neg"; short = "Fail: breached"; }
+  if (bad) { label = "✕ Fail: limit breached"; cls = "neg"; short = "Fail: breached"; }
   else if (stoppedElsewhere) { label = "Not evaluated: the test stopped on another rule"; cls = "plain"; short = "n/a (stopped)"; }
-  else if (decided) { if (hi < margin) { label = "\u2713 Pass: proven within the limit"; cls = "pos"; short = "Pass"; } else { label = "\u2715 Not proven within the limit"; cls = "warn"; short = "Not proven"; } }
-  else if (hi < margin) { label = "\u2713 Within the limit so far"; cls = "pos"; short = "Within the limit so far"; }
-  else if (lo > margin) { label = "\u2715 Over the limit so far"; cls = "neg"; short = "Over the limit so far"; }
-  else { label = "\u2026 Not yet proven"; cls = "warn"; short = "Not yet proven"; }
+  else if (decided) { if (hi < margin) { label = "✓ Pass: proven within the limit"; cls = "pos"; short = "Pass"; } else { label = "✕ Not proven within the limit"; cls = "warn"; short = "Not proven"; } }
+  else if (hi < margin) { label = "✓ Within the limit so far"; cls = "pos"; short = "Within the limit so far"; }
+  else if (lo > margin) { label = "✕ Over the limit so far"; cls = "neg"; short = "Over the limit so far"; }
+  else { label = "… Not yet proven"; cls = "warn"; short = "Not yet proven"; }
   return { label, cls, short, value: f(g.worse), range: `${f(lo)} to ${f(hi)}`, lim, f };
 }
+/** A test's guardrails with their state. Tests from the New Experiment page read their metric list; older ones the two fixed guardrails. */
 function guardList(v) {
   const c = v.config, cur = v.cur, out = [];
+  if (c.metrics) {
+    c.metrics.forEach(x => { if (x.role !== "guardrail") return; const d = x.def, m = cur && (cur.metrics || []).find(y => y.key === d.key && y.role === "guardrail"), avg = d.type === "average", kind = x.limit.kind === "rel" ? "rel" : avg ? "units" : "pts";
+      const margin = x.limit.kind === "rel" || !avg ? x.limit.value / 100 : x.limit.value, unit = avg ? metricUnit(d) : "";
+      out.push({ name: d.name, def: d, limit: x.limit, conf: confOf(c), st: guardStatus(m ? { worse: m.worse, se: m.worse_se, z_breach: m.z_breach } : null, margin, kind, v, unit), g: m || null, metric: m || null }); });
+    return out;
+  }
   if (c.secondary_role === "guardrail") out.push({ name: "Call duration", conf: confOf(c), st: guardStatus(cur && cur.guardrail, c.guardrail_margin, "rel", v), g: cur && cur.guardrail });
   if (c.guard_rate) out.push({ name: c.guard_rate.replace(/_/g, " ").replace(/^./, x => x.toUpperCase()), conf: confOf(c), st: guardStatus(cur && cur.guardrail2, c.guard_rate_margin, "pts", v), g: cur && cur.guardrail2 });
   return out;
 }
-function guardOverall(v) {
-  const l = guardList(v); if (!l.length) return { short: "n/a", cls: "plain" };
-  const worst = l.find(x => x.st.cls === "neg") || l.find(x => x.st.cls === "warn") || l.find(x => x.st.cls === "plain") || l[0];
-  return { short: l.length > 1 && worst.st.cls !== "pos" ? worst.name + ": " + worst.st.short : worst.st.short, cls: worst.st.cls };
+/** Secondary metrics of a test: A against B with the 95% range of the difference. For insight only. */
+function secondaryList(v) { const c = v.config, cur = v.cur; return ((c && c.metrics) || []).filter(x => x.role === "secondary").map(x => ({ def: x.def, direction: x.def.direction, m: cur && (cur.metrics || []).find(y => y.key === x.def.key && y.role === "secondary") })); }
+function secondaryHtml(v) {
+  const list = secondaryList(v); if (!list.length) return "";
+  return `<div class="tbl-wrap"><table><thead><tr><th>Metric</th><th class="num">A: today's prompt</th><th class="num">B: new prompt</th><th class="num">B minus A (95% range)</th><th>Better</th></tr></thead><tbody>${list.map(({ def, direction, m }) => `<tr><td><b>${esc(def.name)}</b><div class="note">${esc(metricWords(def))}</div></td>
+    <td class="num">${m ? fmtMetric(m.A.value, def) : "-"}</td><td class="num">${m ? fmtMetric(m.B.value, def) : "-"}</td><td class="num">${m && m.diff != null ? `<b>${fmtDelta(m.diff, def)}</b><div class="note">${fmtDelta(m.lo, def)} to ${fmtDelta(m.hi, def)}</div>` : "-"}</td><td>${direction === "lower" ? "↓ lower" : "↑ higher"}</td></tr>`).join("")}</tbody></table></div>`;
 }
+/** The locked metric list in plain words (Review, the final report). */
+function metricsSummaryHtml(c) {
+  if (!c.metrics) return `<div><b>${esc(goalName(c))}</b> (primary, ${c.primary_direction === "lower" ? "lower" : "higher"} is better)</div>${c.secondary_role === "guardrail" ? `<div><b>Call duration</b> (guardrail): must not rise by more than ${(c.guardrail_margin * 100).toFixed(0)}%</div>` : ""}${c.guard_rate ? `<div><b>${esc(c.guard_rate.replace(/_/g, " "))}</b> (guardrail): must not rise by more than ${(c.guard_rate_margin * 100).toFixed(0)} points</div>` : ""}`;
+  return c.metrics.map(x => `<div><span class="tag">${x.role === "primary" ? "Primary" : x.role === "guardrail" ? "Guardrail" : "Secondary"}</span> <b>${esc(x.def.name)}</b> ${x.def.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.def))}</span>${x.role === "guardrail" && x.limit ? ` · <b>${esc(limitWords(x.limit, x.def))}</b>` : ""}${x.role === "secondary" ? ` <span class="note">(for insight only)</span>` : ""}</div>`).join("");
+}
+/** "100% of counted leads matched this rule", from the engine's re-check of every counted lead. */
+function segMatchLine(rec) { const s = rec.result && rec.result.segment_check; if (!s) return ""; return `${pct(s.matching / Math.max(1, s.counted_leads), 0)} of counted leads matched this rule (${nf(s.matching)} of ${nf(s.counted_leads)}, re-read from the record)`; }
 
 /** Everything the screens need about one experiment at its current demo day. */
 function view(e) {

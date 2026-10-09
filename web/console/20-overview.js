@@ -21,6 +21,7 @@ function totals() {
 function liftParts(v) {
   if (!v.cur) return ["-", "No results yet"];
   const r = liftRange(v.cur, v.config);
+  if (v.config.metrics) return [fmtD(v.cur.diff, v.config, primaryDef(v.config).type === "average" ? 1 : 0), `${confOf(v.config)}% range ${rangeD(r.lo, r.hi, v.config, primaryDef(v.config).type === "average" ? 1 : 0)}${r.interim ? " (interim)" : ""}`];
   return [pts(v.cur.diff, 0), `${confOf(v.config)}% range ${sgn(r.lo * 100, 0)} to ${sgn(r.hi * 100, 0)} pp${r.interim ? " (interim)" : ""}`];
 }
 function advance(e, n = 1) {

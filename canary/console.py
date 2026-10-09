@@ -132,7 +132,7 @@ def library() -> dict:
             if a != b:
                 pair[f"{a}>{b}"] = list(difflib.unified_diff(ta.splitlines(), tb.splitlines(), "previous version", "this version", lineterm="", n=1))[:300]
     specs = variants._candidates()
-    edits = {k: {op: specs[k].get(op, []) for op in ("edit", "remove", "add")} for k in texts}
+    edits = {k: {op: specs[k].get(op, []) for op in ("edit", "remove", "add")} for k in specs}       # every candidate, so any test's prompt B can be rebuilt in full
     return {"pair_diffs": pair, "base": versions[0], "candidates": cands, "edits": edits, "variables": promptlint.variables(base["text"]), "base_text": base["text"], "base_lines": base["text"].count("\n") + 1}
 
 
