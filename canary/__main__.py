@@ -4,6 +4,7 @@
   proof     run the Monte Carlo proof lab (writes out/proof.json)
   build     bundle the dashboard into dist/canary_demo.html and the technical tools into dist/canary_tools.html (both work offline)
   serve     live dashboard + Label Lab on http://127.0.0.1:8765
+  live      live call test on its own port (default 8790): talk to prompt A and B on Sarvam voice agents, give signals, release the result at a fixed number of calls
   qa        write QA_REPORT.md from out/proof.json
   slide     write dist/one_slide.html (the one-slide deliverable)
   eval      score a tagger on labelled calls (synthetic benchmark, or real labels + transcripts dir)
@@ -20,7 +21,7 @@ import sys
 
 def main():
     ap = argparse.ArgumentParser(prog="canary", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "slide", "all", "autolabel", "arena", "fix", "decide", "samples"])
+    ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "slide", "all", "autolabel", "arena", "fix", "decide", "samples", "live"])
     ap.add_argument("action", nargs="?", default="plan", help="for autolabel: plan | run | status | queue | report | issues")
     ap.add_argument("--n", type=int, default=5, help="autolabel: how many calls (first N of a fixed random order)")
     ap.add_argument("--budget", type=float, default=10.0, help="autolabel: hard cap in rupees for everything spent so far")
@@ -104,6 +105,9 @@ def main():
     elif a.cmd == "serve":
         from .server import serve
         serve(a.port, a.host)
+    elif a.cmd == "live":
+        from .liveserver import serve as serve_live, DEFAULT_PORT
+        serve_live(a.port if a.port != 8765 else DEFAULT_PORT, a.host)
     elif a.cmd == "qa":
         from .report import write_report
         print("wrote", write_report())

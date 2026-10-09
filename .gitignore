@@ -21,3 +21,7 @@ __pycache__/
 venv/
 .pytest_cache/
 .DS_Store
+
+# live call test: per-test state (calls, transcripts, log) and the saved agent ids
+data/live/
+node_modules

@@ -35,6 +35,8 @@ open dist/canary_demo.html        # fully offline; no internet, no server
 ```
 Then follow `USER_JOURNEY.md`. For the live engine and the labelling page: `python -m canary serve` -> http://127.0.0.1:8765.
 
+**Hear it live (feature branch `feature/live-call-test`):** `./live.sh` -> http://127.0.0.1:8790. Talk to prompt A and prompt B on real Sarvam voice agents, give a signal after each call, and the result is released only after the number of calls you fix before the test. See `LIVE_CALL_TEST.md`.
+
 ## Commands
 
 | Command | What it does | Spends credits? |
