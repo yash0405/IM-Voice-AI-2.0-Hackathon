@@ -56,32 +56,46 @@ def _candidates() -> dict:
     return c
 
 
-RUNTIME: dict = {}          # full prompts pasted in the New Experiment wizard: key -> {"name", "text"}
+RUNTIME: dict = {}          # full prompts pasted in the New Experiment wizard: key -> {"name", "text"} (B candidates "custom_...", live prompts A "live_...")
 
 
-def register_text(name: str, text: str) -> str:
-    key = "custom_" + prompt_hash(text)
+def register_text(name: str, text: str, prefix: str = "custom_") -> str:
+    key = prefix + prompt_hash(text)
+    while len(RUNTIME) >= 60 and key not in RUNTIME:        # a long-running host must not grow without bound
+        RUNTIME.pop(next(iter(RUNTIME)))
     RUNTIME[key] = {"name": name or "A pasted prompt", "text": text}
     return key
 
 
-def make_variant(candidate_key: str) -> dict:
+def register_live(name: str, text: str) -> str:
+    """The live prompt A as the wizard sent it, when it is not the production prompt in data/ (e.g. 'Production prompt v2')."""
+    return register_text(name, text, prefix="live_")
+
+
+def make_variant(candidate_key: str, against: dict | None = None) -> dict:
+    """B's text, hash and diff. `against` ({"text", ...}) is the prompt A the diff is taken against (default: the production prompt in data/)."""
+    a_text = (against or load_base())["text"]
     if candidate_key in RUNTIME:
-        base = load_base()
         r = RUNTIME[candidate_key]
-        diff = list(difflib.unified_diff(base["text"].splitlines(), r["text"].splitlines(), "A (production)", "B (candidate)", lineterm="", n=1))
+        diff = list(difflib.unified_diff(a_text.splitlines(), r["text"].splitlines(), "A (production)", "B (candidate)", lineterm="", n=1))
         return {"key": candidate_key, "name": r["name"], "origin": "human", "text": r["text"], "hash": prompt_hash(r["text"]), "diff": diff[:400], "evidence": None}
     spec = _candidates()[candidate_key]
     base = load_base()
     text = apply_patch(base["text"], spec)
-    diff = list(difflib.unified_diff(base["text"].splitlines(), text.splitlines(),
+    diff = list(difflib.unified_diff(a_text.splitlines(), text.splitlines(),
                                      "A (production)", "B (candidate)", lineterm="", n=1))
     return {"key": candidate_key, "name": spec["name"], "origin": spec.get("origin", "human"),
             "text": text, "hash": prompt_hash(text), "diff": diff, "evidence": spec.get("evidence")}
 
 
-def describe_pair(candidate_key: str) -> dict:
-    base = load_base()
-    b = make_variant(candidate_key)
-    return {"A": {"name": f"Production prompt {base['version']}", "hash": base["hash"], "text": base["text"]},
-            "B": b}
+def describe_pair(candidate_key: str, a_key: str = "") -> dict:
+    """A and B of a test. `a_key` names a live prompt A registered with register_live (""= the production prompt in data/)."""
+    if a_key:
+        if a_key not in RUNTIME:
+            raise ValueError("the live prompt A of this test is no longer held by the server: send it again")
+        r = RUNTIME[a_key]
+        a = {"name": r["name"], "hash": prompt_hash(r["text"]), "text": r["text"]}
+    else:
+        base = load_base()
+        a = {"name": f"Production prompt {base['version']}", "hash": base["hash"], "text": base["text"]}
+    return {"A": a, "B": make_variant(candidate_key, against=a)}

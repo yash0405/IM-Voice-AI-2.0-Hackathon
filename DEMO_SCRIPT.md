@@ -6,23 +6,25 @@ Open `dist/canary_demo.html` (works with no internet). Live engine (new experime
 
 **Say this first.** A buyer calls a seller on IndiaMART; the seller is unavailable; the call is redirected to VANI, which confirms the product, collects quantity, specifications, name and city, and connects the buyer to a live seller. Today a prompt change reaches every buyer on judgement alone.
 
-## The 5 minutes (the feature spec's own demo plan: set up in advance, then "Advance 1 day")
+## The 5 to 7 minutes (the BRD's own demo run: set up in advance, show setup live, "Advance 1 day", then the proofs)
 
-**0:00 - The problem (25 s).** "A prompt edit can quietly cost leads, and a good edit can't be proven. Canary tries a change on a slice, and ships it only if it wins. The voice test runs elsewhere; Canary judges its results." Open **Overview**: four tests are already set up, paused on day 2.
+Before the demo: open `dist/canary_demo.html`, press **Reset** in Settings once so every test is on day 2. Five tests are set up and paused on day 2: B wins, B worse, flat, a win in one segment (Proprietors) and the bonus scenario (a win with longer calls).
 
-**0:25 - Watch results build (75 s).** Press **Advance all running tests 1 day (demo)** and open **Live Experiments**. "Results up to yesterday. Final winner call on day 7. Both rates with 95% ranges, the lift with its range, the call-length guardrail, a daily harm monitor, and the split panel: configured against achieved share, a chi-square check, and zero leads that saw both prompts." Keep advancing.
+**0:00 - The problem (30 s).** "A prompt edit can quietly cut leads, and a good edit can never be proven. Canary sits in front of the voice bot: before each call the router decides which prompt this lead gets, and behind it an engine decides, once, whether B wins. The voice test itself is replayed from history: there is no live traffic here." Show **Overview**: tiles, the live prompt (the real VANI prompt), the traffic map.
 
-**1:40 - Three outcomes (80 s).** "B wins: promoted on day 7. B worse: stopped on day 4 by the daily harm check and its leads go back to A. Flat: inconclusive, keep A, and it says how many more leads would settle it. We do not force a winner."
+**0:30 - Set up a test live (90 s).** **New Experiment**. Step 2: "Prompt B is the full prompt, pre-filled with today's live prompt." Change one ask limit: the side-by-side diff shows the red and green line, and the check says every template variable is kept (rename one and Next is blocked). Step 3: **+ Add condition** HL Type is UA or PNSM, **+ Add condition** Legal Status is Proprietorship: "The rule in plain words, and the leads a day and today's rate from the last 30 days, update as I click." Step 4: the primary goal starts empty; call duration is already a guardrail; **+ Add metric** > **Create custom metric** (for example *Busy share of unanswered calls*): the preview computes it on the last 30 days. Step 5: "The length is recommended for me: the card shows the arithmetic, and At a glance shows the same numbers." Step 6: the review and the six-item checklist, then **Save Test** (an editable draft) and **Launch Test** (locks it with a version ID).
 
-**3:00 - A win with a catch (45 s).** Open *Offer the seller details on WhatsApp earlier*: "more BuyLeads, but calls 13% longer against a 10% limit. Not shipped and not thrown away: held for a person." Press **Approve**. "The click is in the **Decision Log**; the record re-verifies in the browser. It is now a new version in the **Prompt Library**; **Rollback** is one click, also logged."
+**2:00 - Watch results build (90 s).** Back on **Overview**, press **Advance all running tests 1 day (demo)**, open **Live Experiments**. "Results up to yesterday. Final winner call on day 7. Current lift is grey until then: nobody should act on it." Keep advancing. "B wins: promoted on the last day. B worse: stopped by the daily harm check and its leads go back to A. Flat: inconclusive, and it says how many more leads would settle it."
 
-**3:45 - Why trust it (45 s).** Back on **Overview**, the **A vs A check**: "with two identical prompts a winner is wrongly declared 2.6% of the time, against 11% for a plain p < 0.05 checked daily. We also measured the spec's one-look rule against ours on identical traffic: both keep false wins near 2.5%; the one-look rule catches a clearly worse B 89% of the time, ours 98%. It is a setting."
+**3:30 - The segment test and split health (60 s).** Open *Proprietors: ask for any detail at most twice*, advance to the end. Show **Split health**: "configured against achieved B share by lead, call and day; the mismatch check; zero leads saw both prompts; the balance table: A and B have the same mix of lead types because leads are dealt in blocks inside each group; the segment check: every counted lead matches the rule, and the leads outside it kept today's prompt." After the promotion: the **holdback** card, "5% of leads stay on A for a week to confirm the gain holds. It can only catch a B that has turned clearly worse; it cannot re-prove the gain, and the card says by how much."
 
-**4:30 - Results from outside (30 s).** "The voice test is not ours. **Import results files**: Canary checks the data, counts each lead once, lists anything odd, and decides." (Live version.) Or show **History**, which already holds six decisions made from sample result files.
+**4:30 - A win with a catch (30 s).** *Offer the seller details on WhatsApp earlier*: "more BuyLeads, but calls run about 15% longer and the engine cannot prove that is inside the 10% limit (its upper bound is about 19%). Not shipped, not thrown away: held for a person." **Approve**: logged in the **Decision Log**, a new version in the **Prompt Library**, **Rollback** one click.
 
-**5:00 - Close (15 s).** "Setup is locked with a version ID, every decision is in a tamper-evident record, and every demo result is simulated with a known answer: it shows the engine decides correctly, not that a real prompt is better."
+**5:00 - Why trust it (60 s).** On **Overview** press **Run 1,000 A vs A tests now**: "identical prompts, a thousand times, in your browser. About 2.5% are wrongly promoted and about 2.5% look worse: the 5% of a two-sided 95% test, and only the first can ship. A plain p < 0.05 check every day (from 50 leads per prompt) crowns a winner about 8% of the time. The engine's own 12,000-run study says the same." Then **Settings**: the variable catalog and the metric list.
 
-Technical judges: **Settings** > Tools opens the proof lab, with every number re-runnable. **Suggest A/B Tests** shows the evidence-based ideas, including the fix loop on VANI's real prompt.
+**6:00 - Close (30 s).** "Setup is locked with a version ID, every decision is in a tamper-evident record, and every demo result is simulated with a known answer: it shows the engine decides correctly, not that a real prompt is better." One slide: `dist/one_slide.html`.
+
+Technical judges: **Settings** > Tools opens the proof lab; `python -m canary export-db` writes every test, assignment, call and decision to one SQLite file; every number is re-runnable.
 
 ## What the PM suggested, and what we did
 
@@ -32,8 +34,8 @@ Technical judges: **Settings** > Tools opens the proof lab, with every number re
 | Sequential testing vs naive peeking | **Kept.** Alpha-spending; shown against naive peeking by simulation. |
 | Sample-ratio mismatch check | **Kept and strengthened.** The share-only check was weak at a 45% baseline (a 35% silent loss shipped 44% of the time). A per-arm assigned-vs-logged check now halts 100% and ships 0%. |
 | CUPED | **Dropped.** It needs pre-call features that predict a one-shot yes/no outcome; the "30-40% fewer calls" depends on a correlation of about 0.6 that we cannot show, so we would be inventing the number. |
-| Segment-level promotion | **Dropped for promotion** (multiple-comparison trap at these sample sizes). |
-| 5% post-promotion holdout | **First extension.** At 600 calls a day a 5% holdout is 30 calls a day; seeing a 4-point fade takes about 80 days. |
+| Segment-level promotion | **Segments as an audience: built** (the second BRD asks for it). **Per-group winners: not used for the decision** (multiple-comparison trap at these sample sizes); per-group numbers are shown for insight only. |
+| 5% post-promotion holdout | **Built** (the second BRD asks for it): 5% of leads stay on A for 7 days after a promotion. At 1,000 leads a day that slice can only rule out a drop of about 11 points or more, so it is a safety net, not a re-proof; the card says so. |
 
 ## Hard questions, and answers that hold up
 
@@ -43,7 +45,7 @@ Technical judges: **Settings** > Tools opens the proof lab, with every number re
 
 **Why "hold for approval" instead of stop or ship?** A win whose guardrail is not proven is valuable and uncertain. Holding it keeps callers unaffected, keeps the evidence, and puts the decision with a person; either answer is logged and the record still verifies. A guardrail that is clearly broken still stops the test.
 
-**The BRD and the dashboard spec describe different rules. Which is right?** Both are valid and we run either (a setting). On identical simulated traffic both keep false wins near 2.5%; the spec's single end-of-test look never promotes early and catches a clearly worse B less often (89% vs 98% at -7 points); ours promotes about 15% sooner and protects better at a slightly higher false-stop rate. The numbers are in the QA report.
+**The BRD and the dashboard spec describe different rules. Which is right?** Both are valid and we run either (a setting). On identical simulated traffic both keep false wins near 2.5%. The second BRD's rule (one winner call, a two-sided call on the last day, a strict daily harm check) is now the default and keeps a B that is 7 points worse out in about 98% of runs, as ours does; ours sends about 12% fewer calls to that B and promotes a real winner about 15% sooner. The numbers are in the QA report (5d, 5e).
 
 **Isn't this fix trivial, and will it even help?** It is deliberately small: small edits are testable. We say up front that it is a consistency fix, that verbatim loops are rare in the real calls, and that a one-point effect needs about 83,000 calls to prove on conversion. The tool's job is to tell you that, to ship only what provably helps, and to stop what hurts. It can say no.
 
@@ -61,13 +63,19 @@ Technical judges: **Settings** > Tools opens the proof lab, with every number re
 
 **Fatal-call rate?** IndiaMART's matrix grades it, and it is the natural second guardrail. The engine guards handling time today; a fatal-rate guardrail is the next extension and the re-tag produces the data for it.
 
-**Why alpha-spending, not mSPRT or Bayesian?** Fixed window and planned looks: spending gives a maximum sample size, a power calculation, and explicit harm and futility rules. We show the false-win rate by simulation instead of asserting it. At the default setting it is 2.3% against a 2.5% budget; the worst cell in the robustness grid is about 3% (normal approximation), which we report.
+**Why alpha-spending, not mSPRT or Bayesian?** Fixed window and planned looks: spending gives a maximum sample size, a power calculation, and explicit harm and futility rules. We show the false-win rate by simulation instead of asserting it. At the new default (one winner call) it is 2.5% against a 2.5% budget; the worst cell in the robustness grid is about 3% (normal approximation), which we report.
 
-**Outcomes are simulated. What does a win prove?** That the engine finds a known injected difference, controls false wins, stops harm and logs correctly. It does not prove a real prompt is better. The baseline is measured (provisional); the 600 calls a day and the 3-point planned lift are assumptions you can change in Plan a test.
+**Outcomes are simulated. What does a win prove?** That the engine finds a known injected difference, controls false wins, stops harm and logs correctly. It does not prove a real prompt is better. The baseline is measured (provisional); the 1,000 leads a day, the 45% baseline and the planned lift are assumptions you can change in Settings.
 
 **What stops a bad edit auto-shipping?** Five gates: the lint check (no new contradiction), the optional pre-check, the harm boundary, the handling-time guardrail, and the broken-test halt. `approval: manual` adds a person before any rollout.
 
 **What about repeat callers?** Repeat calls go to the same arm (a coin-flip router would switch 17.6% of them) and only the first call per lead is analysed.
+
+**Where do the lead factors (HL Type, Legal Status, Vertical...) and the 30-day history come from?** The recordings carry none, so the catalog uses the New Experiment spec's factors and values with a placeholder mix, and the 30-day history is a labelled synthetic placeholder (call lengths resampled from the 713 real recordings); every screen that shows them says so. It affects only who is eligible and how the split is checked, never an outcome. With real lead data the catalog is replaced and nothing else changes.
+
+**Does a language model read the segment?** No: the audience is built from lists (a factor, then its values), never typed, and the rule is shown in plain words as you build it. An earlier plain-English reader was replaced by this builder in the New Experiment overhaul.
+
+**The BRD says false winners about 5%. You show 2.5%?** The BRD's 5% is the two-sided 95% test: about 5% of identical-prompt tests look different, half in B's favour. We report both: 2.5% wrongly promoted and about 2.2% logged as a loss (nothing ships). Counting only wrong shipments, 2.5% is the right target.
 
 **Customer data and the prompt?** Audio and transcripts went only to the Sarvam platform. Transcripts, labels and spend files stay on this machine and are excluded from the repository. The prompt is IndiaMART's internal configuration; it is sent to Sarvam only in a paid step run with `--yes`. Our AI coding assistant never read call content: only counts and shapes.
 

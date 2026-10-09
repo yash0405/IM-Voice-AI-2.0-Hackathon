@@ -1,0 +1,173 @@
+12c12
+< 22 Jun 2026 · 6 days · config v1 f4a0863a6cb4 · simulated results
+---
+> 22 Jun 2026 · 5 days · config v1 f4a0863a6cb4 · simulated results
+18c18
+< B beats A on buylead_created: z=3.20 crossed the efficacy boundary at look 22 (z=3.77 now, still above the 2.68 line); guardrail duration_s proven within +15%
+---
+> B beats A on buylead_created: z=3.10 crossed the efficacy boundary at look 24 (z=3.19 now, still above the 2.73 line); guardrail duration_s proven within +15%
+22c22
+< Decision: promote B to all traffic. The evidence is strong enough that luck is an unlikely explanation and the guardrail holds. Over 6 days, 57% of 302 leads on the new prompt reached the goal (BuyLead created) against 46% of 2,766 on today's prompt: +11 points. The true difference is probably between +3 and +19 points. Average call length was +3% against a limit of +15%. These results are simulated with a known injected effect; they show the engine decides correctly, not that a real prompt is better.
+---
+> Decision: promote B to all traffic. The evidence is strong enough that luck is an unlikely explanation and the guardrail holds. Over 5 days, 56% of 295 leads on the new prompt reached the goal (BuyLead created) against 46% of 2,655 on today's prompt: +10 points. The true difference is probably between +1 and +18 points. Average call length was +2% against a limit of +15%. These results are simulated with a known injected effect; they show the engine decides correctly, not that a real prompt is better.
+26,28c26,31
+< A: today's prompt	2,766	1,260	45.6%	43.7% to 47.4%
+< B: new prompt	302	172	57.0%	51.3% to 62.4%
+< Lift of B over A			+11.4 pp	+3.3 pp to +19.2 pp
+---
+> A: today's prompt	2,655	1,217	45.8%	44.0% to 47.7%
+> B: new prompt	295	164	55.6%	49.9% to 61.2%
+> Lift of B over A			+9.8 pp	+1.4 pp to +17.9 pp
+> Metrics
+> BuyLead created (primary, higher is better)
+> Call duration (guardrail): must not rise by more than 15%
+31c34
+< All leads (neutral test) · 100% of traffic, about 600 leads a day · 3,068 of 3,068 counted leads match the rule; 0 out-of-segment leads kept today's prompt and were not counted
+---
+> All traffic (neutral test) · 100% of traffic, about 600 leads a day · 100% of counted leads matched this rule (2,950 of 2,950, re-read from the record); 0 out-of-segment leads kept today's prompt and were not counted
+32a36,106
+> Prompt B
+> 
+> Ask for any single detail at most twice against v1 · fingerprint e626b95ffcbc
+> 
+> 5 lines added, 5 removed.
+> 
+> A: current prompt
+> …
+> - Use conversation history for collection/transfer attempts; Count every delivered question or request seeking the same underlying field, regardless of wording, phase, or intent. Include confirmations, estimates, clarifications, and the predefined opening when it asks for the requirement; count that opening only once.
+>  
+> - Total ask limits: product identification/requirement confirmation = 4; quantity = 3; each specification = 2; buyer name = 3; buyer city = 3; buyer state = 3; transfer consent = 2. Identification and confirmation share the product's foure-ask allowance. A question requesting multiple fields consumes one attempt for each requested field.
+>  
+> - First process the latest buyer response and capture valid information. Complete any required confirmation only within the same field's remaining allowance. Never fabricate or mark an unconfirmed value as confirmed to advance.
+> - Before selecting a question, exclude fields already collected, confirmed, validly inferred, deferred, not applicable, or exhausted. A blank value alone does not make a closed field eligible. If the pending field remains eligible and below its limit, ask it; otherwise advance through the Collection Objective Queue.
+> …
+> - Once all applicable lead fields are closed, proceed to FINALISATION. Missing details never require extra asks. Call tools only when their required inputs are valid; if location is incomplete, skip the location lookup and continue with an already available seller or the existing no-live-seller closing.
+> - Preserve attempts and closure across interruptions and repeated intents. A genuine product change starts a fresh allowance for the new product's identification, quantity, and specifications; retain buyer name/location history. Synonyms, variants, attribute corrections, and refreshed tool results do not reset allowances.
+> - Treat the buyer's own location and preferred seller location as separate objectives; each city/state has a three-ask limit. A new preference does not reset its allowance. Accept volunteered answers or corrections to closed fields without reopening questioning.
+>  
+> - An explicit, unretracted request to connect to the available/alternate seller is transfer consent; a request for the original seller or seller information is not. At eligible finalisation, announce the transfer, set @ connect_ast_callto '1', and call @ ast_buy_confirmed_toolwithout asking again.
+>  
+> …
+>  - Apply Inference Rules first. If a valid requirement is already provided or reliably inferred, update @ quantityand @ quantity_unit, close this objective, and move on.
+>  - Use @ quantity_asked_countas the cumulative ask count, initialized to 0 once at call start. Never reset it.
+>  - Before every quantity question, check @ quantity_asked_count. If below 3 and the objective is open, increment it by 1 immediately before asking. If already 3, never ask again.
+>  - Allow one initial question and at most two follow-ups across the entire call. Every request for an amount, estimate, range, or quantity clarification counts, including those within deviation handlers. Never reset the count.
+>  
+>  
+>  - Before asking, check the count and objective status. This limit overrides all instructions to resume, clarify, or re-probe quantity.
+>  
+> …
+> {%if ast_seller_pns not in ("", "0", "00") %}
+>  
+>  - If the buyer is not responding to the city question even after trying for more then 2 times then skip the city question and move to the Finalisation step.
+>  
+>  
+> {%endif%}
+> …
+> B: your prompt (green = added, red = removed)
+> …
+> - Use conversation history for collection/transfer attempts; Count every delivered question or request seeking the same underlying field, regardless of wording, phase, or intent. Include confirmations, estimates, clarifications, and the predefined opening when it asks for the requirement; count that opening only once.
+>  
+>  
+> - Total ask limits: product identification/requirement confirmation = 4; quantity = 2; each specification = 2; buyer name = 2; buyer city = 2; buyer state = 2; transfer consent = 2. Identification and confirmation share the product's foure-ask allowance. A question requesting multiple fields consumes one attempt for each requested field.
+> - First process the latest buyer response and capture valid information. Complete any required confirmation only within the same field's remaining allowance. Never fabricate or mark an unconfirmed value as confirmed to advance.
+> - Before selecting a question, exclude fields already collected, confirmed, validly inferred, deferred, not applicable, or exhausted. A blank value alone does not make a closed field eligible. If the pending field remains eligible and below its limit, ask it; otherwise advance through the Collection Objective Queue.
+> …
+> - Once all applicable lead fields are closed, proceed to FINALISATION. Missing details never require extra asks. Call tools only when their required inputs are valid; if location is incomplete, skip the location lookup and continue with an already available seller or the existing no-live-seller closing.
+> - Preserve attempts and closure across interruptions and repeated intents. A genuine product change starts a fresh allowance for the new product's identification, quantity, and specifications; retain buyer name/location history. Synonyms, variants, attribute corrections, and refreshed tool results do not reset allowances.
+>  
+> - Treat the buyer's own location and preferred seller location as separate objectives; each city/state has a two-ask limit. A new preference does not reset its allowance. Accept volunteered answers or corrections to closed fields without reopening questioning.
+> - An explicit, unretracted request to connect to the available/alternate seller is transfer consent; a request for the original seller or seller information is not. At eligible finalisation, announce the transfer, set @ connect_ast_callto '1', and call @ ast_buy_confirmed_toolwithout asking again.
+>  
+> …
+>  - Apply Inference Rules first. If a valid requirement is already provided or reliably inferred, update @ quantityand @ quantity_unit, close this objective, and move on.
+>  - Use @ quantity_asked_countas the cumulative ask count, initialized to 0 once at call start. Never reset it.
+>  
+>  
+>  - Before every quantity question, check @ quantity_asked_count. If below 2 and the objective is open, increment it by 1 immediately before asking. If already 2, never ask again.
+>  - Allow one initial question and at most one follow-up across the entire call. Every request for an amount, estimate, range, or quantity clarification counts, including those within deviation handlers. Never reset the count.
+>  - Before asking, check the count and objective status. This limit overrides all instructions to resume, clarify, or re-probe quantity.
+>  
+> …
+> {%if ast_seller_pns not in ("", "0", "00") %}
+>  
+>  
+>  - If the buyer is not responding to the city question even after trying for more then 1 time then skip the city question and move to the Finalisation step.
+>  
+> {%endif%}
+> …
+> Show the full prompt B
+36,52c110,144
+< Hot Lead type balanced by design same-mix check p = 1.00
+< UA	837 (30.3%)	92 (30.5%)	+0.2 pp	
+< PUA	560 (20.2%)	62 (20.5%)	+0.3 pp	
+< ENQR	543 (19.6%)	59 (19.5%)	−0.1 pp	
+< PNS	826 (29.9%)	89 (29.5%)	−0.4 pp	
+< Nature of Business balanced by design same-mix check p = 0.98
+< Proprietor	1,235 (44.6%)	136 (45.0%)	+0.4 pp	
+< Pvt Ltd	662 (23.9%)	73 (24.2%)	+0.2 pp	
+< Partnership	346 (12.5%)	35 (11.6%)	−0.9 pp	
+< Other	523 (18.9%)	58 (19.2%)	+0.3 pp	
+< City left to chance same-mix check p = 0.41
+< Mumbai	383 (13.8%)	42 (13.9%)	+0.1 pp	
+< Delhi	445 (16.1%)	43 (14.2%)	−1.8 pp	
+< Bengaluru	257 (9.3%)	34 (11.3%)	+2.0 pp	
+< Pune	213 (7.7%)	17 (5.6%)	−2.1 pp	
+< Chennai	161 (5.8%)	13 (4.3%)	−1.5 pp	
+< Other	1,307 (47.3%)	153 (50.7%)	+3.4 pp	
+---
+> GST Nature of Business balanced by design same-mix check p = 1.00
+> Retailer	819 (30.8%)	89 (30.2%)	−0.7 pp	
+> Service Provider	372 (14.0%)	42 (14.2%)	+0.2 pp	
+> Wholesaler	489 (18.4%)	55 (18.6%)	+0.2 pp	
+> Manufacturer	559 (21.1%)	63 (21.4%)	+0.3 pp	
+> NA	416 (15.7%)	46 (15.6%)	−0.1 pp	
+> HL Type balanced by design same-mix check p = 1.00
+> UA	513 (19.3%)	56 (19.0%)	−0.3 pp	
+> PNSM	290 (10.9%)	33 (11.2%)	+0.3 pp	
+> PNSR	255 (9.6%)	29 (9.8%)	+0.2 pp	
+> PIM	248 (9.3%)	28 (9.5%)	+0.2 pp	
+> PUA	219 (8.2%)	23 (7.8%)	−0.5 pp	
+> PAM	163 (6.1%)	19 (6.4%)	+0.3 pp	
+> SCHD	132 (5.0%)	16 (5.4%)	+0.5 pp	
+> ENQR	178 (6.7%)	20 (6.8%)	+0.1 pp	
+> NUR	104 (3.9%)	12 (4.1%)	+0.2 pp	
+> PANF	114 (4.3%)	11 (3.7%)	−0.6 pp	
+> OLP	118 (4.4%)	12 (4.1%)	−0.4 pp	
+> PNCHF	84 (3.2%)	9 (3.1%)	−0.1 pp	
+> OLPR	51 (1.9%)	6 (2.0%)	+0.1 pp	
+> PUT	54 (2.0%)	6 (2.0%)	0.0 pp	
+> NVGT	48 (1.8%)	7 (2.4%)	+0.6 pp	
+> TF	53 (2.0%)	6 (2.0%)	0.0 pp	
+> UATF	31 (1.2%)	2 (0.7%)	−0.5 pp	
+> Legal Status left to chance same-mix check p = 0.66
+> Limited Company	439 (16.5%)	43 (14.6%)	−2.0 pp	
+> Partnership	242 (9.1%)	29 (9.8%)	+0.7 pp	
+> Proprietorship	1,171 (44.1%)	141 (47.8%)	+3.7 pp	
+> Others	270 (10.2%)	30 (10.2%)	0.0 pp	
+> NA	533 (20.1%)	52 (17.6%)	−2.4 pp	
+> Vertical left to chance same-mix check p = 0.55
+> Top Cities - Inhouse	914 (34.4%)	96 (32.5%)	−1.9 pp	
+> Top Cities - Channel	665 (25.0%)	77 (26.1%)	+1.1 pp	
+> Emerging Market - Channel	824 (31.0%)	87 (29.5%)	−1.5 pp	
+> NA	252 (9.5%)	35 (11.9%)	+2.4 pp	
+54c146
+< Hot Lead type × Nature of Business is dealt in blocks, so those two match almost exactly. City is not blocked: its gaps are the luck of the draw, shrinking as leads grow. The lead mix is synthetic.
+---
+> GST Nature of Business × HL Type is dealt in blocks, so those two match almost exactly. Legal Status and Vertical are not blocked: their gaps are the luck of the draw, shrinking as leads grow. The lead mix is synthetic.
+58c150
+< Call duration: +3% (limit +15%; 95% range −6% to +12%): Pass: proven within the limit
+---
+> Call duration: +2% (limit +15%; 95% range −6% to +11%): Pass: proven within the limit
+60c152
+< Split: B received 9.8% of leads (configured 10%); sample-ratio p = 0.77
+---
+> Split: B received 10.0% of leads (configured 10%); sample-ratio p = 1.00
+89c181
+< B 57%
+---
+> B 56%
+94c186
+< 31 entries, head 5bce9ab4cf0a80c0 Re-check in this browser
+---
+> 30 entries, head d00142af144ddffb Re-check in this browser

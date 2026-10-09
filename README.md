@@ -17,9 +17,12 @@ Canary closes the loop in four steps, on VANI's **real prompt** (Resources/Sarva
 - **Honest finding:** VANI repeats itself verbatim in only about 1.7% of calls (a lower bound), so the consistency fix is a safety measure and is expected to move conversion by a point at most; proving 1 point takes about 83,000 calls. The tool says so.
 
 ## Start here
-- **Anyone:** `START_HERE.md` (one page), then open `dist/canary_demo.html` or run `./start.sh`. The dashboard follows the PS05 feature spec: a left menu with **Overview, New Experiment (6 steps), Live Experiments (with "Advance 1 day"), History, Suggest A/B Tests, Prompt Library, Decision Log, Settings**, in the Clean Slate theme from the PM's design brief. Four experiments are pre-set and paused on day 2, as in the spec's demo plan.
+- **Anyone:** `START_HERE.md` (one page), then open `dist/canary_demo.html` or run `./start.sh`. The dashboard follows the PS05 feature spec: a left menu with **Overview, New Experiment (6 steps), Live Experiments (with "Advance 1 day"), History, Suggest A/B Tests, Prompt Library, Decision Log, Settings**, in the Clean Slate theme from the PM's design brief. Five experiments are pre-set and paused on day 2, as in the BRD's demo plan (B wins, B worse, flat, a win in one segment, and a win with longer calls).
 - **AI assistants:** `skill/ab-test-decision/SKILL.md` is the same method packaged as a reusable skill (plan a test, check a results file, decide, report honestly). Its scripts need only the standard library, except `decide.py` which uses the engine in this folder.
 - **Engineers:** the technical tools (proof lab, label calls, hear it) are one click away under Settings > Tools (`dist/canary_tools.html` offline, `/tools.html` live).
+
+## The second BRD (9 Oct, the final version for build): what it changed
+Scrutinised, not copied. **Adopted:** segments (a variable catalog and a segment builder that always shows the rule in plain words; only pre-call variables), the stratified router (blocks of 10 inside each lead-type x firm-type group), the split-health panel with a balance table and segment check, goal cards, whole-week durations (7 to 28 days) with a sticky calculator and a traffic light, the five-item pre-launch checklist, Save Test (draft) and Launch Test (locked), the scheduled start date, the full Overview (tiles, business impact, needs attention, traffic map, scorecard, top suggestion), the 5% holdback after a promotion, a variable catalog in Settings, and the end-of-test two-sided call ("significantly worse: keep A, logged as a loss"). **Adapted:** a segment is built from lists, never typed as code (the plain-English reader was replaced by the builder in the New Experiment overhaul); the LLM-written report is a template written from the numbers; SQLite is an export (`python -m canary export-db`) rather than the live store. **Kept:** our own router, engine and dashboard stack (no Streamlit): it needs no installation and runs offline. **Questioned with numbers (QA_REPORT 5d):** "false winner about 5%" is the two-sided total (2.5% promoted + 2.5% logged as a loss); a 1,000-lead minimum would stop the daily harm check from ever starting at a 10% share in a 7-day test, so the calculator now shows the day it starts; the lead variables do not exist in our data, so they are synthetic and labelled so.
 
 ## Scope: what is ours, what is not (checked against the documents)
 The PM's split: **before the test** (variants, traffic split, goals and rules locked), **the test itself** (the voice calls: not ours), **after / during** (watch the results, decide, early stop, roll out). Our reading of the documents:
@@ -54,8 +57,9 @@ Then follow `USER_JOURNEY.md`. For the live engine and the labelling page: `pyth
 | `python -m canary arena plan\|run [--yes --force]` | voice arena: hear prompt A vs B | only with `--yes` |
 | `python -m canary decide FILE --goal ... --share-b 0.3 --baseline ... --window-days ...` | **decide from results files** (A and B, per call or per day): ship, stop, hold for a person, or keep A | no |
 | `python -m canary samples` | write six synthetic sample results files to `data/samples/` | no |
+| `python -m canary export-db` | every test, version, assignment, call and decision into one SQLite file (`out/canary.db`) | no |
 | `python -m canary demo\|proof\|build\|qa\|slide\|serve` | scenarios, proof lab, dashboards (`dist/canary_demo.html` and `dist/canary_tools.html`), QA report, slide, live server | no |
-| `python -m unittest discover -s tests` | 116 tests (fake Sarvam client, no network) | no |
+| `python -m unittest discover -s tests` | the full suite (fake Sarvam client, no network) | no |
 
 Needs Python 3.10+, numpy, scipy, jinja2 (`requirements.txt`); `pdftotext` (poppler) only to re-extract the prompt from the PDF; `pip install sarvamai` plus `SARVAM_API_KEY` in `.env` only for paid steps. The dashboard needs no network, no CDN, no build step.
 
@@ -66,7 +70,8 @@ Needs Python 3.10+, numpy, scipy, jinja2 (`requirements.txt`); `pdftotext` (popp
 - `canary/fixloop.py`, `prescreen.py`, `arena.py` - the fix loop, the pre-check, the voice arena (all with exact cost estimates).
 - `canary/decide.py`, `samples.py` - the results-file path: read files, check them, count each lead once, replay day by day through the same decision function; synthetic sample files.
 - `canary/seqdesign.py`, `engine.py` - alpha-spending boundaries, power, one decision function (`Monitor.look`) used by the live runner and the proof lab.
-- `canary/router.py`, `ledger.py`, `simulator.py`, `scenarios.py`, `proof.py`, `baselines.py` - sticky split, hash-chained record, traffic replay, 3 fix scenarios + 6 stress scenarios, thousands of simulated tests against typical approaches.
+- `canary/catalog.py` - the variable catalog, segment rules and the strata plan (synthetic lead mix, labelled as such). `canary/export_db.py` - the SQLite export of the BRD's data model.
+- `canary/router.py`, `ledger.py`, `simulator.py`, `scenarios.py`, `proof.py`, `baselines.py` - sticky split, hash-chained record, traffic replay, 3 fix scenarios + 7 stress scenarios, thousands of simulated tests against typical approaches.
 - `canary/sarvam_pipe.py`, `labels.py`, `evaluator.py` - Sarvam labelling with spend guards, human labels, the schema-2 tagger prompt (`data/evaluator_prompt.md`, `data/dispositions.json`).
 - `canary/console.py` - the data behind the dashboard: demo experiments, history, prompt library, suggestions, metric list.
 - `web/console/*.js`, `web/console.css`, `web/index.html` - the dashboard that follows the feature spec and the Clean Slate theme (plain JS, hand-drawn SVG, no libraries, works offline; `web/console.js` is generated from the parts). `web/tools.html`, `simple.js`, `app.js`, `style.css` - the earlier technical tools page.
@@ -81,7 +86,7 @@ Needs Python 3.10+, numpy, scipy, jinja2 (`requirements.txt`); `pdftotext` (popp
 | our own issue list | IndiaMART's fatal / non-fatal quality matrix | schema-2 issues are the matrix parameters |
 
 ## The PM's suggestions
-Loop (propose B from failures, A/B it, ship if it wins): **built** on the real prompt. Sequential testing vs naive peeking: **kept**. Sample-ratio check: **kept and strengthened** (a per-arm assigned-vs-logged check). CUPED: dropped (no pre-call features, so we would invent the 30-40%). Segment promotion: dropped (multiple comparisons). 5% holdout: first extension (about 80 days to see a 4-point fade at 600 calls a day).
+Loop (propose B from failures, A/B it, ship if it wins): **built** on the real prompt. Sequential testing vs naive peeking: **kept**. Sample-ratio check: **kept and strengthened** (a per-arm assigned-vs-logged check). CUPED: dropped (no pre-call features, so we would invent the 30-40%). Segments as an audience: built (the second BRD asks for it); per-group winners are not used for the decision (multiple comparisons). 5% holdback after a promotion: built (it can only rule out a drop of about 11 points or more at 1,000 leads a day, and says so).
 
 ## Data hygiene
 Recordings and transcripts are customer data: they went only to the Sarvam platform (the sanctioned platform), never to any other service; transcripts, labels and spend files stay on this machine and are excluded from the repository (`.gitignore`). The real prompt is IndiaMART's internal configuration (not customer data); it is sent to Sarvam only when a paid step is run with `--yes`. Our AI coding assistant never read call content, only counts.

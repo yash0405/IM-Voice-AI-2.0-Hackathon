@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Canary</title>
+<style id="loader-style">
+  :root { --navy:#243b53; --blue:#4c7cf3; --bg:#f3f5f7; --line:#d9e2ec; --mute:#627d98; --neg:#dc6262; }
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--navy); font:15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; display:flex; align-items:center; justify-content:center; }
+  .box { background:#fff; border:1px solid var(--line); border-radius:12px; padding:28px; width:min(420px, calc(100vw - 32px)); }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p { margin:0 0 16px; color:var(--mute); font-size:14px; }
+  input { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+  button { margin-top:12px; width:100%; padding:10px 12px; border:0; border-radius:8px; background:var(--navy); color:#fff; font:inherit; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:default; }
+  #msg { margin-top:12px; min-height:22px; font-size:13px; color:var(--mute); }
+  #msg.err { color:var(--neg); }
+  .bar { height:6px; background:var(--bg); border-radius:3px; overflow:hidden; margin-top:10px; display:none; }
+  .bar i { display:block; height:100%; width:0; background:var(--blue); transition:width .3s; }
+  .foot { margin-top:14px; font-size:12px; color:var(--mute); }
+</style>
+</head>
+<body>
+<form class="box" id="gate" autocomplete="off">
+  <h1>Canary</h1>
+  <p>A/B testing and auto-rollout for voice agents. Enter the team password to open the app.</p>
+  <input id="pw" type="password" placeholder="Team password" autofocus aria-label="Team password">
+  <button id="go" type="submit">Open</button>
+  <div class="bar" id="bar"><i id="fill"></i></div>
+  <div id="msg" role="status"></div>
+  <div class="foot">Branch __BRANCH__ &middot; __COMMIT__. The first open downloads the engine (about 30 MB, then cached); it runs entirely in your browser.</div>
+</form>
+<script>
+(() => {                                                                 // own scope: the app declares its own $ and helpers
+const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/";
+const $ = id => document.getElementById(id);
+const say = (t, err) => { $("msg").textContent = t; $("msg").className = err ? "err" : ""; };
+const step = (n, t) => { $("bar").style.display = "block"; $("fill").style.width = n + "%"; say(t); };
+const tick = () => new Promise(r => setTimeout(r, 30));
+
+async function decrypt(buf, password) {
+  const b = new Uint8Array(buf), magic = new TextDecoder().decode(b.slice(0, 5));
+  if (magic !== "CNRY1") throw new Error("bad file");
+  const salt = b.slice(5, 21), iv = b.slice(21, 33), ct = b.slice(33);
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 600000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: new TextEncoder().encode("CNRY1") }, key, ct));
+}
+
+function loadScript(src) { return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => bad(new Error("could not load " + src)); document.head.appendChild(s); }); }
+
+$("gate").addEventListener("submit", async ev => {
+  ev.preventDefault(); $("go").disabled = true; say("");
+  try {
+    step(5, "Fetching the app...");
+    const buf = await (await fetch("app.enc", { cache: "no-cache" })).arrayBuffer();
+    step(12, "Checking the password...");
+    let zip;
+    try { zip = await decrypt(buf, $("pw").value); } catch (e) { $("bar").style.display = "none"; say("Wrong password.", true); $("go").disabled = false; return; }
+    step(20, "Loading the engine (first time takes a minute)...");
+    await loadScript(PYODIDE + "pyodide.js");
+    const py = await loadPyodide({ indexURL: PYODIDE });
+    step(45, "Loading numpy, scipy and jinja2...");
+    await py.loadPackage(["numpy", "scipy", "jinja2"]);
+    step(80, "Starting Canary...");
+    py.unpackArchive(zip, "zip", { extractDir: "/app" });
+    py.runPython("import sys, os\nsys.path.insert(0, '/app')\nos.chdir('/app')\nfrom canary import webapi");
+    const handle = py.pyimport("canary.webapi").handle;
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      const path = new URL(typeof url === "string" ? url : url.url, location.href).pathname, i = path.indexOf("/api/");
+      if (i < 0) return realFetch(url, opts);
+      await tick();                                                    // let the page paint "working" before the engine takes the thread
+      const r = handle((opts && opts.method) || "GET", path.slice(i), (opts && opts.body) || ""), [status, text] = r.toJs();
+      return new Response(text, { status, headers: { "Content-Type": "application/json" } });
+    };
+    const read = p => py.FS.readFile(p, { encoding: "utf8" });
+    const doc = new DOMParser().parseFromString(read("/app/web/index.html"), "text/html");
+    doc.querySelectorAll("script").forEach(s => s.remove());
+    $("loader-style").remove();
+    const style = document.createElement("style"); style.textContent = read("/app/web/console.css"); document.head.appendChild(style);
+    document.body.removeAttribute("style"); document.body.innerHTML = doc.body.innerHTML;
+    document.title = "Canary";
+    window.CANARY_LIVE = true; window.CANARY_HOSTED = true; window.CANARY_STATIC = true;
+    const s = document.createElement("script"); s.textContent = read("/app/web/console.js"); document.body.appendChild(s);
+    document.dispatchEvent(new Event("DOMContentLoaded"));              // the console waits for it to attach its tooltip
+    const tag = document.createElement("div");
+    tag.style.cssText = "position:fixed;right:8px;bottom:6px;font:11px/1 system-ui,sans-serif;color:#627d98;background:#ffffffd9;padding:3px 6px;border-radius:6px";
+    tag.textContent = "branch __BRANCH__ · __COMMIT__"; document.body.appendChild(tag);
+  } catch (e) {
+    $("bar").style.display = "none"; say("Could not start: " + e.message, true); $("go").disabled = false;
+  }
+});
+})();
+</script>
+</body>
+</html>

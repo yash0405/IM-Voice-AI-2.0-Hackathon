@@ -7,11 +7,12 @@
 - You land on **Overview**. The left menu has the eight screens: Overview, New Experiment, Live Experiments, History, Suggest A/B Tests, Prompt Library, Decision Log, Settings.
 
 ## Watch the demo (2 minutes)
-Four experiments are already running, each paused on day 2 (simulated, with a known answer):
+Five experiments are already running, each paused on day 2 (simulated, with a known answer):
 1. On **Overview**, press **Advance all running tests 1 day (demo)** a few times. Or open **Live Experiments** and press **Advance 1 day (demo)**.
 2. *Ask for any single detail at most twice* (B wins) is promoted on day 7. *Make the ask limits agree* (B worse) is **stopped early** by the daily harm check. *Warmer opening line* (flat) ends **inconclusive** and says how many more leads would settle it.
 3. *Offer the seller details on WhatsApp earlier* wins but its calls run longer than the limit, so it is **held for approval**: press **Approve** or **Reject**. Both are saved in the **Decision Log**, and an approved win becomes a new version in the **Prompt Library**, where **Rollback** is one click.
-4. **History** keeps every finished test with its frozen report (press a row). **Suggest A/B Tests** has ideas for the next test, each with a one-click start.
+4. *Proprietors: ask for any detail at most twice* tests only one group of leads: its **Split health** panel shows that A and B got the same mix, and after the win a 5% **holdback** stays on the old prompt for a week.
+5. **History** keeps every finished test with its frozen report (press a row). **Suggest A/B Tests** has ideas for the next test, each with a one-click start.
 
 ## Use your own results
 1. `./start.sh`, then **Import results files** (button on Overview).
@@ -19,7 +20,7 @@ Four experiments are already running, each paused on day 2 (simulated, with a kn
 3. Press **Decide**. You get a final report with the numbers, a range, the safety checks and a plain-words summary.
 
 ## Start a new test
-**New Experiment** walks six steps (hypothesis, prompt B, audience, goals, duration and rules, review). Step 5 has a live calculator that tells you whether your traffic is enough to get a clear answer. Launching locks the setup with a version ID.
+**New Experiment** walks six steps (hypothesis, prompt B, audience, goals, duration, review). **Prompt B** is the full prompt, pre-filled with today's live prompt; a side-by-side diff and a template-variable check update as you type. **Audience** is a builder: pick a factor (HL Type, Legal Status, Vertical...) and its values; the rule is shown in plain words with the leads a day and today's rate. **Goals** has one primary goal, guardrails and secondary metrics, including custom ones built from the data's columns. **Duration** is recommended for you from the last 30 days; **At a glance** on the right shows the same numbers. **Save Test** keeps an editable draft; **Launch Test** locks the setup with a version ID once the six-item checklist passes.
 
 ## What to keep in mind
 - The demo results are **simulated** with a known injected effect, so we can check the decision is right. They say nothing about how a real prompt performs.

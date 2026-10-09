@@ -19,6 +19,7 @@ Because the lines are built for repeated looks, checking every day does not infl
 | PROMOTE | z reaches the win line and every guardrail is proven inside its limit (upper end of its range under the limit). |
 | HOLD_FOR_APPROVAL | z reached the win line but the window ended with a guardrail not proven, or the evidence faded back below the line by the end (it is never shipped on a peak). Also: a guardrail is not proven (range reaches past the limit) or could not be evaluated (missing, unusable or constant values). Also used when approval mode is manual. Callers are unaffected while a person decides. |
 | INCONCLUSIVE | The window ended and no line was crossed. Keep A. The result says how many more leads would settle it. |
+| STOP_HARM, cause `loss_at_end` | One-look rule only: on the last day B is significantly worse (95%, two-sided). Keep A; logged as a loss. |
 | CONTINUE | A running test with no line crossed yet, or the win line was crossed but a guardrail is still being proven. The crossing is remembered; the win is only shipped if the evidence is still above the line when the guardrail is proven. |
 
 ## Defaults and why
@@ -29,7 +30,7 @@ Because the lines are built for repeated looks, checking every day does not infl
 
 ## Two rule sets
 - **sequential** (default): may promote or stop at any daily look; good when you want early answers and strong protection from harm.
-- **final_look**: one winner call at the end of the window, plus a strict daily harm check (99.9% bar). Simpler to explain, never promotes early, and catches a clearly worse B less often. Measured on identical simulated traffic (14 days, 300 leads a day, 30% to B): a 7-point harm was stopped in 98% of runs by sequential and 89% by final_look; a real +7-point win was promoted at a median of about 3,560 leads versus 4,200. False wins were close to 2.5% for both.
+- **final_look**: one winner call at the end of the window, plus a strict daily harm check (99.9% bar). Simpler to explain and never promotes early. On the last day the call is two-sided: a B that is significantly worse at 95% is kept out and logged as a loss (a STOP_HARM with the cause `loss_at_end`), not called inconclusive. Measured on identical simulated traffic (14 days, 300 leads a day, 30% to B): a 7-point harm was kept out in about 98% of runs by both rules, but sequential sent about 11% fewer calls to that B; a real +7-point win was promoted at a median of about 3,560 leads versus 4,200 (about 15% sooner). False wins were close to 2.5% for both. A vs A, 12,000 runs of the one-look rule: 2.5% wrongly promoted and 2.2% logged as a loss (so "about 5%" look different either way, but only 2.5% would ship).
 
 ## Before any decision
 1. The plan was given up front (baseline, share, window, smallest lift).

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import decide, fixloop, planner, promptlint, samples, variants
+from . import catalog, decide, fixloop, history, metriclib, planner, promptlint, samples, variants
 from .engine import Config, run_experiment
 from .evaluator import load_dispositions
 from .scenarios import make, order
@@ -18,8 +18,8 @@ from .simulator import Scenario, TrafficSim
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 
-DEFAULTS = {"confidence": 0.95, "harm_bar": 0.999, "min_leads_per_arm": 50, "approval": "auto", "rule_set": "final_look", "duration_margin": 0.10,
-            "rate_margin_pp": 2, "window_days": 7, "share_b": 0.30, "baseline": 0.45, "mde": 0.05, "leads_per_day": 1000,
+DEFAULTS = {"confidence": 0.95, "power": 0.80, "harm_bar": 0.999, "min_leads_per_arm": 500, "improvement_pts": 5, "min_days": 7, "max_days": 28, "approval": "auto", "rule_set": "final_look", "duration_margin": 0.10,
+            "rate_margin_pp": 2, "window_days": 7, "share_b": 0.30, "baseline": 0.45, "lift_rel": 0.10, "mde": 0.045, "leads_per_day": 1000, "assignment": "stratified", "holdback": 0.05, "holdback_days": 7,
             "leads_per_day_note": "An assumption: no real daily volume was provided. Replace it with yours in Settings."}
 
 # The spec's demo: three experiments set up in advance, each paused on day 2 (B wins, B worse, flat). The truth is a RELATIVE effect, as in the spec.
@@ -30,6 +30,9 @@ DEMO = [
          hypothesis="Making the stated limits agree will remove contradictions. (Demo truth: this edit backfires by 15%.)", day=2),
     dict(key="demo_flat", name="Warmer opening line", variant="reconcile_limits", preset="Flat", effect=0.0, seed=6, start="2026-10-07T09:00:00",
          hypothesis="A warmer first sentence will make more buyers stay on the line. (Demo truth: it changes nothing.)", day=2),
+    dict(key="demo_segment", name="Proprietors: ask for any detail at most twice", variant="cap_two_asks", preset="B wins, one segment", effect=+0.15, seed=7, start="2026-10-09T09:00:00", over={"mde": 0.07},
+         segment=[{"factor": "Legal Status", "column": "legal_status", "values": ["Proprietorship"]}],
+         hypothesis="Only proprietors are in this test; every other lead keeps today's prompt and is not counted. (Demo truth: +15% BuyLeads for proprietors.)", day=2),
     dict(key="demo_hold", name="Offer the seller details on WhatsApp earlier", variant="whatsapp_after_call", preset="B wins, calls longer", effect=+0.15, seed=5, start="2026-10-08T09:00:00", dur_mult=1.12,
          hypothesis="Offering the WhatsApp details sooner should lift BuyLeads. (Demo truth: +15% BuyLeads, but calls run 12% longer, just past the 10% limit: the bonus scenario, held for a person.)", day=2),
 ]
@@ -42,17 +45,30 @@ def slim(rec: dict) -> dict:
     return out
 
 
+DEMO_MIN_LEADS = 1000      # the five demo tests were set up with 1,000 leads per prompt before the daily harm check; kept so their recorded runs do not change
+
+
 def demo_config(name: str, variant: str, start: str, exp_id: str, **over) -> Config:
     d = DEFAULTS
     base = dict(exp_id=exp_id, name=name, variant_b=variant, share_b=d["share_b"], baseline=d["baseline"], mde=d["mde"], window_days=d["window_days"],
                 leads_per_day=d["leads_per_day"], rule_set=d["rule_set"], alpha=(1 - d["confidence"]) / 2, alpha_harm_daily=1 - d["harm_bar"],
-                guardrail_margin=d["duration_margin"], assignment="balanced", start=start, approval=d["approval"], min_per_arm=d["min_leads_per_arm"])
+                guardrail_margin=d["duration_margin"], assignment=d["assignment"], start=start, approval=d["approval"], min_per_arm=DEMO_MIN_LEADS)
     return Config(**{**base, **over}).validate()
 
 
-def run_preset(name: str, variant: str, start: str, exp_id: str, effect: float, seed: int, dur_mult: float = 1.0, **over) -> dict:
+def early_hangup_share() -> float:
+    """Share of the real recordings shorter than 15 seconds: the simulator's early-hang-up rate under A (measured, 100 of 713)."""
+    from .simulator import real_durations
+    d = real_durations()
+    return round(float((d < 15).mean()), 4)
+
+
+def run_preset(name: str, variant: str, start: str, exp_id: str, effect: float, seed: int, dur_mult: float = 1.0, hang_extra: float = 0.0, **over) -> dict:
+    """`hang_extra` (absolute, 0.03 = 3 points) is how much MORE often B's calls end in the first 15 seconds; it matters only when the early-hang-up guardrail is on."""
     cfg = demo_config(name, variant, start, exp_id, **over)
-    sc = Scenario(key=exp_id, title=name, story="", expect="-", true_a=cfg.baseline, true_b=round(cfg.baseline * (1 + effect), 4), seed=seed, dur_mult_b=dur_mult)
+    ha = early_hangup_share() if cfg.guard_rate else 0.0
+    sc = Scenario(key=exp_id, title=name, story="", expect="-", true_a=cfg.baseline, true_b=round(cfg.baseline * (1 + effect), 4), seed=seed, dur_mult_b=dur_mult,
+                  event_a=ha, event_b=min(0.99, ha + hang_extra) if cfg.guard_rate else 0.0)
     rec = run_experiment(cfg, TrafficSim(sc))
     return rec
 
@@ -60,11 +76,19 @@ def run_preset(name: str, variant: str, start: str, exp_id: str, effect: float, 
 def demo_experiments() -> list[dict]:
     out = []
     for d in DEMO:
-        rec = run_preset(d["name"], d["variant"], d["start"], "exp-" + d["key"].replace("_", "-"), d["effect"], d["seed"], d.get("dur_mult", 1.0))
+        rec = run_preset(d["name"], d["variant"], d["start"], "exp-" + d["key"].replace("_", "-"), d["effect"], d["seed"], d.get("dur_mult", 1.0),
+                         **({"segment": catalog.validate_segment(d["segment"])} if d.get("segment") else {}), **d.get("over", {}))
         out.append({"id": d["key"], "kind": "simulated", "preset": d["preset"], "hypothesis": d["hypothesis"], "start_day": d["day"],
                     "truth": {"effect_rel": d["effect"], "true_a": rec["config"]["baseline"], "true_b": round(rec["config"]["baseline"] * (1 + d["effect"]), 4)},
                     "record": slim(rec)})
     return out
+
+
+# History re-runs deal leads with the stratified router, whose groups come from the factor catalog. When the catalog became the 8 factors of the
+# New Experiment spec, two re-runs drew differently and stopped showing their scenario's stated outcome ("The fix does almost nothing" promoted,
+# "calls much longer: held for a person" ended inconclusive). These two seeds were re-picked (the first seed, counting up, that shows the stated
+# outcome) so History still illustrates each scenario as titled; the proof lab measures how often each outcome really happens.
+HISTORY_SEEDS = {"fix_flat": 3, "guardrail_hold": 3}
 
 
 def past_tests() -> list[dict]:
@@ -76,8 +100,8 @@ def past_tests() -> list[dict]:
     t0 = datetime(2026, 6, 1, 9)                       # one timeline, a test starting every week, all finished before the demo day
     n_sim = len(keys)
     for i, key in enumerate(keys):
-        cfg, sim, sc = make(key)
-        cfg = Config(**{**cfg.as_dict(), "start": (t0 + timedelta(days=7 * i)).isoformat(timespec="seconds")})
+        cfg, sim, sc = make(key, seed=HISTORY_SEEDS.get(key))
+        cfg = Config(**{**cfg.as_dict(), "start": (t0 + timedelta(days=7 * i)).isoformat(timespec="seconds"), "assignment": "stratified"})
         rec = run_experiment(cfg, sim)
         out.append({"id": f"past_{key}", "kind": "simulated", "preset": sc.title, "hypothesis": sc.story,
                     "truth": {"true_a": sc.true_a, "true_b": sc.true_b}, "record": slim(rec)})
@@ -114,7 +138,9 @@ def library() -> dict:
         for b, tb in texts.items():
             if a != b:
                 pair[f"{a}>{b}"] = list(difflib.unified_diff(ta.splitlines(), tb.splitlines(), "previous version", "this version", lineterm="", n=1))[:300]
-    return {"pair_diffs": pair, "base": versions[0], "candidates": cands, "variables": promptlint.variables(base["text"]), "base_text": base["text"], "base_lines": base["text"].count("\n") + 1}
+    specs = variants._candidates()
+    edits = {k: {op: specs[k].get(op, []) for op in ("edit", "remove", "add")} for k in specs}       # every candidate, so any test's prompt B can be rebuilt in full
+    return {"pair_diffs": pair, "base": versions[0], "candidates": cands, "edits": edits, "variables": promptlint.variables(base["text"]), "base_text": base["text"], "base_lines": base["text"].count("\n") + 1}
 
 
 def suggestions() -> list[dict]:
@@ -127,47 +153,33 @@ def suggestions() -> list[dict]:
         cards.append({"id": "gap", "source": "Disposition gaps", "title": "Calls that end abruptly convert far less",
                       "hypothesis": f"{top['calls']} of {mine['n_connected']} connected calls ended abruptly and converted {top['converted_with']:.0%} against {top['converted_without']:.0%} for the rest "
                                     f"(machine labels, not yet checked by a person). Ask for the next missing detail before closing.",
-                      "patch": None, "patch_note": "Not drafted yet. A Sarvam draft costs about Rs 1 and needs your go-ahead.",
+                      "change": None, "change_note": "Not drafted yet. A Sarvam draft costs about Rs 1 and needs your go-ahead.",
                       "metric": "buylead_created", "expected": f"at most +{top['ceiling_pp']} points (if every such call were fixed)", "expected_pp": top["ceiling_pp"],
                       "days": None, "ease": 2, "caveat": "An association, not a cause; only the A/B test shows whether the edit helps.", "variant": None})
     cards.append({"id": "lint", "source": "Prompt review", "title": "The prompt's own limits contradict each other",
                   "hypothesis": "Three places give different ask limits for the same thing (any slot 2 vs 3, buyer name 2 vs 3, product 4 vs 5). IndiaMART's quality matrix grades probing a parameter more than 1+2 times as fatal.",
-                  "patch": "reconcile_limits", "patch_note": "4 edits, no new contradiction, every template variable kept.", "metric": "buylead_created",
+                  "change": "reconcile_limits", "change_note": "4 edits, no new contradiction, every template variable kept.", "metric": "buylead_created",
                   "expected": "about +1 point at most (a consistency fix)", "expected_pp": 1.0, "days": None, "ease": 3,
                   "caveat": "Verbatim loops are rare (1.7% of calls), so the effect is small; proving 1 point needs tens of thousands of leads.", "variant": "reconcile_limits"})
     cards.append({"id": "loops", "source": "Call transcripts", "title": "Cap every question at two asks",
                   "hypothesis": "A small share of calls repeat the same question three or more times (a lower bound: the scan only sees near-identical repeats).",
-                  "patch": "cap_two_asks", "patch_note": "9 small edits; reviewed by a person.", "metric": "buylead_created", "expected": "about +1 to +3 points (a guess)", "expected_pp": 2.0,
+                  "change": "cap_two_asks", "change_note": "9 small edits; reviewed by a person.", "metric": "buylead_created", "expected": "about +1 to +3 points (a guess)", "expected_pp": 2.0,
                   "days": None, "ease": 2, "caveat": "A planning guess, not a measurement.", "variant": "cap_two_asks"})
     cards.append({"id": "segments", "source": "Weak segments", "title": "Find the categories or cities where conversion is weakest",
                   "hypothesis": "Needs a category, city or lead type on every call. The recordings carry none, so this idea cannot be generated yet.",
-                  "patch": None, "patch_note": "Unavailable: no segment data.", "metric": None, "expected": "-", "expected_pp": 0, "days": None, "ease": 0,
+                  "change": None, "change_note": "Unavailable: no segment data.", "metric": None, "expected": "-", "expected_pp": 0, "days": None, "ease": 0,
                   "caveat": "Shown so the gap is visible; nothing is invented.", "variant": None, "disabled": True})
     cards.append({"id": "past", "source": "Past tests", "title": "Re-run an inconclusive test for longer",
                   "hypothesis": "A past test ended without evidence either way. The result says how many more leads would settle it.",
-                  "patch": None, "patch_note": "Uses the same edit as the original test.", "metric": "buylead_created", "expected": "settles whether a smaller lift is real", "expected_pp": 0,
+                  "change": None, "change_note": "Uses the same edit as the original test.", "metric": "buylead_created", "expected": "settles whether a smaller lift is real", "expected_pp": 0,
                   "days": None, "ease": 3, "caveat": "", "variant": None, "from_history": "inconclusive"})
     return cards
 
 
 def metrics() -> list[dict]:
-    disp = {d["key"]: d["name"] for d in load_dispositions()}
-    return [
-        {"key": "buylead_created", "name": disp.get("buylead_created", "BuyLead created"), "role": "goal", "dispositions": ["buylead_created"], "denominator": "all analysed leads",
-         "direction": "higher is better", "note": "BL Approved / BL Enriched in the prompt's own vocabulary; the exact definition is to be confirmed with the organisers."},
-        {"key": "meeting_fixed", "name": "Meeting Fixed", "role": "goal", "dispositions": ["meeting_fixed"], "denominator": "connected leads", "direction": "higher is better",
-         "note": "The goal named in the problem statement (seller side). Available when result files carry this disposition."},
-        {"key": "bl_enriched", "name": "Buyer Enriched", "role": "goal", "dispositions": ["bl_enriched"], "denominator": "all analysed leads", "direction": "higher is better",
-         "note": "Named in the event deck. Available when result files carry this disposition."},
-        {"key": "callback_fixed", "name": "Callback Fixed", "role": "goal", "dispositions": ["callback_fixed"], "denominator": "all analysed leads", "direction": "higher is better",
-         "note": "Named in the event deck. Available when result files carry this disposition."},
-        {"key": "duration_s", "name": "Call duration", "role": "guardrail", "dispositions": [], "denominator": "average per lead", "direction": "lower is better",
-         "limit": "no more than +10% (default)", "note": "Compared on a ratio of means, with a range."},
-        {"key": "early_hangup", "name": "Early hang-ups (calls under 15 s)", "role": "guardrail", "dispositions": [], "denominator": "all analysed leads", "direction": "lower is better",
-         "limit": "no more than +2 points (default)", "note": "The 15-second cut-off is our assumption; the definition is to be confirmed."},
-        {"key": "fatal_call", "name": "Fatal calls (quality matrix)", "role": "guardrail", "dispositions": [], "denominator": "all analysed leads", "direction": "lower is better",
-         "limit": "no more than +2 points (suggested)", "note": "Available when result files carry a fatal-call flag."},
-    ]
+    """The metric list (Settings > Metrics and every screen that names a metric): built from the one metric catalog, canary/metriclib.py."""
+    return [{**m, "direction": ("higher" if m["direction"] == "higher" else "lower") + " is better",
+             "def": metriclib.definition(m), "available": m.get("available", True)} for m in metriclib.BUILTIN]
 
 
 def console_bundle() -> dict:
@@ -186,11 +198,27 @@ def console_bundle() -> dict:
     if pj.exists():
         P = json.loads(pj.read_text())
         rs = (P.get("rulesets") or {}).get("aa")
+        rate = lambda m, k: m["outcomes"].get(k, {"rate": 0})["rate"]
         if rs:
-            rate = lambda m, k: m["outcomes"].get(k, {"rate": 0})["rate"]
             ci = rs["final_look"]["canary"]["outcomes"].get("PROMOTE", {"ci": [0, 0]})["ci"]
             proof = {"final_look_ci": ci, "final_look": rate(rs["final_look"]["canary"], "PROMOTE"), "sequential": rate(rs["sequential"]["canary"], "PROMOTE"), "naive": rate(rs["final_look"]["naive_peek"], "PROMOTE"),
                      "naive_wrong": rate(rs["final_look"]["naive_peek"], "PROMOTE") + rate(rs["final_look"]["naive_peek"], "STOP_HARM"), "runs": rs["sequential"]["canary"]["runs"]}
-    return {"version": "console-1", "defaults": DEFAULTS, "proof": proof, "demo": demo, "past": past, "library": library(), "suggestions": sg, "metrics": metrics(),
+        aa = P.get("aa_brd")
+        if aa:                       # the BRD's own study on the console's defaults (7 days, 1,000 leads a day, 30% to B): these are the numbers shown first
+            ci2 = aa["false_winner"]["ci"]
+            proof = {**(proof or {}), "final_look": aa["false_winner"]["rate"], "final_look_ci": ci2, "either": aa["significant_either_way"]["rate"], "loss": aa["logged_as_loss"]["rate"], "runs": aa["runs"],
+                     "early_harm_stop": aa["early_harm_stop"]["rate"], "naive": aa.get("plain_daily_check_false_winner", {}).get("rate", (proof or {}).get("naive")),
+                     "naive_wrong": (aa.get("plain_daily_check_false_winner", {}).get("rate", 0) + aa.get("plain_daily_check_false_stop", {}).get("rate", 0)) or (proof or {}).get("naive_wrong"), "aa_brd": aa}
+        RS = P.get("rulesets") or {}
+        if RS.get("harm") and RS.get("win") and proof:
+            h, w = RS["harm"], RS["win"]
+            hit = lambda m: sum(rate(m, k) for k in ("STOP_HARM", "STOP_GUARDRAIL"))
+            hs, hf = h["sequential"]["canary"], h["final_look"]["canary"]
+            ps, pf = w["sequential"]["canary"], w["final_look"]["canary"]
+            proof["rules"] = {"harm_sequential": hit(hs), "harm_final": hit(hf), "exposure_saved": 1 - hs["mean_exposure_b"] / hf["mean_exposure_b"] if hf["mean_exposure_b"] else 0,
+                              "sooner": round(100 * (1 - ps["median_n_when_promoted"] / pf["median_n_when_promoted"])) if ps.get("median_n_when_promoted") and pf.get("median_n_when_promoted") else None}
+        if P.get("split_brd") and proof is not None:
+            proof["split_brd"] = P["split_brd"]
+    return {"version": "console-3", "defaults": {**DEFAULTS, "early_hangup_share": early_hangup_share()}, "catalog": catalog.bundle([c["name"] for c in history.COLUMNS]), "history": history.bundle(), "metric_catalog": metriclib.catalog_bundle(), "proof": proof, "demo": demo, "past": past, "library": library(), "suggestions": sg, "metrics": metrics(),
             "dispositions": load_dispositions(), "plans": planner.grid(), "spec_check": planner.spec_calculator_check(),
             "tools": {"proof": (DATA.parent / "out" / "proof.json").exists()}}

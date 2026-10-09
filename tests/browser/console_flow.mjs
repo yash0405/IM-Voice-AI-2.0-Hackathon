@@ -34,13 +34,12 @@ await go('#/log'); console.log('log ->', await txt('.pager span')); await shot('
 // history: filter, search, clone
 await go('#/history'); await p.select('#h-dec', 'promoted'); await sleep(300); console.log('history promoted ->', await txt('.pager span'));
 await p.select('#h-dec', 'all'); await sleep(300); await click('[data-clone]'); console.log('clone -> wizard:', await txt('h1'), '| name prefilled:', await p.$eval('#w-name', e => e.value));
-// wizard walk
-await click('#w-next'); console.log('step 2 ->', await txt('.card h2')); console.log('diff shown:', (await p.$$('.diff2')).length);
-await click('[data-mode="full"]'); await click('#w-load'); await sleep(300); console.log('full prompt vars ->', await txt('#w-vc')); await shot('wizard_full');
-await p.evaluate(() => { const t = document.querySelector('#w-full'); t.value = t.value.replace(/\{\{\s*buyer_name\s*\}\}/g, 'NAME'); t.dispatchEvent(new Event('input')); });
-await sleep(200); console.log('after removing a variable ->', await txt('#w-vc'));
-await click('[data-mode="patch"]'); await click('#w-next'); console.log('step 3 ->', await txt('.card h2'));
-await click('#w-next'); console.log('step 4 ->', await txt('.card h2')); await click('#w-next'); console.log('step 5 ->', await txt('.card h2')); console.log('calculator ->', (await txt('.card .card p')).slice(0, 220)); await shot('wizard_step5');
+// wizard walk (every step in detail: tests/browser/new_experiment_e2e.mjs)
+await click('#w-next'); console.log('step 2 ->', await txt('.card h2')); console.log('prompt B prefilled:', (await p.$eval('#w-b', e => e.value.length)) > 1000);
+await p.evaluate(() => { const t = document.querySelector('#w-b'); t.value = t.value.replace(/buyer_name/g, 'NAME'); t.dispatchEvent(new Event('input')); }); await sleep(500); console.log('after removing a variable ->', await txt('#w-vc')); await shot('wizard_vars');
+await p.evaluate(() => { const t = document.querySelector('#w-b'); t.value = t.value.replace(/NAME/g, 'buyer_name') + '\nOne more line.\n'; t.dispatchEvent(new Event('input')); }); await sleep(500); console.log('diff shown:', (await p.$$('.diff2')).length);
+await click('#w-next'); console.log('step 3 ->', await txt('.card h2'));
+await click('#w-next'); console.log('step 4 ->', await txt('.card h2')); await p.select('#w-primary', 'buylead_created'); await sleep(300); await click('#w-next'); console.log('step 5 ->', await txt('.card h2')); console.log('plan ->', (await txt('#w-planwords')).slice(0, 220)); await shot('wizard_step5');
 await click('#w-next'); console.log('step 6 ->', await txt('.card h2')); await click('#w-launch'); await p.waitForFunction(() => location.hash.startsWith('#/live/replay-'), { timeout: 8000 }); await sleep(300); console.log('offline launch ->', (await txt('.banner.warn')).slice(0, 60));
 console.log('errors:', errs.length ? [...new Set(errs)] : 'none');
 await b.close();

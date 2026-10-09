@@ -1,0 +1,47 @@
+name: Deploy app
+
+# Every push to any branch rebuilds the app and publishes it on GitHub Pages:
+#   https://<owner>.github.io/<repo>/            the branch pushed most recently
+#   https://<owner>.github.io/<repo>/<branch>/   each branch
+# The page is a password gate; the app (Python engine, data, UI) is AES-encrypted with the CANARY_PASSWORD secret and runs in the browser.
+on:
+  push:
+    branches-ignore: [gh-pages]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q cryptography
+      - name: Build the encrypted app
+        env:
+          CANARY_PASSWORD: ${{ secrets.CANARY_PASSWORD }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          slug="$(printf '%s' "$BRANCH" | tr '/' '-' | tr -cd 'A-Za-z0-9._-')"
+          echo "SLUG=$slug" >> "$GITHUB_ENV"
+          python deploy/build_static.py --out "build/$slug" --branch "$BRANCH" --commit "${GITHUB_SHA::7}"
+      - name: Publish to gh-pages
+        env:
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git clone --depth 1 --branch gh-pages "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
+          rm -rf "site/$SLUG" && cp -r "build/$SLUG" "site/$SLUG" && touch site/.nojekyll
+          python deploy/pages_index.py site "$SLUG" "$BRANCH" "${GITHUB_SHA::7}"
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "Deploy $BRANCH @ ${GITHUB_SHA::7}" && git push -q origin gh-pages
+          echo "Deployed $BRANCH: https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/$SLUG/"

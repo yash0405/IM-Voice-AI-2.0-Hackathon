@@ -659,7 +659,7 @@ def analyse(snaps: list[dict], report: dict, o: Opts, plan: dict) -> dict:
     hold_cause, routing, production_after, tails = None, {"A": 1 - cfg.share_b, "B": cfg.share_b}, hashA, {}
     if status == "decided":
         decision, routing, production_after, hold_cause = engine.act_on_decision(cfg, ledger, decision, final_row, hashA, hashB, len(looks))
-        tails = engine.decision_tails(ledger.entries, decision["kind"], hold_cause, hashA, hashB, looks[-1]["time"], demo=False)
+        tails = engine.decision_tails(ledger.entries, decision["kind"], hold_cause, hashA, hashB, looks[-1]["time"], demo=False, holdback=cfg.holdback_share, holdback_days=cfg.holdback_days)
     ok, _ = verify(ledger.entries)
     sa, sb = snaps[len(looks) - 1]["A"]["n"], snaps[len(looks) - 1]["B"]["n"]
     n_all = sa + sb
@@ -668,7 +668,7 @@ def analyse(snaps: list[dict], report: dict, o: Opts, plan: dict) -> dict:
              "abs_error_pp": (sb / n_all - cfg.share_b) * 100 if n_all else 0.0, "binomial_ci": [lo, hi], "within_chance_band": bool(lo <= cfg.share_b <= hi),
              "split_check": "on"}
     both = report.get("leads_in_both_arms")
-    result = {"kind": decision["kind"], "reason": decision["reason"], "hold_cause": hold_cause, "status": status, "at_look": len(looks), "of_looks": len(ds.look_n),
+    result = {"kind": decision["kind"], "reason": decision["reason"], "hold_cause": hold_cause, "cause": decision.get("cause"), "status": status, "at_look": len(looks), "of_looks": len(ds.look_n),
               "calls_analysed": final_row["n"], "n_max": ds.n_max, "routing_after": routing, "production_before": hashA, "production_after": production_after,
               "exposed_b_calls": c.nB, "time": looks[-1]["time"], "split": split,
               "stickiness": {"leads_checked": report.get("leads", 0), "arm_changes": both if both is not None else 0, "independent_router_disagreements": None,

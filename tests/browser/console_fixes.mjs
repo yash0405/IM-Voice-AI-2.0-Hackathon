@@ -24,12 +24,12 @@ await go('#/live/demo_hold'); await click('#a-approve');
 await go('#/library/v3'); console.log('library v3 ->', (await txt('.card h2')).slice(0, 40), '|', (await txt('.card .sub')).slice(0, 70), '| diff lines:', (await p.$$('.diff2 .diff div')).length);
 await go('#/overview'); console.log('overview note ->', await txt('p.note'));
 console.log('sticky th ->', await p.evaluate(() => { go('history'); return null; }) || '', await sleep(300) || '', await p.evaluate(() => getComputedStyle(document.querySelector('th')).position + ' / wrap overflow-x: ' + getComputedStyle(document.querySelector('.tbl-wrap')).overflowX));
-// 5. offline wizard: own patch, then launch (replay)
-await go('#/new'); await p.evaluate(() => { WZ = null; DYN.ui.wizard = null; }); await go('#/new'); await p.type('#w-name', 'My own patch test'); await click('#w-next');
-await click('input[name=w-var][value="__own"]'); await p.type('#w-anchor', 'the assure the buyer that at the end of the call contact details'); await p.type('#w-find', 'would be shared over whatsapp'); await p.type('#w-new', 'would be shared over whatsapp right after this call');
-await click('#w-apply'); console.log('own patch diff lines ->', (await p.$$('.diff2 .diff div')).length, '|', (await txt('.check')).slice(0, 60));
-await click('#w-basebox summary'); await sleep(300); console.log('base viewer ->', await p.$eval('#w-baseview textarea', e => e.value.length) + ' chars');
-for (let i = 0; i < 4; i++) await click('#w-next'); await click('#w-launch'); await p.waitForFunction(() => location.hash.startsWith('#/live/replay-'), { timeout: 8000 }); await sleep(400);
+// 5. offline wizard: a full prompt B, then launch (replay)
+await go('#/new'); await p.evaluate(() => { WZ = null; DYN.ui.wizard = null; }); await go('#/new'); await p.type('#w-name', 'My own prompt B test'); await click('#w-next');
+await p.evaluate(() => { const t = document.querySelector('#w-b'); t.value = t.value.replace('would be shared over whatsapp', 'would be shared over whatsapp right after this call'); t.dispatchEvent(new Event('input')); }); await sleep(500);
+console.log('prompt B diff lines ->', (await p.$$('.diff2 .diff div')).length, '|', (await txt('#w-vc')).slice(0, 60));
+await click('#w-abox summary'); await sleep(300); console.log('prompt A viewer ->', await p.$eval('#w-aview textarea', e => e.value.length) + ' chars');
+await click('#w-next'); await click('#w-next'); await p.select('#w-primary', 'buylead_created'); await sleep(300); await click('#w-next'); await click('#w-next'); await click('#w-launch'); await p.waitForFunction(() => location.hash.startsWith('#/live/replay-'), { timeout: 8000 }); await sleep(400);
 console.log('offline launch ->', (await txt('h2')).slice(0, 40), '|', (await txt('.banner.warn')).slice(0, 70));
 // 6. suggest learning
 await go('#/report/demo_flat'); console.log('(learning field present):', !!(await p.$('#r-learn')));

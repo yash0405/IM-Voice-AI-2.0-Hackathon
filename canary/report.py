@@ -29,8 +29,10 @@ def rate(m, k):
 
 def run_tests() -> str:
     r = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests"], cwd=ROOT, capture_output=True, text=True)
-    last = [l for l in (r.stderr + r.stdout).splitlines() if l.strip()][-3:]
-    return " ".join(last)
+    lines = [l.strip() for l in (r.stderr + r.stdout).splitlines() if l.strip()]
+    ran = next((l for l in lines if l.startswith("Ran ")), "no result line")
+    status = next((l for l in reversed(lines) if l.startswith("OK") or l.startswith("FAILED")), "unknown")
+    return f"{ran} - {status}"
 
 
 def _extra_sections(w, P):
@@ -67,9 +69,43 @@ def _extra_sections(w, P):
             o = lambda x: v["outcomes"].get(x, {"rate": 0})["rate"]
             w(f"| {v['label']} | {v['runs']} | {ci(v['outcomes']['PROMOTE']) if 'PROMOTE' in v['outcomes'] else '0.0%'} | {pct(o('STOP_HARM') + o('STOP_GUARDRAIL'))} | {pct(o('INCONCLUSIVE') + o('HOLD_FOR_APPROVAL'))} | {v['median_n']:,.0f} | {v['ledger_ok']}/{v['runs']} |")
         w("\nThe files are synthetic (outcomes from a known truth, real call durations); they prove the path, not a real prompt. Data checks are reported, never repaired silently: repeated call ids, unknown variant names, missing outcomes, leads served both prompts, a lead with several calls. The decision is identical whether results arrive day by day or all at once (test), because the planned maximum comes only from the pre-registered config.\n")
+    if P.get("aa_brd"):
+        A, SB = P["aa_brd"], P.get("split_brd") or []
+        w("## 5d. The second BRD's headline proofs: A vs A, and the split\n")
+        w(f"**A vs A, {A['runs']:,} runs** (identical prompts; {A['days']} days, {A['config']['leads_per_day']:,} leads a day, {A['config']['share_b']:.0%} to B, one winner call on the last day, a 99.9% daily harm check from {A['config']['min_per_arm']:,} leads per prompt). The BRD's target is a false winner 'about 5% of the time'. That figure is the two-sided 95% test: about 5% of identical-prompt tests look different in EITHER direction, 2.5% in B's favour (a false winner: promoted) and 2.5% against it (logged as a loss: nothing ships). We report both so the target is read correctly.\n")
+        w("| Outcome when A = B | Rate | 95% interval | Reading |\n|---|---|---|---|")
+        for key, label, note in (("promoted", "Wrongly promoted (false winner)", "target 2.5%"), ("logged_as_loss", "Logged as a loss (nothing ships)", "about 2.5%"), ("significant_either_way", "Looks different either way", "the BRD's '~5%'"),
+                                 ("early_harm_stop", "Stopped early by the daily harm check", f"{A['early_harm_stop_per_check']:.2%} per daily check ({A['daily_checks']:,} checks could fire); the BRD's target is about 0.1% a check"), ("halted_split", "Halted by the split / log check", "false alarm of the safety check"),
+                                 ("plain_daily_check_false_winner", "A plain p < 0.05 check every day (from 50 leads per prompt) crowns a winner", "the peeking trap")):
+            if key in A:
+                w(f"| {label} | {pct(A[key]['rate'], 2)} | {pct(A[key]['ci'][0], 2)} to {pct(A[key]['ci'][1], 2)} | {note} |")
+        w("")
+        if SB:
+            from . import catalog
+            gv = list(SB[0]["stratified"]["mix_gap_pp"])                      # the balance factors the study measured (catalog.BALANCE_VARS)
+            lab = lambda n, k="label": catalog.VARS[n][k] if n in catalog.VARS else n
+            blocked = [n for n in gv if n in catalog.STRATA_VARS]
+            n_strata = 1
+            for n in catalog.STRATA_VARS:
+                n_strata *= len(catalog.VARS[n]["values"])
+            w(f"**Split accuracy and lead mix** (the BRD's router: shuffled blocks inside each {' x '.join(lab(n) for n in catalog.STRATA_VARS)} group, against a plain coin flip per lead; the lead factors are synthetic, see the limitations). Error is in percentage points of B share; mix gap is the biggest difference between A's and B's share over the values of one factor.\n")
+            w(f"| Leads | B share | Audience | Router | Mean error | 95th pct error | Within +/-0.5 pp | Mix gap {' / '.join(lab(n, 'short') for n in gv)} (mean pp) | Leads that changed arm |\n|---|---|---|---|---|---|---|---|---|")
+            for x in SB:
+                for mode, nm in (("stratified", "**Stratified blocks**"), ("hash", "Plain random")):
+                    m = x[mode]; g = m["mix_gap_pp"]
+                    gaps = " / ".join(format(g[n]["mean"], ".1f") for n in gv)
+                    w(f"| {x['n']:,} | {x['share']:.0%} | {x['segment']} | {nm} | {m['mean_abs_err_pp']:.2f} | {m['p95_abs_err_pp']:.2f} | {m['within_half_pp']:.0%} | {gaps} | {m['arm_changes_after_reask']} |")
+            at1k = [x["stratified"]["within_half_pp"] for x in SB if x["n"] == 1000] or [0]
+            w(f"\nReading: with the blocks the achieved share is within 0.5 pp of the configured one in nearly every run from about 1,000 leads (at exactly 1,000 leads it holds in {min(at1k):.0%} to {max(at1k):.0%} of runs, depending on the share; at 3,000 leads or more in every run we drew). "
+              f"From about 3,000 leads A and B also carry a closer mix of {' and '.join(lab(n) for n in blocked)} (the blocked factors) than a plain coin flip gives; at 1,000 leads most of the {n_strata} strata expect fewer than {catalog.MIN_STRATUM} leads and are merged into one 'Other' stratum, so the mix is no better than chance. "
+              f"{' and '.join(lab(n) for n in gv if n not in blocked)} {'is' if len(gv) - len(blocked) == 1 else 'are'} not blocked, so {'its' if len(gv) - len(blocked) == 1 else 'their'} gaps are chance, as for a plain coin flip.\n")
+        w("**BRD claims we checked**\n")
+        w("- 'A 10% share needs about 2.8x more traffic than 50/50': total leads scale as 1 / (s x (1 - s)): 11.1 at 10% against 4.0 at 50%, a ratio of 2.78. Correct.")
+        w("- 'Harm check starts once each variant has 1,000 leads': at 10% to B and 1,000 leads a day, B reaches 1,000 leads on day 10, after a 7-day test has ended, so the daily harm check would never run. The BRD's default is kept (it is a setting), but the calculator now shows the day the harm check starts and turns amber when it would not start inside the window. The end-of-test winner call is not held back by this gate.")
+        w("- 'Winner call once at the end, harm check daily': implemented as the default rule. One addition: on the last day the call is two-sided (a B significantly worse at 95% is kept out and logged as a loss, as the BRD's decision table says) instead of being called 'inconclusive'.\n")
     if P.get("rulesets"):
         R = P["rulesets"]
-        w("## 5d. The dashboard spec's decision rule against ours, on identical traffic\n")
+        w("## 5e. The dashboard spec's decision rule against ours, on identical traffic\n")
         w("The BRD asks for daily checks on strict-early boundaries; the dashboard spec asks for ONE winner call at the end plus a very strict daily harm check. Both are valid; Canary runs either (`rule_set`). Same data for both: 14 days, 300 leads a day, 30% to B, planned for a +3 point lift.\n")
         w("| Truth | Rule | Ships B | Stops B | Median calls when promoted | B calls served |\n|---|---|---|---|---|---|")
         for k, v in R.items():
@@ -79,7 +115,9 @@ def _extra_sections(w, P):
                   f"| {v['label']} | {nm} | {ci(rate(m, 'PROMOTE'))} | {pct(rate(m, 'STOP_HARM')['rate'] + rate(m, 'STOP_GUARDRAIL')['rate'])} | - | {m['mean_exposure_b']:,.0f} |")
         aa = R["aa"]["final_look"]["naive_peek"]
         wrong = rate(aa, "PROMOTE")["rate"] + rate(aa, "STOP_HARM")["rate"]
-        w(f"\nReading: both keep false wins near the 2.5% budget. The spec's rule never promotes before the last day and stops a clearly worse B less often (its daily bar is stricter, so it also falsely stops less); ours promotes sooner and protects better, at a slightly higher false-stop rate. Neither dominates, so it is a setting, with the default argued by these numbers.\n")
+        hh, hw = R["harm"], R["win"]
+        hs, hf = hh["sequential"]["canary"], hh["final_look"]["canary"]
+        w(f"\nReading: both rules keep false wins near the 2.5% budget. Since the one-look rule also makes a two-sided call on the last day (B significantly worse at 95%: keep A, logged as a loss), both keep a B that is 7 points worse out about equally often ({pct(rate(hs, 'STOP_HARM')['rate'])} against {pct(rate(hf, 'STOP_HARM')['rate'])}). What differs is time: ours sends {pct(1 - hs['mean_exposure_b'] / hf['mean_exposure_b'], 0)} fewer calls to that B and promotes a real +7 point winner after {hw['sequential']['canary']['median_n_when_promoted']:,.0f} calls instead of {hw['final_look']['canary']['median_n_when_promoted']:,.0f}. Neither dominates, so it is a setting, with the default argued by these numbers.\n")
         w("**Claims in the BRD and the spec that we checked**\n")
         w(f"- 'Checking every day with a plain 95% test picks a false winner 20 to 25% of the time': over 14 daily looks with A = B, a plain test crowns B {pct(rate(aa, 'PROMOTE')['rate'])} and kills B {pct(rate(aa, 'STOP_HARM')['rate'])} of the time, so a wrong call in either direction is {pct(wrong)}: the 20-25% figure holds for 'any wrong call', not for 'a false winner' alone.")
         sc_ = spec_calculator_check()
@@ -286,10 +324,10 @@ def write_report() -> Path:
     w("- The simulated VANI uses the rendered real prompt but cannot run its tools (transfer, variable updates); the opening message and call variables are our assumptions (the real system fills them from the lead).")
     w(f"- False-win rate is slightly above nominal in small test slices ({pct(worst)} worst cell vs 2.5%); disclosed in §3.")
     w("- With a 10% slice, detecting a harm takes about 3,000 calls; the planner shows the trade-off. Balanced assignment needs a persisted ledger; hash assignment does not.")
-    w("- Segment analysis, CUPED and a post-promotion holdout were deliberately not built (see `DEMO_SCRIPT.md`, Q&A). The engine guards handling time and, optionally, one rate (a fatal-call or early-hang-up share) given by a column or a threshold; fatal calls are only available from files that carry them.")
+    w("- CUPED and per-segment winners were deliberately not built (see `DEMO_SCRIPT.md`, Q&A); segments as an audience, the stratified router and the 5% post-promotion holdback were built for the second BRD (§5d). The lead variables (lead type, firm type, city) are SYNTHETIC: the recordings carry none. The engine guards handling time and, optionally, one rate (a fatal-call or early-hang-up share) given by a column or a threshold; fatal calls are only available from files that carry them.")
     w("- Results files: the format the PM's files will take is not known, so the reader is flexible and every assumption is printed. A lead that appears in both prompts is counted once, in its first arm, and reported. Leads after the planned maximum are not used (to use more data, plan for a smaller lift). A file with no lead id counts every call, which makes results look surer than they are, and says so.")
     w("- The decision record is **tamper-evident, not tamper-proof**: editing, removing or re-ordering an entry is detected; someone who rewrites the whole chain is detected only if the head hash was written down somewhere else (the head hash is printed by the command line and shown when you press Verify chain, so it can be written down). An independent review of the file reader found and we fixed a set of decision-safety issues (a missing duration could drop the guardrail; results 'up to day d' could use later calls; the plan could be read off the data; one day could overshoot the planned maximum; several bad inputs crashed instead of explaining); each has a regression test.")
-    w("- The dashboard follows the PS05 feature spec screen by screen (see `MANAGER_SUMMARY.md`). Not built from it: email or Slack alerts, the post-promotion 5% holdback, the optional \"Try it\" chat box (paid credits) and language-model-written summaries (a template writes them from the numbers; a model should not write numbers). Segment ideas and segment filters are shown as unavailable because the recordings carry no category or city.")
+    w("- The dashboard follows the PS05 feature spec screen by screen (see `MANAGER_SUMMARY.md`). Not built from it: email or Slack alerts, the optional \"Try it\" chat box (paid credits) and language-model-written summaries (a template writes them from the numbers; a model should not write numbers). The weak-segment idea is shown as unavailable because the recordings carry no category or city.")
     w("")
     w("## 9. Reproduce\n")
     w("```\npip install -r requirements.txt\npython -m unittest discover -s tests   # tests: " + run_tests() + "\npython -m canary proof                  # ~10 s, writes out/proof.json\npython -m canary build                  # dist/canary_demo.html (offline)\npython -m canary qa                     # this report\npython -m canary serve                  # live engine + Label Lab\n```")

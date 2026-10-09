@@ -4,14 +4,18 @@
    lives in this browser only and is reset from Settings. */
 
 const LIVE = !!window.CANARY_LIVE;
+const HOSTED = !!window.CANARY_HOSTED;
 let C = window.CONSOLE_DATA || null;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const nf = n => (n == null || isNaN(n)) ? "-" : Math.round(n).toLocaleString("en-US");
 const pct = (x, d = 0) => (x == null || isNaN(x)) ? "-" : (x * 100).toFixed(d) + "%";
-const pts = (x, d = 1) => (x == null || isNaN(x)) ? "-" : (x >= 0 ? "+" : "−") + Math.abs(x * 100).toFixed(d) + " pp";
-const sgn = (x, d = 1) => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(d);
+const pts = (x, d = 1) => { if (x == null || isNaN(x)) return "-"; const t = Math.abs(x * 100).toFixed(d); return (+t === 0 ? "" : x >= 0 ? "+" : "−") + t + " pp"; };
+const sgn = (x, d = 1) => { const t = Math.abs(x).toFixed(d); return (+t === 0 ? "" : x >= 0 ? "+" : "−") + t; };
+const confOf = c => Math.round((1 - 2 * ((c && c.alpha) || 0.025)) * 100);                  // the test's confidence, from its locked config
+const zOf = c => normPpf(1 - ((c && c.alpha) || 0.025));
+const isBetter = (diff, c) => c && c.primary_direction === "lower" ? diff < 0 : diff > 0;     // "better" depends on the goal's direction, not on the sign
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const fdate = iso => { const d = new Date(iso); return isNaN(d) ? "-" : `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`; };
 const fdt = iso => { const d = new Date(iso); return isNaN(d) ? "-" : `${fdate(iso)}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
@@ -57,10 +61,23 @@ function leadsNeeded(pA, lift, shareB, alpha, power, seq) {
 }
 function detectableLift(n, pA, shareB, alpha, power, seq) { let lo = 1e-4, hi = Math.min(0.9, 1 - pA - 1e-3); for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (leadsNeeded(pA, m, shareB, alpha, power, seq) > n) lo = m; else hi = m; } return (lo + hi) / 2; }
 
+/* ------------------------------------------------------------------ the factor catalog (segment helpers are in 05-plan.js) */
+const TODAY = "2026-10-09";                                   // the demo's "today": a test that starts later is Scheduled
+const CAT = () => C.catalog || { variables: [], strata: [], balance: [], min_stratum: 30, min_share: 0.02 };
+const catVar = n => CAT().variables.find(v => v.name === n || v.column === n);
+const preCall = () => CAT().variables.filter(v => v.pre_call && !((DYN.settings || {}).preCallOff || []).includes(v.name));
+const segChips = seg => segList(seg).length ? segList(seg).map(r => `<span class="tag" title="${esc(r.factor)} is ${esc(orWords(r.values))}">${esc(r.factor)}: ${esc(r.values.join(", "))}</span>`).join(" ") : `<span class="tag">All leads</span>`;
+const segOf = e => e.audience || (e.record && e.record.config && e.record.config.segment) || null;       // `audience` is what the person chose when an offline launch replays another test's run
+
 /* ------------------------------------------------------------------ experiments and their demo state */
 const SK = "canary_console_v1";
-const DYN = store.get(SK, { dyn: {}, launched: [], settings: {}, libLog: [], ui: {} });
-const saveDyn = () => store.set(SK, DYN);
+/* Demo state in this browser. A prompt (about 170 KB) is kept once however many drafts and tests use it, and a full storage is reported. */
+const BIG_TEXT = 20000, fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36) + "_" + s.length.toString(36); };
+function loadDyn() { try { const raw = localStorage.getItem(SK); if (!raw) return null; const o = JSON.parse(raw); return o && o.packed === 2 ? JSON.parse(o.body, (k, v) => typeof v === "string" && v[0] === "\u0001" ? o.texts[v.slice(1)] : v) : o; } catch { return null; } }
+const DYN = loadDyn() || { dyn: {}, launched: [], settings: {}, libLog: [], ui: {} };
+let saveWarned = false;
+const saveDyn = () => { try { const texts = {}, body = JSON.stringify(DYN, (k, v) => { if (typeof v === "string" && v.length > BIG_TEXT) { const h = fnv(v); texts[h] = v; return "\u0001" + h; } return v; }); localStorage.setItem(SK, JSON.stringify({ packed: 2, texts, body })); }
+  catch (e) { if (!saveWarned) { saveWarned = true; toast("This browser could not save the demo state (its storage is full). Delete old drafts, or reset the demo in Settings.", 6000); } } };
 const SET = () => ({ ...C.defaults, ...DYN.settings });
 const EXPS = () => [...C.demo, ...DYN.launched, ...C.past];
 const byId = id => EXPS().find(e => e.id === id);
@@ -73,36 +90,57 @@ const dyn = e => (DYN.dyn[e.id] = DYN.dyn[e.id] || { day: e.kind === "simulated"
 function dayRows(rec) { const m = new Map(); rec.looks.forEach(r => m.set(r.day, r)); return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([day, row]) => ({ day, row })); }
 const lastDay = e => { const r = dayRows(e.record); return r.length ? r[r.length - 1].day : 0; };
 const windowDays = e => e.record.config.window_days;
-const KIND_LABEL = { PROMOTE: "Promoted", STOP_HARM: "Stopped: B worse", STOP_GUARDRAIL: "Stopped: guardrail", HOLD_FOR_APPROVAL: "Held for approval", INCONCLUSIVE: "Inconclusive, keep A", HALT_SRM: "Halted: broken test", CONTINUE: "Running", STOPPED_MANUAL: "Stopped by a person", REJECTED: "Rejected: kept A", ROLLED_BACK: "Promoted, then rolled back" };
-const KIND_CLASS = { PROMOTE: "pos", STOP_HARM: "neg", STOP_GUARDRAIL: "neg", HOLD_FOR_APPROVAL: "warn", INCONCLUSIVE: "plain", HALT_SRM: "warn", CONTINUE: "run", STOPPED_MANUAL: "neg", REJECTED: "plain", ROLLED_BACK: "warn" };
+const KIND_LABEL = { PROMOTE: "Promoted", STOP_HARM: "Stopped: B worse", LOSS: "Keep A: B was worse (a loss)", STOP_GUARDRAIL: "Stopped: guardrail", HOLD_FOR_APPROVAL: "Held for approval", INCONCLUSIVE: "Inconclusive, keep A", HALT_SRM: "Halted: broken test", CONTINUE: "Running", STOPPED_MANUAL: "Stopped by a person", REJECTED: "Rejected: kept A", ROLLED_BACK: "Promoted, then rolled back" };
+const KIND_CLASS = { PROMOTE: "pos", STOP_HARM: "neg", LOSS: "neg", STOP_GUARDRAIL: "neg", HOLD_FOR_APPROVAL: "warn", INCONCLUSIVE: "plain", HALT_SRM: "warn", CONTINUE: "run", STOPPED_MANUAL: "neg", REJECTED: "plain", ROLLED_BACK: "warn" };
 
+/** The primary metric of a test. Tests launched from the New Experiment page carry their locked metric list; older ones are lead-level rates. */
+const primaryDef = c => { const p = ((c && c.metrics) || []).find(x => x.role === "primary"); if (p) return p.def; const m = (C.metrics || []).find(x => x.key === (c && c.primary_goal)); return { type: "rate", key: c && c.primary_goal, name: m ? m.name : String((c && c.primary_goal) || "").replace(/_/g, " "), direction: (c && c.primary_direction) || "higher", leadLevel: true }; };
+const leadLevelRate = d => d.type === "rate" && (d.leadLevel || (d.num && d.den && d.num.unit === "leads" && d.den.unit === "leads"));
+const goalName = c => primaryDef(c).name;
+const fmtP = (v, c, d = 1) => fmtMetric(v, primaryDef(c), d);                 // a value of the primary goal: 45.1% or 69.9 s
+const fmtD = (v, c, d = 1) => fmtDelta(v, primaryDef(c), d);                  // a difference: +5.0 pts or −3.2 s
+const rangeD = (lo, hi, c, d = 1) => `${fmtD(lo, c, d)} to ${fmtD(hi, c, d)}`;
+/** One arm's 95% range: Wilson for a lead-level rate, value +- 1.96 SE otherwise. */
+function armCI(row, arm, c) {
+  const d = primaryDef(c), v = row["rate" + arm], se = row["se" + arm];
+  if (leadLevelRate(d) || se == null) return wilson(row["x" + arm], row["d" + arm] != null ? row["d" + arm] : row["n" + arm]);
+  return [v - 1.96 * se, v + 1.96 * se];
+}
 /** 95% range of the lift. The engine's range is used when it is usable (the end-of-test call, or an always-valid look); on early looks of the
     one-look rule the engine range is deliberately infinite, so a plain interim range is shown and labelled as such. */
-function liftRange(row) {
-  const w = row.rci ? Math.abs(row.rci[1] - row.rci[0]) : 9;
-  if (row.rci && w <= 0.6 && row.eff <= 50) return { lo: row.rci[0], hi: row.rci[1], interim: false };
-  const se = Math.sqrt(row.rateA * (1 - row.rateA) / Math.max(1, row.nA) + row.rateB * (1 - row.rateB) / Math.max(1, row.nB));
-  return { lo: row.diff - 1.96 * se, hi: row.diff + 1.96 * se, interim: true };
+function liftRange(row, c) {
+  const avg = primaryDef(c).type === "average", w = row.rci ? Math.abs(row.rci[1] - row.rci[0]) : 9e9;
+  if (row.rci && (avg ? isFinite(w) && w < 1e6 : w <= 0.6) && row.eff <= 50) return { lo: row.rci[0], hi: row.rci[1], interim: false };
+  const se = row.seA != null && row.seB != null ? Math.sqrt(row.seA ** 2 + row.seB ** 2) : Math.sqrt(row.rateA * (1 - row.rateA) / Math.max(1, row.dA || row.nA) + row.rateB * (1 - row.rateB) / Math.max(1, row.dB || row.nB)), z = zOf(c);
+  return { lo: row.diff - z * se, hi: row.diff + z * se, interim: true };
 }
-/** One guardrail's state, used by the Live tile, the History column and the report so they can never disagree. */
-function guardStatus(g, margin, kind, v) {
-  const rel = kind === "rel", f = x => rel ? sgn(x * 100, 0) + "%" : sgn(x * 100, 1) + " pp", lim = rel ? "+" + (margin * 100).toFixed(0) + "%" : "+" + (margin * 100).toFixed(0) + " pp";
-  if (!g) return { label: "Not enough data", cls: "warn", short: "Not proven", value: "-", range: "", lim, f };
-  const lo = g.worse - 1.96 * g.se, hi = g.worse + 1.96 * g.se, bad = g.z_breach >= (v.cur ? v.cur.harm : 99), decided = v.decided;
+/** One guardrail's state, used by the Live tile, the History column and the report so they can never disagree.
+    kind: "rel" (a relative change), "pts" (points of a rate) or "units" (an average's own unit, `unit`). */
+function guardStatus(g, margin, kind, v, unit) {
+  const f = x => kind === "rel" ? sgn(x * 100, 0) + "%" : kind === "units" ? sgn(x, 1) + (unit ? " " + unit : "") : sgn(x * 100, 1) + " pp", lim = kind === "rel" ? "+" + (margin * 100).toFixed(0) + "%" : kind === "units" ? "+" + (+margin).toFixed(1) + (unit ? " " + unit : "") : "+" + (margin * 100).toFixed(0) + " pp";
+  if (!g || g.se == null || !isFinite(g.se)) return { label: "Not enough data", cls: "warn", short: "Not proven", value: "-", range: "", lim, f };
+  const zc = zOf(v.config), lo = g.worse - zc * g.se, hi = g.worse + zc * g.se, bad = g.z_breach >= (v.cur ? (v.cur.harm_g != null ? v.cur.harm_g : v.cur.harm) : 99), decided = v.decided;
   const stoppedElsewhere = decided && ["STOP_HARM", "HALT_SRM"].includes(v.res.kind);
   let label, cls, short;
-  if (bad) { label = "\u2715 Fail: limit breached"; cls = "neg"; short = "Fail: breached"; }
+  if (bad) { label = "✕ Fail: limit breached"; cls = "neg"; short = "Fail: breached"; }
   else if (stoppedElsewhere) { label = "Not evaluated: the test stopped on another rule"; cls = "plain"; short = "n/a (stopped)"; }
-  else if (decided) { if (hi < margin) { label = "\u2713 Pass: proven within the limit"; cls = "pos"; short = "Pass"; } else { label = "\u2715 Not proven within the limit"; cls = "warn"; short = "Not proven"; } }
-  else if (hi < margin) { label = "\u2713 Within the limit so far"; cls = "pos"; short = "Within the limit so far"; }
-  else if (lo > margin) { label = "\u2715 Over the limit so far"; cls = "neg"; short = "Over the limit so far"; }
-  else { label = "\u2026 Not yet proven"; cls = "warn"; short = "Not yet proven"; }
+  else if (decided) { if (hi < margin) { label = "✓ Pass: proven within the limit"; cls = "pos"; short = "Pass"; } else { label = "✕ Not proven within the limit"; cls = "warn"; short = "Not proven"; } }
+  else if (hi < margin) { label = "✓ Within the limit so far"; cls = "pos"; short = "Within the limit so far"; }
+  else if (lo > margin) { label = "✕ Over the limit so far"; cls = "neg"; short = "Over the limit so far"; }
+  else { label = "… Not yet proven"; cls = "warn"; short = "Not yet proven"; }
   return { label, cls, short, value: f(g.worse), range: `${f(lo)} to ${f(hi)}`, lim, f };
 }
+/** A test's guardrails with their state. Tests from the New Experiment page read their metric list; older ones the two fixed guardrails. */
 function guardList(v) {
   const c = v.config, cur = v.cur, out = [];
-  if (c.secondary_role === "guardrail") out.push({ name: "Call duration", st: guardStatus(cur && cur.guardrail, c.guardrail_margin, "rel", v), g: cur && cur.guardrail });
-  if (c.guard_rate) out.push({ name: c.guard_rate.replace(/_/g, " ").replace(/^./, x => x.toUpperCase()), st: guardStatus(cur && cur.guardrail2, c.guard_rate_margin, "pts", v), g: cur && cur.guardrail2 });
+  if (c.metrics) {
+    c.metrics.forEach(x => { if (x.role !== "guardrail") return; const d = x.def, m = cur && (cur.metrics || []).find(y => y.key === d.key && y.role === "guardrail"), avg = d.type === "average", kind = x.limit.kind === "rel" ? "rel" : avg ? "units" : "pts";
+      const margin = x.limit.kind === "rel" || !avg ? x.limit.value / 100 : x.limit.value, unit = avg ? metricUnit(d) : "";
+      out.push({ name: d.name, def: d, limit: x.limit, conf: confOf(c), st: guardStatus(m ? { worse: m.worse, se: m.worse_se, z_breach: m.z_breach } : null, margin, kind, v, unit), g: m || null, metric: m || null }); });
+    return out;
+  }
+  if (c.secondary_role === "guardrail") out.push({ name: "Call duration", conf: confOf(c), st: guardStatus(cur && cur.guardrail, c.guardrail_margin, "rel", v), g: cur && cur.guardrail });
+  if (c.guard_rate) out.push({ name: c.guard_rate.replace(/_/g, " ").replace(/^./, x => x.toUpperCase()), conf: confOf(c), st: guardStatus(cur && cur.guardrail2, c.guard_rate_margin, "pts", v), g: cur && cur.guardrail2 });
   return out;
 }
 function guardOverall(v) {
@@ -110,6 +148,20 @@ function guardOverall(v) {
   const worst = l.find(x => x.st.cls === "neg") || l.find(x => x.st.cls === "warn") || l.find(x => x.st.cls === "plain") || l[0];
   return { short: l.length > 1 && worst.st.cls !== "pos" ? worst.name + ": " + worst.st.short : worst.st.short, cls: worst.st.cls };
 }
+/** Secondary metrics of a test: A against B with the 95% range of the difference. For insight only. */
+function secondaryList(v) { const c = v.config, cur = v.cur; return ((c && c.metrics) || []).filter(x => x.role === "secondary").map(x => ({ def: x.def, direction: x.def.direction, m: cur && (cur.metrics || []).find(y => y.key === x.def.key && y.role === "secondary") })); }
+function secondaryHtml(v) {
+  const list = secondaryList(v); if (!list.length) return "";
+  return `<div class="tbl-wrap"><table><thead><tr><th>Metric</th><th class="num">A: today's prompt</th><th class="num">B: new prompt</th><th class="num">B minus A (95% range)</th><th>Better</th></tr></thead><tbody>${list.map(({ def, direction, m }) => `<tr><td><b>${esc(def.name)}</b><div class="note">${esc(metricWords(def))}</div></td>
+    <td class="num">${m ? fmtMetric(m.A.value, def) : "-"}</td><td class="num">${m ? fmtMetric(m.B.value, def) : "-"}</td><td class="num">${m && m.diff != null ? `<b>${fmtDelta(m.diff, def)}</b><div class="note">${fmtDelta(m.lo, def)} to ${fmtDelta(m.hi, def)}</div>` : "-"}</td><td>${direction === "lower" ? "↓ lower" : "↑ higher"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+/** The locked metric list in plain words (Review, the final report). */
+function metricsSummaryHtml(c) {
+  if (!c.metrics) return `<div><b>${esc(goalName(c))}</b> (primary, ${c.primary_direction === "lower" ? "lower" : "higher"} is better)</div>${c.secondary_role === "guardrail" ? `<div><b>Call duration</b> (guardrail): must not rise by more than ${(c.guardrail_margin * 100).toFixed(0)}%</div>` : ""}${c.guard_rate ? `<div><b>${esc(c.guard_rate.replace(/_/g, " "))}</b> (guardrail): must not rise by more than ${(c.guard_rate_margin * 100).toFixed(0)} points</div>` : ""}`;
+  return c.metrics.map(x => `<div><span class="tag">${x.role === "primary" ? "Primary" : x.role === "guardrail" ? "Guardrail" : "Secondary"}</span> <b>${esc(x.def.name)}</b> ${x.def.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.def))}</span>${x.role === "guardrail" && x.limit ? ` · <b>${esc(limitWords(x.limit, x.def, x.def.direction))}</b>` : ""}${x.role === "secondary" ? ` <span class="note">(for insight only)</span>` : ""}</div>`).join("");
+}
+/** "100% of counted leads matched this rule", from the engine's re-check of every counted lead. */
+function segMatchLine(rec) { const s = rec.result && rec.result.segment_check; if (!s) return ""; return `${pct(s.matching / Math.max(1, s.counted_leads), 0)} of counted leads matched this rule (${nf(s.matching)} of ${nf(s.counted_leads)}, re-read from the record)`; }
 
 /** Everything the screens need about one experiment at its current demo day. */
 function view(e) {
@@ -117,22 +169,26 @@ function view(e) {
   const day = Math.min(d.day, Math.max(ld, 1));
   const decided = res.status !== "running" && day >= ld;                       // the engine's call becomes visible on its day
   let kind = decided ? res.kind : "CONTINUE";
+  if (kind === "STOP_HARM" && res.cause === "loss_at_end") kind = "LOSS";       // the one-look rule's end-of-test call: significantly worse, kept out, logged as a loss
   if (d.manualStop && !decided) kind = "STOPPED_MANUAL";
   if (decided && kind === "HOLD_FOR_APPROVAL" && d.approval === "approved") kind = "PROMOTE";
   if (decided && kind === "HOLD_FOR_APPROVAL" && d.approval === "rejected") kind = "REJECTED";
   if (kind === "PROMOTE" && d.rolledBack) kind = "ROLLED_BACK";
   const finished = decided && !(kind === "HOLD_FOR_APPROVAL") || d.manualStop;
-  const rows = dayRows(rec).filter(r => r.day <= day);
+  const sched = !!e.scheduled && !d.started;                                   // launched for a later start date: nothing has run yet
+  const rows = sched ? [] : dayRows(rec).filter(r => r.day <= day);
   const cur = rows.length ? rows[rows.length - 1].row : null;
-  const ended = finished || (decided && kind === "HOLD_FOR_APPROVAL");
+  const ended = !sched && (finished || (decided && kind === "HOLD_FOR_APPROVAL"));
   let status;
-  if (d.manualStop && !decided) status = ["Stopped by a person", "neg"];
+  if (sched) status = ["Scheduled for " + fdate(rec.config.start), "plain"];
+  else if (d.manualStop && !decided) status = ["Stopped by a person", "neg"];
   else if (kind === "HOLD_FOR_APPROVAL") status = ["Ready to decide", "warn"];
   else if (ended) status = [KIND_LABEL[kind] || kind, KIND_CLASS[kind] || "plain"];
   else if (d.paused) status = ["Paused", "plain"];
   else if (cur && cur.z <= -1.96) status = ["Watch: B looks worse", "warn"];
   else status = ["On track", "run"];
-  return { d, rec, res, day, ld, win, decided, kind, finished: !!finished, ended, rows, cur, status, running: !ended && !d.paused, config: rec.config };
+  const hb = rec.holdback && kind === "PROMOTE" && !d.rolledBack ? { all: rec.holdback, day: d.hold || 0, rows: rec.holdback.rows.slice(0, d.hold || 0), done: (d.hold || 0) >= rec.holdback.days } : null;   // the week after a promotion
+  return { d, rec, res, day, ld, win, decided: decided && !sched, kind: sched ? "CONTINUE" : kind, finished: !!finished && !sched, ended, rows, cur, status, running: !ended && !d.paused && !sched, scheduled: sched, holdback: hb, config: rec.config };
 }
 /** The event that makes a held test promote (a person's approval) counts as a promotion at that time. */
 function promotedExperiments() {
@@ -142,7 +198,7 @@ function promotedExperiments() {
 }
 
 /* ------------------------------------------------------------------ events (the Decision Log): the engine's own record, plus the console's actions */
-const EV_TYPES = ["Started", "Harm alert", "Stopped", "Promoted", "Approved", "Rejected", "Rolled back", "Held", "Inconclusive", "Halted", "Paused", "Resumed"];
+const EV_TYPES = ["Saved", "Started", "Harm alert", "Split alert", "Stopped", "Promoted", "Approved", "Rejected", "Rolled back", "Held", "Inconclusive", "Holdback", "Paused", "Resumed"];
 function eventsFor(e) {
   const v = view(e), rec = e.record, out = [], name = rec.config.name, id = e.id;
   const tail = v.d.approval === "approved" ? (rec.tails || {}).approve : v.d.approval === "rejected" ? (rec.tails || {}).reject : (v.d.rolledBack ? (rec.tails || {}).rollback : null);
@@ -151,14 +207,14 @@ function eventsFor(e) {
   for (const ent of rec.ledger) {
     const b = JSON.parse(ent.body), p = b.payload;
     if (b.type === "look") continue;
-    if (b.type === "experiment_created") { push(b.ts, "Started", `Started ${p.config.rule_set === "final_look" ? "(one winner call on the last day)" : "(early promote and early stop)"}; config version ${p.config_version} (${p.config_hash}); locked.`, ent.hash); continue; }
+    if (b.type === "experiment_created") { push(b.ts, "Started", `Launched ${p.config.rule_set === "final_look" ? "(one winner call on the last day)" : "(early promote and early stop)"}; config version ${p.config_version} (${p.config_hash}); locked.${p.audience ? ` Audience: ${p.audience.rule} (${(p.audience.share_of_traffic * 100).toFixed(0)}% of traffic, about ${nf(p.audience.eligible_per_day)} leads a day); split dealt in blocks of ${p.audience.block}.` : ""}`, ent.hash); continue; }
     if (b.type === "routing_changed" && b.seq <= 1) continue;
     if (!v.decided) continue;
     if (b.type === "decision") {
-      if (p.kind === "STOP_HARM") { push(b.ts, "Harm alert", p.reason, ent.hash); }
+      if (p.kind === "STOP_HARM" && p.cause !== "loss_at_end") { push(b.ts, "Harm alert", p.reason, ent.hash); }
       else if (p.kind === "STOP_GUARDRAIL") { push(b.ts, "Harm alert", "Guardrail breached. " + p.reason, ent.hash); }
-      const t = { PROMOTE: "Promoted", STOP_HARM: "Stopped", STOP_GUARDRAIL: "Stopped", HOLD_FOR_APPROVAL: "Held", INCONCLUSIVE: "Inconclusive", HALT_SRM: "Halted" }[p.kind] || p.kind;
-      push(b.ts, t, p.kind === "PROMOTE" || p.kind === "HOLD_FOR_APPROVAL" || p.kind === "INCONCLUSIVE" || p.kind === "HALT_SRM" ? p.reason : "B stopped; its leads go back to A.", ent.hash);
+      const t = { PROMOTE: "Promoted", STOP_HARM: "Stopped", STOP_GUARDRAIL: "Stopped", HOLD_FOR_APPROVAL: "Held", INCONCLUSIVE: "Inconclusive", HALT_SRM: "Split alert" }[p.kind] || p.kind;
+      push(b.ts, t, p.kind === "PROMOTE" || p.kind === "HOLD_FOR_APPROVAL" || p.kind === "INCONCLUSIVE" || p.kind === "HALT_SRM" ? p.reason : (p.cause === "loss_at_end" ? "Logged as a loss: " + p.reason + ". A stays live." : "B stopped; its leads go back to A. Calls after the stop are left out of the analysis."), ent.hash);
     } else if (b.type === "promotion") push(b.ts, "Promoted", `Production prompt ${p.production_before.slice(0, 7)} → ${p.production_after.slice(0, 7)} (${p.approval}).`, ent.hash);
     else if (b.type === "approval_requested") push(b.ts, "Held", "Approval requested. Callers are unaffected while a person decides.", ent.hash);
   }

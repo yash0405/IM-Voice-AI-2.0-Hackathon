@@ -29,7 +29,7 @@ Written for: the team lead and the non-technical teammate. Plain words; every nu
 | Spec: a second guardrail (early hang-ups) | **Built** (optional, any rate) |
 | Spec: one winner call at the end with a strict daily harm check | **Built as a setting, and measured against ours** (below). The BRD and the spec disagree with each other; we did not pick one blindly |
 | Theme: Clean Slate colours | **Applied** (light mode). The theme's navy fails the colour-blind check for chart lines, so navy is used for text and the chart pair is a checked navy-blue pair |
-| Spec: 6-step wizard, History, Prompt Library, Settings, Overview, model-written summaries | **Not built.** Their data exists; the screens do not. We do not let a language model write the numbers |
+| Spec: 6-step wizard, History, Prompt Library, Settings, Overview, model-written summaries | **Screens built later the same day (see the update below).** Model-written summaries are not built: we do not let a language model write the numbers |
 
 **Two things in the spec we questioned, with facts**
 - The spec's calculator example is inconsistent: detecting 0.8 points needs about 16 days, not 12.
@@ -49,8 +49,8 @@ Scrutinised; its good ideas were adopted (hold for approval, "more leads needed"
 |---|---|---|
 | A decision from a file is as safe as one from the simulator | 571 files with no real difference: a winner was wrongly crowned 2.6% of the time (95% range 1.5-4.3%, budget 2.5%) | `python -m canary proof` |
 | It finds real effects | +7 points promoted in 77% of 285 files (range 72-82%, designed power 80%); a 10-point harm stopped in 96.5% | same |
-| The same decision whether results arrive daily or all at once | Test; a flaw here was found and fixed during this session | `python -m unittest discover -s tests` (114 tests) |
-| Spec's rule vs ours | Both keep false wins near 2.5%. A clearly worse B (7 points) is stopped 98% (ours) vs 89% (spec); a real +7 point win is promoted about 15% sooner by ours | `QA_REPORT.md` 5d |
+| The same decision whether results arrive daily or all at once | Test; a flaw here was found and fixed during this session | `python -m unittest discover -s tests` (162 tests at the last count) |
+| Spec's rule vs ours | Both keep false wins near 2.5%. Since the second BRD's two-sided end-of-test call was added, both keep a B that is 7 points worse out in about 98% of runs; ours sends about 12% fewer calls to it and promotes a real +7 point win about 15% sooner | `QA_REPORT.md` 5e |
 | An independent reviewer tried to break the file reader | It found real problems, for example a missing duration could let a win ship unguarded, and "results up to day 5" could use later calls. All decision-affecting ones are fixed, each with a test | 17 new tests |
 | Bad files are not hidden | Repeated call ids, unknown variants, missing outcomes, leads served both prompts are all listed | sample "A messy export" |
 | Edits to the record are detected | Hash chain re-checked in the browser after each click; an edited entry is caught. It is *tamper-evident*, not tamper-proof: a full rewrite is caught only if the head hash was written down elsewhere | dashboard |
@@ -79,11 +79,11 @@ You said the UI was different from the spec and theme. It was: it used its own s
 | Settings: metric list, defaults, approval mode, overlap warning | **Built** |
 | Suggest A/B Tests: five idea sources, expected effect, days needed, priority, one-click start | **Built**; the "weak segments" idea says plainly it cannot be generated (no segment data), and ideas come from our own evidence, not a language model |
 | Theme: Clean Slate colours, Inter font, 8-12 px corners, no shadows, header + filters + KPI cards + charts + tables, accessible status (word and symbol, never colour alone) | **Applied**. Inter is used if installed, otherwise a clean system font (offline) |
-| Not built | Email/Slack alerts, the post-promotion 5% holdback, model-written summaries (a template writes them from the numbers), segments |
+| Not built (then) | Email/Slack alerts, model-written summaries (a template writes them from the numbers). Segments and the 5% holdback were built after the second BRD (below) |
 
 Independent check: a separate reviewer opened the finished dashboard in a browser and compared it with the spec and the theme line by line. It found real defects (a new test could not be launched offline; two library versions were identical so their diff was meaningless; guardrail results disagreed between screens; a range showed -100 to +100 points on early days; the Overview counted history samples the library did not). All were fixed and re-tested.
 
-What stayed: the engine, the decision rules, the results-file reader, the skill and the technical tools page (proof lab, label calls, hear it), now under Settings > Tools. Proof: 127 tests pass; every screen and the spec's whole demo plan were exercised in a real browser (offline and live).
+What stayed: the engine, the decision rules, the results-file reader, the skill and the technical tools page (proof lab, label calls, hear it), now under Settings > Tools. Proof: 127 tests passed at that point (162 now, after the second BRD); every screen and the spec's whole demo plan were exercised in a real browser (offline and live).
 
 ## Earlier update after the "extraordinary and simple" goal
 | What | Why it matters | Proof |
@@ -93,3 +93,39 @@ What stayed: the engine, the decision rules, the results-file reader, the skill 
 | Engine rule: a win is **never shipped on a peak that has since faded**; held for a person instead | A novelty effect cannot slip through | Unit test; headline proof numbers unchanged |
 | A reusable **skill** (`skill/ab-test-decision/SKILL.md`) | Plug-and-play for any AI assistant or team | 100% vs 88% of graded statements without it; see `skills.md` |
 | `START_HERE.md` and `start.sh` (one command) | Five minutes to a first result | Run it |
+
+
+## Prompt 5 - "A new BRD came: check it, change what it improves, find add-ons"
+
+**Verdict: mostly the same design as ours; five real gaps, all built; three of its numbers corrected.**
+
+| In the new BRD | What we did | Proof |
+|---|---|---|
+| One winner call at the end, 99.9% daily harm check, lead as the unit | Already ours; now the default | A vs A, 12,000 runs: 2.5% wrongly promoted, 2.2% logged as a loss (the BRD's "about 5%" is these two together), 0.22% stopped early by mistake over the week (0.07% per daily check) |
+| Router: shuffled blocks of 10 inside each Hot Lead type x Nature of Business group | **Built** (new router; small groups merge into "Other") | Share error 0.05 pp at 7,000 leads against 0.39 pp for a plain coin flip; A and B mix of lead type differs by about 0.4 pp against 1.5 pp (recomputed after the 8-factor catalog of the New Experiment overhaul: 85 groups, so blocks fill less well than with 16); 0 leads saw both prompts |
+| Variable catalog, segment builder, plain-English audience, "out of segment" leads not counted | **Built**; first a rule-based reader, replaced in Prompt 6 by a list-based builder that shows the rule in plain words; in-call variables are refused | Tests; the segment demo counts only matching leads (3,150 of 3,150 re-checked) |
+| Split health: chi-square, leads that saw both, balance table by lead type, firm type and city, segment check | **Built** on the Live page and in the final report | Browser test |
+| Goal cards (one primary, up to 3 guardrails, x to delete, + Add metric) | **Built** (two guardrail kinds are computable on simulated traffic: call length and early hang-ups) | Browser test |
+| Duration 7 to 28 days in whole weeks, a sticky calculator with a green / amber / red light | **Built** | The wizard refuses other lengths; test |
+| Pre-launch checklist (5 items), Save Test (draft) and Launch Test (locked), start date | **Built** | Browser test: an overlapping launch is refused |
+| Overview: tiles, business impact, live prompt, needs attention, running cards, traffic map, scorecard, top suggestion | **Built** | Browser test |
+| 5% of traffic stays on A for 7 days after a promotion | **Built**, with an honest note: at 1,000 leads a day that slice can only rule out a drop of about 11 points or more | Unit test, including a decaying B that raises an alert |
+| Decision table row "B significantly worse at the end: keep A, logged as a loss" | **Built** (we had called this "inconclusive") | Unit test |
+| Data model in SQLite | **Built as an export**: `python -m canary export-db` | 15 tests; the re-run must reproduce each record exactly |
+| Streamlit, an LLM agent for segments, goal suggestions and write-ups | **Not adopted**: our stack needs no installation and runs offline; the same jobs are done by rules and templates, which do not spend credits or invent numbers | stated in the README |
+
+**Three of its numbers we corrected, with facts:** (1) "false winner about 5%" is the total in both directions; only 2.5% would ship. (2) "Daily harm check starts after 1,000 leads per variant": at a 10% share and 1,000 leads a day B reaches 1,000 leads on day 10, so the check would never run in a 7-day test; the calculator now shows the start day and turns amber. (3) Its data assumes lead type, firm type and city exist; our recordings carry none, so those variables are synthetic and labelled.
+
+**Add-ons we made beyond the BRD:** run 1,000 A vs A tests in the browser with one click; the end-of-test loss is separated from an early harm stop; a calculator that works both ways (days needed, and the smallest lift a window can detect) and warns when the daily harm check cannot start; a SQLite export; one slide rewritten to the BRD.
+
+## Prompt 6 - "New Experiment page overhaul" (the master prompt)
+**Verdict: built as specified on branch `feature/new-experiment-overhaul`, verified by tests; an independent QA pass found 4 major and 13 minor issues, all fixed or disclosed; full evidence in `EVIDENCE_NEW_EXPERIMENT.md`.**
+
+| Asked | Done | Proof |
+|---|---|---|
+| Prompt B as one full prompt, diff, variable check, Save keeps B as typed | Built; the patch mode and its badges are gone | browser E2E, zero "patch" words on every screen |
+| Audience as a builder over 8 factors, rule in plain words, live leads a day and today's rate | Built; the rule is saved as JSON and shown with "100% of counted leads matched this rule" | E2E; numbers equal plain SQL |
+| Goals: primary, guardrails, secondary; custom rate or average metrics; caps 3 and 5 | Built, end to end through the engine | 36 engine tests; a live launch with a custom rate and a custom average |
+| Duration recommended from data by one formula, shared with At a glance | Built | 47 unit checks incl. the hand-computed example |
+
+**What we must say plainly:** there is no real lead table yet, so the 30-day history the page reads is a labelled placeholder (call lengths are real); the spec's own worked example (2,100 leads, 14 days) does not follow from its formula (862 leads, 7 days) and we follow the formula; the new 85-group split balances lead mix less well than the old 16 groups (about 0.4 pp vs 0.1 pp at 7,000 leads, still far better than random at 1.5 pp).

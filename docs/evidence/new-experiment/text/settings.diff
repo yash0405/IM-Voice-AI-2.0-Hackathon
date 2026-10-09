@@ -1,0 +1,103 @@
+6,7c6,7
+< Name, which dispositions count, the denominator, and whether higher is better or it is a guardrail. Any disposition can be chosen as a goal.
+< Metric	Role	Which dispositions count	Denominator	Direction	Limit	Note
+---
+> Every metric a test can use as its primary goal, a guardrail or a secondary metric: the formula in plain words, which way is better, and today's value (last 30 days, all traffic). Custom metrics saved from New Experiment appear here and can be reused.
+> Metric	Group	Formula	Direction	Today	Note	
+10c10
+< 	Goal	buylead_created	all analysed leads	higher is better	-	BL Approved / BL Enriched in the prompt's own vocabulary; the exact definition is to be confirmed with the organisers.
+---
+> 	Outcome	Leads where Disposition is BuyLead created ÷ Leads where Connected is 1	↑ higher is better	45.1%	BL Approved / BL Enriched in the prompt's own vocabulary; the exact definition is to be confirmed with the organisers.	
+13c13
+< 	Goal	meeting_fixed	connected leads	higher is better	-	The goal named in the problem statement (seller side). Available when result files carry this disposition.
+---
+> 	Outcome	Leads where Disposition is Meeting Fixed ÷ Leads where Connected is 1	↑ higher is better	8.2%	The goal named in the problem statement (seller side).	
+16c16
+< 	Goal	bl_enriched	all analysed leads	higher is better	-	Named in the event deck. Available when result files carry this disposition.
+---
+> 	Outcome	Leads where Disposition is Buyer Enriched ÷ Leads where Connected is 1	↑ higher is better	7.0%	Named in the event deck.	
+19c19
+< 	Goal	callback_fixed	all analysed leads	higher is better	-	Named in the event deck. Available when result files carry this disposition.
+---
+> 	Outcome	Leads where Disposition is Callback Fixed ÷ Leads where Connected is 1	↑ higher is better	9.5%	Named in the event deck.	
+22,23c22,23
+< 	Guardrail	computed	average per lead	lower is better	no more than +10% (default)	Compared on a ratio of means, with a range.
+< Early hang-ups (calls under 15 s)
+---
+> 	Call quality	Average call duration over calls where Connected is 1	↓ lower is better	69.9 s	Talk time of answered calls, compared as a ratio with a range.	
+> Early hang-ups
+25c25,31
+< 	Guardrail	computed	all analysed leads	lower is better	no more than +2 points (default)	The 15-second cut-off is our assumption; the definition is to be confirmed.
+---
+> 	Call quality	Calls where Early hang-up (under 15 s) is Yes ÷ Calls where Connected is 1	↓ lower is better	13.8%	Answered calls shorter than 15 seconds (our assumed cut-off).	
+> Answered %
+> answered_pct
+> 	Reach	Calls where Call status is Answered ÷ All calls attempted	↑ higher is better	70.0%	Mostly decided before the prompt speaks: useful as a check, rarely as a goal.	
+> Connected %
+> connected_pct
+> 	Reach	Leads where Connected is 1 ÷ All leads attempted	↑ higher is better	97.3%	Mostly decided before the prompt speaks: useful as a check, rarely as a goal.	
+28c34
+< 	Guardrail	computed	all analysed leads	lower is better	no more than +2 points (suggested)	Available when result files carry a fatal-call flag.
+---
+> 	Call quality	Calls where Fatal flag is Yes ÷ Calls where Connected is 1	↓ lower is better	Not in data yet	Not in data yet: needs a fatal-call flag on each call (results files can carry it).	
+32,34c38,40
+< Hot Lead type
+< hot_lead_type
+< 	Source of the lead	pick-list	UA 30% PUA 20% ENQR 20% PNS 30%	
+---
+> Assigned Status
+> assigned_status
+> 	Whether the lead is assigned to a seller or still in the pool	pick-list	Assigned 55% Pool 35% Others 10%	
+37,39c43,45
+< Nature of Business
+< nature_of_business
+< 	What kind of firm the lead is	pick-list	Proprietor 45% Pvt Ltd 25% Partnership 12% Other 18%	
+---
+> GST Nature of Business
+> gst_nature_of_business
+> 	What kind of firm the buyer is, from GST	pick-list	Retailer 30% Service Provider 15% Wholesaler 20% Manufacturer 20% NA 15%	
+42,44c48,75
+< City
+< city
+< 	City the buyer is in, from the lead record	pick-list	Mumbai 14% Delhi 16% Bengaluru 10% Pune 7% Chennai 6% Other 47%	
+---
+> GST Turnover
+> gst_turnover
+> 	The buyer's annual turnover band, from GST	pick-list	0-40L 35% 40L-1.5Cr 22% 1.5-5Cr 15% 5-25Cr 10% 25-100Cr 5% 100-500Cr 2% >500Cr 1% NA 10%	
+> Yes: can pick leads
+> 
+> HL Bucket
+> hl_bucket
+> 	Top 3 Hot Lead types (UA, PNSM, PNSR) or the rest	pick-list	Top 3 42% Rest 58%	
+> Yes: can pick leads
+> 
+> HL Type
+> hl_type
+> 	Source of the lead (Hot Lead type)	pick-list	UA 20% PNSM 12% PNSR 10% PIM 8% PUA 8% PAM 6% SCHD 5% ENQR 7% NUR 4% PANF 4% OLP 4% PNCHF 3% OLPR 2% PUT 2% NVGT 2% TF 2% UATF 1%	
+> Yes: can pick leads
+> 
+> Legal Status
+> legal_status
+> 	The firm's legal form	pick-list	Limited Company 15% Partnership 10% Proprietorship 45% Others 10% NA 20%	
+> Yes: can pick leads
+> 
+> Vendor
+> vendor
+> 	Which calling vendor handles the lead	pick-list	arrowhead 60% squadstack 40%	
+> Yes: can pick leads
+> 
+> Vertical
+> vertical
+> 	The business vertical the lead belongs to	pick-list	Top Cities - Inhouse 35% Top Cities - Channel 25% Emerging Market - Channel 30% NA 10%	
+49c80
+< 	How the call ended	pick-list	BuyLead created Callback fixed Not interested	No: decided during the call
+---
+> 	How the call ended	pick-list	BuyLead created Meeting Fixed Callback Fixed Buyer Enriched Requirement not confirmed Wanted the original seller only No product requirement Other / unclear Nobody spoke	No: decided during the call
+54c85
+< The recordings carry no lead attributes. These variables use the BRD's example names and values; how common each value is (the mix) is a placeholder so the simulator has something to split. Replace it with the real lead data when it arrives.
+---
+> The recordings carry no lead attributes. These factors and values follow the New Experiment spec; how common each value is (the mix) and the 30-day history are placeholders so the simulator has something to split. Replace them with the real lead table when it arrives.
+66c97
+< Minimum leads per prompt before the daily harm check
+---
+> Minimum leads per arm before any decision
