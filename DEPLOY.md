@@ -31,3 +31,4 @@ Share the link and the password with the team (not in the repo).
 - Free plan: the app sleeps after 15 minutes without visits and takes about a minute to wake. 512 MB memory. Demo state (days played, approvals) lives in each person's browser, as locally.
 - Without the two secrets only `main` redeploys (Render's own auto-deploy); other branches do not.
 - Run it locally the same way: `CANARY_HOSTED=1 CANARY_PASSWORD=choose-one python -m canary serve --hosted --port 8800`.
+
