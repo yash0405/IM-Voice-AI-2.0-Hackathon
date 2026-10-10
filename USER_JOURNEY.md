@@ -1,5 +1,7 @@
 # Test it yourself: the whole journey in 12 short steps (about 20 minutes)
 
+> **Quickest tour (Oct 10):** open the console, press **▶ Play** on Overview and watch all six tests settle (including the autopilot keeping A and rolling back a slipping win). Step-by-step testing with a results file or with voice: `docs/HOW_TO_TEST.md`. The table below predates the Play button: "Advance 1 day" still works test by test on Live Experiments.
+
 **The one-line story.** VANI's real prompt and real calls show where a change could help. A small edit is derived and checked. The A/B engine proves it on live traffic and rolls it out, only if it provably wins.
 
 ## Open it

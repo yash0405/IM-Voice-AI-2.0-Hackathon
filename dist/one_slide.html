@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta charset="utf-8"><title>Picky - one slide</title><style>
 @page { size: 1280px 720px; margin: 0 } *{box-sizing:border-box} body{margin:0;background:#f3f5f7;font:14px/1.4 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#263238}
-.s{width:1280px;height:720px;margin:0 auto;background:#fff;padding:26px 34px;display:grid;grid-template-rows:auto 1fr auto;gap:14px}
+.s{width:1280px;height:720px;margin:0 auto;background:#fff;padding:22px 34px;display:grid;grid-template-rows:auto 1fr auto;gap:12px}
 h1{margin:0;font-size:30px;letter-spacing:-.02em;color:#243b53} .sub{color:#667085;margin-top:2px} .cols{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:16px}
 .box{border:1px solid #e3e7ec;border-radius:10px;padding:12px 16px} h2{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#667085}
 ul{margin:0;padding-left:18px} li{margin:3px 0;font-size:12.5px} .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px} .kpi div{background:#f3f5f7;border-radius:10px;padding:10px 12px}
@@ -23,7 +23,7 @@ table{border-collapse:collapse;width:100%;font-size:11.5px;margin-top:6px} td,th
 <div class="box"><h2>Flow, from routing to rollout</h2><div class="flow">
 <div><b>Lead arrives</b> with its pre-call variables</div><i>&darr;</i><div><b>Router</b> segment check &rarr; sticky &rarr; stratified block &rarr; prompt version</div><i>&darr;</i>
 <div><b>Voice bot</b> loads that version; outcome and call length logged</div><i>&darr;</i><div><b>Every day</b> harm check &middot; split health (chi-square, mix balance)</div><i>&darr;</i>
-<div><b>End of test</b> one winner call</div><i>&darr;</i><div><b>Promote &middot; hold &middot; stop &middot; keep A</b> with an optional approval step</div><i>&darr;</i><div><b>Decision log</b> hash-chained &middot; Prompt Library &middot; one-click rollback</div></div></div>
+<div><b>End of test</b> one winner call</div><i>&darr;</i><div><b>Promote &middot; hold &middot; stop &middot; keep A</b> a held win with no answer in 2 days keeps A (autopilot)</div><i>&darr;</i><div><b>5% holdback week</b> autopilot rolls back if B slips &middot; hash-chained decision log &middot; Prompt Library</div></div></div>
 </div>
 <div class="kpi"><div><b>2.5%</b><span>promoted when A = B (12,000 runs); 4.7% look different either way</span></div><div><b>8.3%</b><span>false winners from a plain daily p&lt;0.05 check</span></div><div><b>0.05 pp</b><span>B-share error at 7,000 leads (plain random 0.39 pp)</span></div><div><b>0</b><span>leads that saw both prompts; A and B carry the same lead-type mix</span></div></div>
 </div></body></html>
