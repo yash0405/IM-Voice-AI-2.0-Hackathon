@@ -1179,7 +1179,7 @@ ROUTES.overview = (el) => {
   const t = totals(), prod = productionState(), ev = allEvents().filter(x => x.type !== "Started" && x.id && byId(x.id) && !isPast(byId(x.id)) && !/^Production prompt /.test(x.text)).slice(0, 5), pr = C.proof, impact = businessImpact(), att = attention(), nPast = EXPS().filter(isPast).length;
   const live = EXPS().filter(e => { const v = view(e); return v.running || v.scheduled || v.d.paused && !v.ended || (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval); });
   const mapList = EXPS().filter(e => { const v = view(e); return !isPast(e) && (v.running || v.d.paused && !v.ended) && !v.scheduled; }).map(trafficRow);
-  const sugg = (C.suggestions || []).filter(c => !c.disabled && !c.from_history && c.expected_pp).sort((a, b) => priority(b).score - priority(a).score)[0];
+  const sugg = (C.suggestions || []).filter(c => !c.disabled && !c.from_history && c.expected_pp).sort((a, b) => (!!b.variant - !!a.variant) || priority(b).score - priority(a).score)[0];   // an idea with a ready prompt edit starts in one click
   const scoreN = t.win + t.stop + t.inc + t.halted + t.held;
   el.innerHTML = head("Overview", "What is running, what needs you, and what Picky decided.", `${clockButtons()}<a class="btn" href="#/import">Import results</a><a class="btn primary" href="#/new">New experiment</a>`) + autopilotStrip() +
     `<div class="grid g4 tiles">${tile("Running tests", t.running, "live now")}${tile("Waiting for approval", t.held, t.held ? "needs a yes" : "nothing waiting", t.held ? "warn" : "")}${tile("Harm alerts", t.alerts, "stopped or halted", t.alerts ? "neg" : "")}${tile("Completed this month", t.month, "in this demo")}</div>

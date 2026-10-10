@@ -6,13 +6,16 @@
 - **Double-click `dist/canary_demo.html`** (works offline), or run **`./start.sh`** for the live version (it can also run new experiments and read your own files).
 - You land on **Overview**. The left menu has the eight screens: Overview, New Experiment, Live Experiments, History, Suggest A/B Tests, Prompt Library, Decision Log, Settings.
 
-## Watch the demo (2 minutes)
-Five experiments are already running, each paused on day 2 (simulated, with a known answer):
-1. On **Overview**, press **Advance all running tests 1 day (demo)** a few times. Or open **Live Experiments** and press **Advance 1 day (demo)**.
-2. *Ask for any single detail at most twice* (B wins) is promoted on day 7. *Make the ask limits agree* (B worse) is **stopped early** by the daily harm check. *Warmer opening line* (flat) ends **inconclusive** and says how many more leads would settle it.
-3. *Offer the seller details on WhatsApp earlier* wins but its calls run longer than the limit, so it is **held for approval**: press **Approve** or **Reject**. Both are saved in the **Decision Log**, and an approved win becomes a new version in the **Prompt Library**, where **Rollback** is one click.
-4. *Proprietors: ask for any detail at most twice* tests only one group of leads: its **Split health** panel shows that A and B got the same mix, and after the win a 5% **holdback** stays on the old prompt for a week.
-5. **History** keeps every finished test with its frozen report (press a row). **Suggest A/B Tests** has ideas for the next test, each with a one-click start.
+## Watch the demo (1 minute)
+Six experiments are already running, each on day 2 (simulated, with a known answer). On **Overview**, press **▶ Play**:
+1. *Ask for any single detail at most twice* (B wins) is **promoted** on day 7; 5% of callers stay on A for a week to double-check.
+2. *Make the ask limits agree* (B worse) is **stopped early** by the daily harm check.
+3. *Warmer opening line* (flat) ends **inconclusive** and says how many more leads would settle it.
+4. *Proprietors: ask for any detail at most twice* wins **for that segment only**.
+5. *Offer the seller details on WhatsApp earlier* wins but its calls run longer than the limit, so it **waits for a yes**. Nobody answers, so after 2 days the **autopilot keeps A**. Use **Next day** instead of Play to answer it yourself.
+6. *Promise the seller's details right after the call* wins, then slips after rollout: the **autopilot rolls it back**.
+
+Every action, the autopilot's too, is in the hash-chained **Decision Log**. **History** keeps each finished test with its one-page report. The voice test (`./live.sh`) and the results-file test are explained step by step in `docs/HOW_TO_TEST.md`.
 
 ## Use your own results
 1. `./start.sh`, then **Import results files** (button on Overview).
