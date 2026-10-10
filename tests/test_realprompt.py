@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from canary import loopscan as ls, promptlint as pl, realprompt as rp
-from canary.variants import apply_patch, load_base, make_variant
+from picky import loopscan as ls, promptlint as pl, realprompt as rp
+from picky.variants import apply_patch, load_base, make_variant
 
 RAW = """   Role & Persona:
 

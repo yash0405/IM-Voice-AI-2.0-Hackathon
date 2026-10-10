@@ -1,16 +1,16 @@
-"""python -m canary <command>
+"""python -m picky <command>
 
   demo      run the six scenarios in the terminal
   proof     run the Monte Carlo proof lab (writes out/proof.json)
-  build     bundle the dashboard into dist/canary_demo.html and the technical tools into dist/canary_tools.html (both work offline)
+  build     bundle the dashboard into dist/picky_demo.html and the technical tools into dist/picky_tools.html (both work offline)
   serve     live dashboard + Label Lab on http://127.0.0.1:8765
   qa        write docs/QA_REPORT.md from out/proof.json
-  export-db export every test, version, assignment, call and decision to one SQLite file (out/canary.db)
+  export-db export every test, version, assignment, call and decision to one SQLite file (out/picky.db)
   history   the history database the live server writes (data/history.db): every test, its status and the latest clicks
   eval      score a tagger on labelled calls (synthetic benchmark, or real labels + transcripts dir)
   arena     voice arena: Sarvam LLM + Bulbul voices play a buyer against prompt A and B (plan | run --yes --budget N)
   autolabel Sarvam speech-to-text + chat model auto-labelling, budget-capped (plan | run | retag | status | queue | report | issues)
-  decide    decide from results files (the test ran elsewhere): python -m canary decide results.csv --goal buylead_created --share-b 0.3
+  decide    decide from results files (the test ran elsewhere): python -m picky decide results.csv --goal buylead_created --share-b 0.3
   samples   write synthetic sample results files to data/samples/
   fix       the fix loop: mine real failures, Sarvam drafts a prompt edit, simulated buyers pre-screen it (mine | lint | loops | candidate | propose | prescreen | costs | agent | status)
 """
@@ -20,7 +20,7 @@ import sys
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="canary", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(prog="picky", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "all", "autolabel", "arena", "fix", "decide", "samples", "export-db", "history"])
     ap.add_argument("action", nargs="?", default="plan", help="for autolabel: plan | run | status | queue | report | issues")
     ap.add_argument("--n", type=int, default=5, help="autolabel: how many calls (first N of a fixed random order)")
@@ -32,10 +32,10 @@ def main():
     ap.add_argument("--runs", type=int, default=4000)
     ap.add_argument("--aa-runs", type=int, default=12000)
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--out", default="out/canary.db", help="export-db: where to write the SQLite file")
+    ap.add_argument("--out", default="out/picky.db", help="export-db: where to write the SQLite file")
     ap.add_argument("--no-past", action="store_true", help="export-db: leave out the history samples")
     ap.add_argument("--no-calls", action="store_true", help="export-db: leave out the per-call rows")
-    ap.add_argument("--hosted", action="store_true", help="serve: public-internet mode (needs CANARY_PASSWORD; Label Lab, audio and transcripts off)")
+    ap.add_argument("--hosted", action="store_true", help="serve: public-internet mode (needs PICKY_PASSWORD; Label Lab, audio and transcripts off)")
     ap.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 so other laptops on the office network can label")
     ap.add_argument("--transcripts", help="folder of <idx>.txt transcripts for real-label evaluation")
     ap.add_argument("files", nargs="*", help="decide: more results files")
@@ -85,7 +85,7 @@ def main():
         else:
             items = [{"name": p, "text": open(p, encoding="utf-8-sig").read(), "arm": None} for p in paths]
         if not items:
-            sys.exit("give a results file (or --a and --b). Example: python -m canary decide data/samples/results_b_wins.csv --goal buylead_created --share-b 0.3 --baseline 0.45 --mde 0.07 --window-days 14")
+            sys.exit("give a results file (or --a and --b). Example: python -m picky decide data/samples/results_b_wins.csv --goal buylead_created --share-b 0.3 --baseline 0.45 --mde 0.07 --window-days 14")
         opts = {"goal": a.goal, "goal_name": a.goal_name, "share_b": a.share_b, "baseline": a.baseline, "window_days": a.window_days,
                 "leads_per_day": a.leads_per_day, "through_day": a.through_day, "rule_set": a.rule, "approval": a.approval,
                 "guardrail_margin": a.margin, "guard_name": a.guard_name, "guard_column": a.guard_column, "guard_below_s": a.guard_below_s,

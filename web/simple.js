@@ -73,7 +73,7 @@ function fixFind(F) {
 
 function fixDraft(F) {
   const P = F.proposal, E = F.evidence || {}, ck = E.edit_check;
-  if (!P) return fixStep(2, "A small fix", `<div class="s-honest">No fix candidate yet. Run <code>python -m canary fix candidate</code> (free).</div>`);
+  if (!P) return fixStep(2, "A small fix", `<div class="s-honest">No fix candidate yet. Run <code>python -m picky fix candidate</code> (free).</div>`);
   const raw = (P.diff || []).filter(l => !/^(---|\+\+\+|@@)/.test(l)), rows = []; let rem = [], add = [];
   const flush = () => { const n = Math.max(rem.length, add.length); for (let i = 0; i < n; i++) { const r = rem[i], a = add[i];
     if (r !== undefined && a !== undefined) { const [ra, aa] = wordDiff(r, a); rows.push(["del", ra], ["add", aa]); } else if (r !== undefined) rows.push(["del", esc(r)]); else rows.push(["add", esc(a)]); } rem = []; add = []; };
@@ -240,11 +240,11 @@ function usualTool() {
   }
   if (k === "guardrail_hold") return `A tool that only watches the goal would have rolled this out; one that only watches handling time would have thrown it away. Picky does neither: it holds the win for a person and logs the decision either way.`;
   if (k.startsWith("file_") && P.files) return `We tested the file path on <b>${nf(P.files.aa.runs)}</b> synthetic files where A and B were identical: it crowned a winner <b>${pc(P.files.aa.outcomes.PROMOTE.rate)}</b> of the time (budget 2.5%). A plain "p &lt; 0.05 every day" rule crowns a false winner about 1 time in ${Math.round(1 / (P.rulesets ? P.rulesets.aa.final_look.naive_peek.outcomes.PROMOTE.rate : 0.11))}.`;
-  if (k === "peeking_trap") return `A usual tool that checks the numbers every day would have announced a winner after ${naive ? nf(naive.n) : "about 1,400"} calls and rolled it out. That would have been a mistake: there is no real difference. In our tests, usual tools make this mistake <b>${pc(o("aa", "naive_peek", "PROMOTE"))}</b> of the time. Picky: <b>${pc(o("aa", "canary", "PROMOTE"))}</b>.`;
-  if (k === "srm_broken") return `A usual tool would have rolled this out, because the new prompt looked ${((V.rec.looks[V.rec.looks.length - 1].diff) * 100).toFixed(1)} points better. In our tests it does so <b>${pc(o("srm_bug", "naive_peek", "PROMOTE"))}</b> of the time. Picky caught the problem and stopped: it rolls out a broken test only <b>${pc(o("srm_bug", "canary", "PROMOTE"))}</b> of the time.`;
+  if (k === "peeking_trap") return `A usual tool that checks the numbers every day would have announced a winner after ${naive ? nf(naive.n) : "about 1,400"} calls and rolled it out. That would have been a mistake: there is no real difference. In our tests, usual tools make this mistake <b>${pc(o("aa", "naive_peek", "PROMOTE"))}</b> of the time. Picky: <b>${pc(o("aa", "picky", "PROMOTE"))}</b>.`;
+  if (k === "srm_broken") return `A usual tool would have rolled this out, because the new prompt looked ${((V.rec.looks[V.rec.looks.length - 1].diff) * 100).toFixed(1)} points better. In our tests it does so <b>${pc(o("srm_bug", "naive_peek", "PROMOTE"))}</b> of the time. Picky caught the problem and stopped: it rolls out a broken test only <b>${pc(o("srm_bug", "picky", "PROMOTE"))}</b> of the time.`;
   if (k === "guardrail_veto") return `A tool that only watches BuyLead conversion would have rolled this out (<b>${pc(o("guardrail", "naive_peek", "PROMOTE"))}</b> of the time in our tests). Picky also checks average handling time, so it did not.`;
-  if (k === "b_harmful") return `A test that runs for a fixed length keeps sending buyers to a worse prompt until the end: about <b>${nf(S.harm.methods.fixed_horizon.mean_exposure_b)}</b> buyers on average, against <b>${nf(S.harm.methods.canary.mean_exposure_b)}</b> with Picky.`;
-  if (k === "b_wins") return `A fixed-length test needs about <b>${nf(S.win.methods.fixed_horizon.median_n_when_promoted)}</b> calls before it can decide. Picky typically decides after <b>${nf(S.win.methods.canary.median_n_when_promoted)}</b>.`;
+  if (k === "b_harmful") return `A test that runs for a fixed length keeps sending buyers to a worse prompt until the end: about <b>${nf(S.harm.methods.fixed_horizon.mean_exposure_b)}</b> buyers on average, against <b>${nf(S.harm.methods.picky.mean_exposure_b)}</b> with Picky.`;
+  if (k === "b_wins") return `A fixed-length test needs about <b>${nf(S.win.methods.fixed_horizon.median_n_when_promoted)}</b> calls before it can decide. Picky typically decides after <b>${nf(S.win.methods.picky.median_n_when_promoted)}</b>.`;
   if (k === "inconclusive") return `With an effect this small, some tools would still announce a winner (<b>${pc(o("small", "naive_peek", "PROMOTE"))}</b> of the time in our tests). Saying &ldquo;we cannot tell&rdquo; is the honest answer.`;
   return "";
 }
@@ -399,7 +399,7 @@ function renderFiles() {
         <div class="field"><label>Early hang-up guardrail <span class="hint">calls shorter than (seconds), limit +2 points</span></label><input type="number" id="fh" placeholder="off"></div>
       </div>
       <div style="margin-top:14px"><button class="s-btn" id="fgo">Decide</button><span class="f-err" id="ferr"></span></div>`
-      : `<p class="s-sm">Uploading your own files needs the live engine: run <code>python -m canary serve</code>. The examples above work offline.</p>`}
+      : `<p class="s-sm">Uploading your own files needs the live engine: run <code>python -m picky serve</code>. The examples above work offline.</p>`}
     </div>
     <details class="s-how"><summary>What should the files look like?</summary><table class="f-cols"><thead><tr><th>Column</th><th>What it is</th><th>Why</th></tr></thead><tbody>${FCOLS.map(r => `<tr><td><code>${r[0]}</code></td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</tbody></table>
       <p class="s-sm" style="margin-top:8px">A daily summary also works: <code>date, variant, leads, goal_count</code> (plus <code>mean_duration, sd_duration</code> for the handling-time guardrail). It cannot show whether a lead saw both prompts.</p></details>
@@ -442,18 +442,18 @@ function renderFiles() {
 /* ------------------------------------------------------------------ why trust it */
 function renderTrust() {
   stopV(); const P = D.proof;
-  if (!P) { $("#app").innerHTML = `<div class="s-wrap"><p class="s-lead">Run <code>python -m canary proof</code> to create the evidence, then rebuild.</p></div>`; return; }
+  if (!P) { $("#app").innerHTML = `<div class="s-wrap"><p class="s-lead">Run <code>python -m picky proof</code> to create the evidence, then rebuild.</p></div>`; return; }
   const S = P.scenarios, o = (k, m, x) => (S[k].methods[m].outcomes[x] || { rate: 0 }).rate;
   const pc = x => Math.round(x * 100) + "%", pc1 = x => (x * 100).toFixed(1) + "%";
-  const expo = 1 - S.harm.methods.canary.mean_exposure_b / S.harm.methods.fixed_horizon.mean_exposure_b;
+  const expo = 1 - S.harm.methods.picky.mean_exposure_b / S.harm.methods.fixed_horizon.mean_exposure_b;
   const sp = P.split_accuracy.filter(x => x.n === 1037), st = P.stickiness;
   const card = (title, a, aLbl, b, bLbl, text) => `<div class="s-trust"><h3>${title}</h3><div class="s-vs"><div class="ours"><b>${a}</b><span>${aLbl}</span></div><div class="usual"><b>${b}</b><span>${bLbl}</span></div></div><p>${text}</p></div>`;
   $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">Why you can trust it</h1>
     <p class="s-lead">We tried Picky and the usual approaches on thousands of simulated tests where we know the right answer. Here is how often each gets it wrong.</p>
     <div class="s-trustgrid">
-      ${card("It does not fall for lucky streaks", pc1(o("aa", "canary", "PROMOTE")), "Picky", pc(o("aa", "naive_peek", "PROMOTE")), "usual tools", "When nothing really changed, how often a fake winner is announced.")}
-      ${card("It notices when the test is broken", pc(o("srm_bug", "canary", "PROMOTE")), "Picky", pc(o("srm_bug", "naive_peek", "PROMOTE")), "usual tools", "How often a prompt is rolled out even though call tracking was losing calls.")}
-      ${card("It protects buyers from a bad prompt", nf(S.harm.methods.canary.mean_exposure_b), "buyers", nf(S.harm.methods.fixed_horizon.mean_exposure_b), "fixed-length test", `Buyers who hear a worse prompt before it is stopped: ${pc(expo)} fewer.`)}
+      ${card("It does not fall for lucky streaks", pc1(o("aa", "picky", "PROMOTE")), "Picky", pc(o("aa", "naive_peek", "PROMOTE")), "usual tools", "When nothing really changed, how often a fake winner is announced.")}
+      ${card("It notices when the test is broken", pc(o("srm_bug", "picky", "PROMOTE")), "Picky", pc(o("srm_bug", "naive_peek", "PROMOTE")), "usual tools", "How often a prompt is rolled out even though call tracking was losing calls.")}
+      ${card("It protects buyers from a bad prompt", nf(S.harm.methods.picky.mean_exposure_b), "buyers", nf(S.harm.methods.fixed_horizon.mean_exposure_b), "fixed-length test", `Buyers who hear a worse prompt before it is stopped: ${pc(expo)} fewer.`)}
       ${card("A buyer always gets the same prompt", "0", "Picky", pc(st.naive_random.flip_rate), "random per call", "Buyers who heard a different prompt on a repeat call.")}
     </div>
     <div class="s-honest"><b>Be clear about what is simulated.</b> These tests use simulated call outcomes with a known answer. Call lengths come from your 713 real recordings. The real-call numbers on the first tab come from Sarvam's tagging of ${nf((D.fix && D.fix.mine && D.fix.mine.n_calls) || 0)} recordings; those labels have not all been checked by a person yet, so how accurate they are is measured only once the 40-call spot-check is done.</div>
@@ -464,9 +464,9 @@ function renderTrust() {
 /* ------------------------------------------------------------------ label calls */
 function autoPanel() {
   const a = D.auto || {}, st = a.status || {}, q = a.queue || {}, r = a.report || {};
-  if (!st.transcripts && !st.tagged_valid) return `<div class="s-honest"><b>Machine labelling has not started yet.</b> Sarvam will transcribe a random sample of the calls and tag each one, then you only spot-check about 40. ${a.key_present ? "A Sarvam key is set." : "It needs the Sarvam key in <code>canary/.env</code> first."}</div>`;
+  if (!st.transcripts && !st.tagged_valid) return `<div class="s-honest"><b>Machine labelling has not started yet.</b> Sarvam will transcribe a random sample of the calls and tag each one, then you only spot-check about 40. ${a.key_present ? "A Sarvam key is set." : "It needs the Sarvam key in <code>picky/.env</code> first."}</div>`;
   const rate = r.buylead_rate_loose || r.buylead_rate_machine, acc = r.tagger_vs_human_blind;
-  const prov = r.provisional ? `<div class="s-honest" style="margin-top:14px"><b>These labels were made before the real VANI prompt arrived.</b> They use an older vocabulary (for example a timeline field and a read-back check that the real prompt does not have). Re-tagging the saved transcripts with IndiaMART's quality matrix costs about ${inr((((D.fix || {}).costs || {}).retag || {}).est_inr || 23)} and takes about 20 minutes: <code>python -m canary autolabel retag --yes --budget N</code>. Not run yet.</div>` : "";
+  const prov = r.provisional ? `<div class="s-honest" style="margin-top:14px"><b>These labels were made before the real VANI prompt arrived.</b> They use an older vocabulary (for example a timeline field and a read-back check that the real prompt does not have). Re-tagging the saved transcripts with IndiaMART's quality matrix costs about ${inr((((D.fix || {}).costs || {}).retag || {}).est_inr || 23)} and takes about 20 minutes: <code>python -m picky autolabel retag --yes --budget N</code>. Not run yet.</div>` : "";
   return prov + `<div class="s-trust" style="margin-top:20px"><h3>Machine labelling so far</h3><div class="s-vs"><div class="ours"><b>${nf(st.tagged_valid || 0)}</b><span>calls tagged by Sarvam</span></div><div class="usual"><b>${rate ? Math.round(rate.rate * 100) + "%" : "-"}</b><span>captured quantity and specification${rate ? ` (range ${Math.round(rate.ci[0] * 100)}-${Math.round(rate.ci[1] * 100)}%)` : ""}</span></div></div><p>Credits used so far: about Rs ${(st.estimated_spend_inr || 0).toFixed(0)}. ${acc ? `Checked by a person on ${acc.n} random calls: the machine was right ${Math.round(acc.accuracy * 100)}% of the time.` : q.blind ? `Waiting for a person to check ${q.blind + (q.hard || 0)} calls.` : "Next: pick the calls a person should check."}</p>${r.rich ? `<p style="color:var(--ink-2);font-size:14.5px">Also found: <b>${Math.round(r.rich.bot_issue_rate * 100)}%</b> of calls have at least one bot issue; ${Object.keys(r.rich.bot_issue_counts || {}).length ? "most common: <b>" + String(Object.keys(r.rich.bot_issue_counts)[0]).replace(/_/g, " ") + "</b>." : "none so far."}</p>` : ""}</div>`;
 }
 
@@ -475,7 +475,7 @@ function renderLabelPage() {
   $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">Help us check the system</h1>
     <p class="s-lead">Sarvam has labelled our recordings of VANI answering buyers whose seller was unavailable, but a machine can be wrong. Read a call and pick the outcome: did the buyer confirm a product requirement and did VANI take it forward (details captured, a live seller offered, or seller details promised)? You only spot-check about 40 calls, roughly 25 minutes. <b>Best done after the re-tag</b>, so your answers are compared with labels made under the real prompt.</p>
     ${autoPanel()}
-    ${LIVE ? `<div class="card lab" id="lab" style="margin-top:20px"></div>` : `<div class="s-honest">Labelling needs the live version. In a terminal run <code>python -m canary serve</code> and open this page again.</div>`}</div>`;
+    ${LIVE ? `<div class="card lab" id="lab" style="margin-top:20px"></div>` : `<div class="s-honest">Labelling needs the live version. In a terminal run <code>python -m picky serve</code> and open this page again.</div>`}</div>`;
   if (LIVE) renderLab();
 }
 
@@ -483,14 +483,14 @@ function renderLabelPage() {
 /* ------------------------------------------------------------------ hear it (voice arena) */
 function renderHear() {
   stopV(); const A = D.arena;
-  if (!A || !(A.cases || []).length) { $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">Hear it</h1><p class="s-lead">The voice arena has not been generated yet. Run <code>python -m canary arena run --yes</code> (about Rs 16).</p></div>`; return; }
+  if (!A || !(A.cases || []).length) { $("#app").innerHTML = `<div class="s-wrap"><h1 class="s-h1">Hear it</h1><p class="s-lead">The voice arena has not been generated yet. Run <code>python -m picky arena run --yes</code> (about Rs 16).</p></div>`; return; }
   const goal = k => goalName(k), nice = k => String(k || "").replace(/_/g, " ");
   const fieldsTxt = t => (t.fields || []).length ? t.fields.map(nice).join(", ") : "none";
   const fewer = A.cases.filter(c => c.B.lines.length < c.A.lines.length).length;
   const atLeast = A.cases.filter(c => ((c.B.tag || {}).fields || []).length >= ((c.A.tag || {}).fields || []).length).length;
   const fx = D.fix && D.fix.proposal;
   const listen = `${fx ? esc(fx.name) + ". " : ""}With the candidate VANI captured at least as many details in <b>${atLeast} of ${A.cases.length}</b> calls, and finished in fewer turns in <b>${fewer}</b>. Listen to how VANI handles a short or hurried buyer.`;
-  const stale = A.stale ? `<div class="s-honest" style="margin-bottom:18px"><b>These calls used our earlier stand-in prompt, which turned out to be wrong about VANI</b> (it phoned the buyer; the real call is an inbound redirect: the buyer called a seller who was unavailable). They show Sarvam's voices, not VANI's real behaviour. To record them again with the real prompt: <code>python -m canary arena run --yes --force</code> (about ${inr(((D.fix || {}).costs || {}).arena ? D.fix.costs.arena.total_inr : 53)}).</div>` : "";
+  const stale = A.stale ? `<div class="s-honest" style="margin-bottom:18px"><b>These calls used our earlier stand-in prompt, which turned out to be wrong about VANI</b> (it phoned the buyer; the real call is an inbound redirect: the buyer called a seller who was unavailable). They show Sarvam's voices, not VANI's real behaviour. To record them again with the real prompt: <code>python -m picky arena run --yes --force</code> (about ${inr(((D.fix || {}).costs || {}).arena ? D.fix.costs.arena.total_inr : 53)}).</div>` : "";
   const col = (c, arm) => { const x = c[arm], t = x.tag || {}; return `<div class="hear-col ${arm.toLowerCase()}">
       <div class="s-k"><span class="dot" style="background:var(--${arm === "A" ? "a" : "b"})"></span>${arm === "A" ? "Today's prompt" : "New prompt"}</div>
       <audio controls preload="none" src="${x.audio}"></audio>

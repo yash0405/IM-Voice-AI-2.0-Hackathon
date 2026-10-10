@@ -2,10 +2,10 @@
 No network, no Sarvam credits."""
 import unittest
 
-from canary import catalog, console, metriclib, server, variants
-from canary.engine import Config, Monitor, build_design, holdback_week, run_experiment
-from canary.router import StratifiedRouter, block_for
-from canary.simulator import Scenario, TrafficSim
+from picky import catalog, console, metriclib, server, variants
+from picky.engine import Config, Monitor, build_design, holdback_week, run_experiment
+from picky.router import StratifiedRouter, block_for
+from picky.simulator import Scenario, TrafficSim
 
 SEG = [{"factor": "Legal Status", "column": "legal_status", "values": ["Proprietorship"]}]
 
@@ -114,7 +114,7 @@ class EndOfTestLoss(unittest.TestCase):
         d = build_design(cfg)
         self.assertAlmostEqual(d.harm[-1], 1.959964, places=4)           # two-sided 95% on the last day
         self.assertAlmostEqual(d.harm[0], 3.0902, places=3)              # a strict 99.9% bar on every other day
-        from canary.engine import Counts
+        from picky.engine import Counts
         mon, c = Monitor(cfg, d), Counts()
         c.nA, c.nB = 4900, 2100
         c.xA, c.xB = int(0.45 * 4900), int(0.45 * 2100 - 0.036 * 2100)  # B about 3.6 points lower: z near -2.7? no: well under the daily bar
@@ -127,7 +127,7 @@ class EndOfTestLoss(unittest.TestCase):
 
     def test_the_minimum_leads_gate_does_not_block_the_end_of_test_call(self):
         cfg = Config(share_b=0.1, baseline=0.45, mde=0.045, window_days=7, leads_per_day=1000, rule_set="final_look", min_per_arm=1000, secondary_role="none")
-        from canary.engine import Counts
+        from picky.engine import Counts
         d = build_design(cfg)
         c = Counts(); c.nA, c.nB, c.xA, c.xB = 6300, 700, 2835, 420       # only 700 B leads: below the 1,000 gate, but a clear win at the end
         dec = Monitor(cfg, d).look(len(d.look_n) - 1, c, True)
@@ -191,7 +191,7 @@ class ReviewFixes(unittest.TestCase):
     def test_any_last_day_call_that_b_is_worse_is_the_end_of_test_loss(self):
         cfg = Config(share_b=0.3, baseline=0.45, mde=0.045, window_days=7, leads_per_day=1000, rule_set="final_look", min_per_arm=1000)
         d = build_design(cfg)
-        from canary.engine import Counts
+        from picky.engine import Counts
         c = Counts(); c.nA, c.nB = 4900, 2100; c.xA, c.xB = 2205, int(0.40 * 2100)      # far past even the daily bar
         dec = Monitor(cfg, d).look(len(d.look_n) - 1, c, True)
         self.assertEqual((dec["kind"], dec["cause"]), ("STOP_HARM", "loss_at_end"))

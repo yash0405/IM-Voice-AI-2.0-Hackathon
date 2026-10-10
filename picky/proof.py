@@ -2,7 +2,7 @@
 
 Picky's decisions are made by the same `Monitor.look` used by the live engine; the typical
 approaches (baselines.py) see exactly the same simulated counts.
-Run:  python -m canary proof [--runs N]      (seeded, reproducible)
+Run:  python -m picky proof [--runs N]      (seeded, reproducible)
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from .simulator import real_durations
 from .stats import binom_ci
 
 OUT = Path(__file__).resolve().parent.parent / "out"
-METHODS = ["canary", "naive_peek", "fixed_horizon", "higher_rate"]
+METHODS = ["picky", "naive_peek", "fixed_horizon", "higher_rate"]
 
 PROOF_SCENARIOS = {
     "aa":        dict(label="No real difference (A = B)", true_a=0.45, true_b=0.45, truth="no_effect"),
@@ -90,7 +90,7 @@ def evaluate(a: dict, M: int, d, cfg: Config, with_dur: bool = True, methods=MET
             c.sA = cols["sA"][m][k]; c.qA = cols["qA"][m][k]; c.sB = cols["sB"][m][k]; c.qB = cols["qB"][m][k]
 
     for m in range(M):
-        if "canary" in methods:
+        if "picky" in methods:
             mon = Monitor(cfg, d)
             kind, kk, why = "INCONCLUSIVE", K - 1, None
             for k in range(K):
@@ -99,9 +99,9 @@ def evaluate(a: dict, M: int, d, cfg: Config, with_dur: bool = True, methods=MET
                 if dec["terminal"]:
                     kind, kk, why = dec["kind"], k, dec.get("cause")
                     break
-            res["canary"]["cause"].append(why); res["canary"]["look"].append(kk)
-            res["canary"]["kind"].append(kind); res["canary"]["n"].append(cols["nA"][m][kk] + cols["nB"][m][kk])
-            res["canary"]["expB"].append(cols["aB"][m][kk])
+            res["picky"]["cause"].append(why); res["picky"]["look"].append(kk)
+            res["picky"]["kind"].append(kind); res["picky"]["n"].append(cols["nA"][m][kk] + cols["nB"][m][kk])
+            res["picky"]["expB"].append(cols["aB"][m][kk])
         if "naive_peek" in methods:
             kind, kk = "NO_SHIP", K - 1
             for k in range(K):
@@ -154,7 +154,7 @@ def run_looks_sweep(args):
     d = build_design(cfg)
     rng = np.random.default_rng(seed)
     a = _gen(rng, runs, d, cfg, cfg.baseline, cfg.baseline, with_dur=False)
-    res = evaluate(a, runs, d, cfg, False, methods=["canary", "naive_peek"])
+    res = evaluate(a, runs, d, cfg, False, methods=["picky", "naive_peek"])
     out = {}
     for m, r in res.items():
         x = r["kind"].count("PROMOTE")
@@ -168,9 +168,9 @@ def run_bug_sweep(args):
     cfg_share = Config(**{**BASE, "loss_check": False})
     d = build_design(cfg_full)
     a = _gen(np.random.default_rng(seed), runs, d, cfg_full, cfg_full.baseline, cfg_full.baseline, drop_b=drop, with_dur=True)
-    full = evaluate(a, runs, d, cfg_full, True, methods=["canary", "naive_peek"])
-    share = evaluate(a, runs, d, cfg_share, True, methods=["canary"])
-    f, sh, nv = full["canary"]["kind"], share["canary"]["kind"], full["naive_peek"]["kind"]
+    full = evaluate(a, runs, d, cfg_full, True, methods=["picky", "naive_peek"])
+    share = evaluate(a, runs, d, cfg_share, True, methods=["picky"])
+    f, sh, nv = full["picky"]["kind"], share["picky"]["kind"], full["naive_peek"]["kind"]
     return drop, {"share_check_only": {"halts": sh.count("HALT_SRM") / runs, "ships": sh.count("PROMOTE") / runs},
                   "with_completeness_check": {"halts": f.count("HALT_SRM") / runs, "ships": f.count("PROMOTE") / runs},
                   "naive_ships": nv.count("PROMOTE") / runs, "runs": runs}
@@ -184,13 +184,13 @@ def run_grid_cell(args):
     d = build_design(cfg)
     rng = np.random.default_rng(seed)
     a = _gen(rng, runs, d, cfg, base, base, with_dur=False)
-    res = evaluate(a, runs, d, cfg, False, methods=["canary", "naive_peek"])
-    kinds = res["canary"]["kind"]
+    res = evaluate(a, runs, d, cfg, False, methods=["picky", "naive_peek"])
+    kinds = res["picky"]["kind"]
     nk = res["naive_peek"]["kind"]
     return (base, share), {"mde": mde, "n_max": d.n_max,
-                           "canary_false_promote": kinds.count("PROMOTE") / runs,
-                           "canary_false_harm_stop": kinds.count("STOP_HARM") / runs,
-                           "canary_srm_false_alarm": kinds.count("HALT_SRM") / runs,
+                           "picky_false_promote": kinds.count("PROMOTE") / runs,
+                           "picky_false_harm_stop": kinds.count("STOP_HARM") / runs,
+                           "picky_srm_false_alarm": kinds.count("HALT_SRM") / runs,
                            "naive_false_promote": nk.count("PROMOTE") / runs, "runs": runs}
 
 
@@ -265,8 +265,8 @@ def evaluator_error_study(runs: int, seed: int):
         d = build_design(cfg)
         rng = np.random.default_rng(seed)
         a = _gen(rng, runs, d, cfg, pa, pb, with_dur=False)
-        res = evaluate(a, runs, d, cfg, False, methods=["canary"])
-        k = res["canary"]["kind"]
+        res = evaluate(a, runs, d, cfg, False, methods=["picky"])
+        k = res["picky"]["kind"]
         need = seqdesign.plan_sample_size(pa, pb - pa, cfg.share_b, cfg.alpha, cfg.power, cfg.n_looks)["n_max"]
         out.append({"tagger": name, "sensitivity": se, "specificity": sp, "observed_rate_a": pa, "observed_rate_b": pb,
                     "observed_lift_pp": (pb - pa) * 100, "power": k.count("PROMOTE") / runs,
@@ -289,7 +289,7 @@ def aa_study(runs: int, seed: int) -> dict:
     d = build_design(cfg)
     rng = np.random.default_rng(seed)
     a = _gen(rng, runs, d, cfg, cfg.baseline, cfg.baseline, with_dur=True)
-    r = evaluate(a, runs, d, cfg, True, methods=["canary"])["canary"]
+    r = evaluate(a, runs, d, cfg, True, methods=["picky"])["picky"]
     nv = evaluate(a, runs, d, Config(**{**AA_CFG, "min_per_arm": 50}), True, methods=["naive_peek"])["naive_peek"]["kind"]     # a plain daily p < 0.05 check, from the first 50 leads per prompt
     kinds, cause, look = r["kind"], r["cause"], r["look"]
     cnt = lambda f: sum(1 for k, c, l in zip(kinds, cause, look) if f(k, c, l))
@@ -395,7 +395,7 @@ def run_ruleset_case(args):
     _, ta, tb = RULESETS[key]
     out = {}
     base = dict(share_b=0.30, baseline=0.45, mde=0.03, window_days=14, leads_per_day=300, secondary_role="none")   # same window, same data volume
-    for rs, methods in (("sequential", ["canary", "naive_peek"]), ("final_look", ["canary", "naive_peek"])):
+    for rs, methods in (("sequential", ["picky", "naive_peek"]), ("final_look", ["picky", "naive_peek"])):
         cfg = Config(**{**base, "rule_set": rs})
         d = build_design(cfg)
         rng = np.random.default_rng(seed)

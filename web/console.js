@@ -1,12 +1,12 @@
-/* GENERATED from web/console/*.js by canary.build.assemble_console_js: edit the parts, not this file. */
+/* GENERATED from web/console/*.js by picky.build.assemble_console_js: edit the parts, not this file. */
 "use strict";
 /* Picky console. Plain JS that works offline; two vendored libraries (Chart.js for charts, jsdiff for the prompt diff) and the browser's Web Crypto. Every number shown comes from the bundle the Python engine produced
-   (dist/canary_demo.html embeds it; live mode fetches /api/console). Demo state (launched tests, how many days have been played, approvals,
-   rollbacks) is saved in the history database on the local live server (canary/store.py) and cached in this browser; the hosted copy and the
+   (dist/picky_demo.html embeds it; live mode fetches /api/console). Demo state (launched tests, how many days have been played, approvals,
+   rollbacks) is saved in the history database on the local live server (picky/store.py) and cached in this browser; the hosted copy and the
    offline file keep it in this browser only. It is reset from Settings. */
 
-const LIVE = !!window.CANARY_LIVE;
-const HOSTED = !!window.CANARY_HOSTED;
+const LIVE = !!window.PICKY_LIVE;
+const HOSTED = !!window.PICKY_HOSTED;
 let C = window.CONSOLE_DATA || null;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -30,7 +30,7 @@ const toCsv = (head, rows) => [head.map(csvCell).join(","), ...rows.map(r => r.m
 /* ------------------------------------------------------------------ the decision record, re-checked in this browser with its built-in SHA-256 (Web Crypto) */
 const hex = buf => [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
 const sha256 = async str => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str)));
-/** Every entry must point at the one before and hash to its stored hash, exactly as canary/ledger.py wrote it. */
+/** Every entry must point at the one before and hash to its stored hash, exactly as picky/ledger.py wrote it. */
 async function chainOk(entries) {
   if (!(window.crypto && crypto.subtle)) throw new Error("this page is not a secure context, so the browser offers no SHA-256 here");
   let prev = "0".repeat(64); for (const e of entries) { if (e.prev !== prev || await sha256(prev + e.body) !== e.hash) return false; prev = e.hash; } return true;
@@ -64,7 +64,7 @@ const segChips = seg => segList(seg).length ? segList(seg).map(r => `<span class
 const segOf = e => e.audience || (e.record && e.record.config && e.record.config.segment) || null;       // `audience` is what the person chose when an offline launch replays another test's run
 
 /* ------------------------------------------------------------------ experiments and their demo state */
-const SK = "canary_console_v1";
+const SK = "picky_console_v1";
 /* Demo state in this browser. A prompt (about 170 KB) is kept once however many drafts and tests use it, and a full storage is reported. */
 const BIG_TEXT = 20000, fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36) + "_" + s.length.toString(36); };
 function loadDyn() { try { const raw = localStorage.getItem(SK); if (!raw) return null; const o = JSON.parse(raw); return o && o.packed === 2 ? JSON.parse(o.body, (k, v) => typeof v === "string" && v[0] === "\u0001" ? o.texts[v.slice(1)] : v) : o; } catch { return null; } }
@@ -94,7 +94,7 @@ const writeCache = () => { const db = (STORE.on && STORE.epoch) || STORE.track, 
   if (!saveWarned) { saveWarned = true; toast(db ? "This browser's storage is full. Your tests are safe in the history database; only this browser's shortcuts are not saved." : "This browser could not save the demo state (its storage is full). Delete old drafts, or reset the demo in Settings.", 6000); } };
 const saveDyn = () => { writeCache(); storeSync(); };
 
-/* The history database (canary/store.py, one SQLite file on the live server). On the local live server every launched test, its state and every
+/* The history database (picky/store.py, one SQLite file on the live server). On the local live server every launched test, its state and every
    click is saved there, so all browsers on that server share one history and it survives a restart; this browser's copy is a cache. The hosted
    copy and the offline file have no server: they keep the state in this browser only. Only what changed since the last save is sent, with the
    version (rev) this browser last saw: a save based on an older version is refused and this browser reloads the latest. */
@@ -118,7 +118,7 @@ async function storePush() {
   if (!Object.keys(sent).length) return;
   STORE.busy = true;
   try {
-    const r = await fetch("/api/store", { method: "POST", headers: { "X-Canary-Store": "1" }, body: JSON.stringify(body) }), j = await r.json();
+    const r = await fetch("/api/store", { method: "POST", headers: { "X-Picky-Store": "1" }, body: JSON.stringify(body) }), j = await r.json();
     if (r.status === 409) { STORE.on = false; toast(j.reset ? "The history was reset from another browser. Reloading it." : "Another browser saved a newer version of this. Loading the latest.", 4000); if (j.reset) try { localStorage.removeItem(SK); } catch { } setTimeout(() => location.reload(), 1500); return; }
     if (j.error) throw new Error(j.error);
     const rej = (j.rejected || []).map(x => x.id).filter(Boolean);
@@ -1651,7 +1651,7 @@ function bindWizard(el, w) {
 }
 document.addEventListener("click", ev => { $$("details.ms[open],details.kebab[open]").forEach(d => { if (!d.contains(ev.target)) { d.open = false; if (WZ && WZ.ui && WZ.ui.openMs === d.dataset.ms) WZ.ui.openMs = null; } }); });
 
-/* The custom metric builder on the real columns of the data files in the resources folder (canary/filecatalog.py scans them; the bundle carries
+/* The custom metric builder on the real columns of the data files in the resources folder (picky/filecatalog.py scans them; the bundle carries
    only column names, types and category values, never rows). The preview is measured on the file by the local server, so the file stays on this
    machine; the saved definition (file, column, operator, value) is what the engine, the test page and the reports read. */
 
@@ -1921,7 +1921,7 @@ ROUTES.log = (el) => {
   $("#l-q").oninput = ev => { LF.q = ev.target.value; LF.page = 0; save(); clearTimeout(window.__lq); window.__lq = setTimeout(() => { const p = ev.target.selectionStart; route(); const n = $("#l-q"); n.focus(); n.setSelectionRange(p, p); }, 250); };
   $("#l-type").onchange = ev => { LF.type = ev.target.value; LF.page = 0; save(); route(); }; $("#l-exp").onchange = ev => { LF.exp = ev.target.value; LF.page = 0; save(); route(); };
   const pv = $("#l-prev"), nx = $("#l-next"); if (pv) pv.onclick = () => { LF.page--; save(); route(); }; if (nx) nx.onclick = () => { LF.page++; save(); route(); };
-  $("#l-csv").onclick = () => download("canary_decision_log.csv", toCsv(["time", "test", "event", "reason", "record_hash"], evs.map(x => [x.ts, x.exp, x.type, x.text, x.hash])));
+  $("#l-csv").onclick = () => download("picky_decision_log.csv", toCsv(["time", "test", "event", "reason", "record_hash"], evs.map(x => [x.ts, x.exp, x.type, x.text, x.hash])));
 };
 
 /* ------------------------------------------------------------------ Settings */
@@ -1946,7 +1946,7 @@ ROUTES.settings = (el) => {
         ${f("s-lpd", "Leads per day, all traffic", `<input type="number" id="s-lpd" value="${s.leads_per_day}">`, "an assumption")}${f("s-appr", "Approval mode", `<select id="s-appr"><option value="auto" ${s.approval === "auto" ? "selected" : ""}>Automatic</option><option value="manual" ${s.approval === "manual" ? "selected" : ""}>Manual: a person approves every win</option></select>`, "both paths are logged")}</div>
         <p class="note" style="margin-top:12px">${esc(C.defaults.leads_per_day_note)}</p><div class="actions" style="margin-top:12px"><button class="btn primary" id="s-save">Save defaults</button></div></div>
       <div class="grid"><div class="card"><h2>Overlap warning</h2><div class="sub">When two running tests include the same leads, their results interfere. A launch is refused if it would overlap a running one.</div><div style="margin-top:12px">${(() => { const m = runningMain(), c = m.flatMap((x, i) => m.slice(i + 1).filter(y => segsOverlap(segOf(x) || {}, segOf(y) || {})).map(y => [x, y])); return c.length ? `<div class="banner warn" style="margin:0"><div><b>Overlap.</b> ${c.map(([x, y]) => esc(x.record.config.name) + " and " + esc(y.record.config.name)).join("; ")} share leads. Finish one before trusting the other.</div></div>` : `<div class="banner pos" style="margin:0"><div><b>No overlap.</b> ${m.length} test${m.length === 1 ? "" : "s"} launched here ${m.length === 1 ? "is" : "are"} running. The five pre-set scenarios are separate replays of history and are exempt.</div></div>`; })()}</div></div>
-        <div class="card"><h2>Tools</h2><div class="sub">For engineers and for the optional extras.</div><div class="actions" style="margin-top:12px"><a class="btn" href="#/import">Import results files</a>${HOSTED ? '<span class="note">Proof lab, call labelling and audio are not in the hosted copy (they use real-call data). Run ./start.sh locally for them.</span>' : `<a class="btn" href="${LIVE ? "/tools.html" : "canary_tools.html"}">Proof lab, label calls, hear it</a>`}</div></div>
+        <div class="card"><h2>Tools</h2><div class="sub">For engineers and for the optional extras.</div><div class="actions" style="margin-top:12px"><a class="btn" href="#/import">Import results files</a>${HOSTED ? '<span class="note">Proof lab, call labelling and audio are not in the hosted copy (they use real-call data). Run ./start.sh locally for them.</span>' : `<a class="btn" href="${LIVE ? "/tools.html" : "picky_tools.html"}">Proof lab, label calls, hear it</a>`}</div></div>
         <div class="card"><h2>This demo</h2><div class="sub">What is real and what is simulated.</div><ul style="margin:8px 0 0;padding-left:20px;font-size:13px"><li>The demo tests use <b>simulated</b> outcomes with a known injected effect.</li><li>Call lengths are resampled from 713 <b>real</b> recordings.</li><li>Leads per day is an <b>assumption</b> (no real volume was provided).</li><li>History holds re-runs of our scenarios and sample result files.</li><li>${STORE.on ? "Launched tests, days played, approvals and rollbacks are saved in the history database on this server." : "Days played, approvals and rollbacks live in this browser only."}</li></ul><div class="actions" style="margin-top:12px"><button class="btn danger" id="s-reset">Reset the demo</button></div></div>${storeCard()}</div></div>`;
   const setAp = () => { DYN.settings = { ...DYN.settings, autopilot: { rollback: $("#ap-roll").checked, held: $("#ap-held").checked } }; saveDyn(); toast("Autopilot updated."); };
   $("#ap-roll").onchange = setAp; $("#ap-held").onchange = setAp;
@@ -1956,7 +1956,7 @@ ROUTES.settings = (el) => {
   $$("[data-pre]", el).forEach(c => c.onchange = () => { const off = new Set(SET().preCallOff || []); c.checked ? off.delete(c.dataset.pre) : off.add(c.dataset.pre); DYN.settings = { ...DYN.settings, preCallOff: [...off] }; saveDyn(); route(); });
   $("#s-reset").onclick = async () => {
     if (!confirm(STORE.on ? "Reset the demo? Launched tests, days played, approvals, rollbacks, drafts and saved settings are cleared from the history database, for every browser on this server. The click log keeps a 'reset' entry." : "Reset the demo? Days played, approvals, rollbacks and launched tests are cleared.")) return;
-    if (STORE.on) { try { const r = await fetch("/api/store/reset", { method: "POST", headers: { "X-Canary-Store": "1" }, body: "{}" }); if (!r.ok) throw new Error(r.status); } catch (e) { toast(`Could not reset the history database (${e.message || e}). Nothing was cleared.`, 6000); return; } STORE.on = false; }
+    if (STORE.on) { try { const r = await fetch("/api/store/reset", { method: "POST", headers: { "X-Picky-Store": "1" }, body: "{}" }); if (!r.ok) throw new Error(r.status); } catch (e) { toast(`Could not reset the history database (${e.message || e}). Nothing was cleared.`, 6000); return; } STORE.on = false; }
     try { localStorage.removeItem(SK); } catch { } location.hash = "#/overview"; location.reload(); };
   if (STORE.on) fetch("/api/store/info").then(r => r.json()).then(j => { if (j.error) return; STORE.info = j; const c = $("#s-store"); if (c) c.outerHTML = storeCard(); }).catch(() => { });
 };

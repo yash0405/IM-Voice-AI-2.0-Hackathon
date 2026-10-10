@@ -1,4 +1,4 @@
-// The custom metric builder on the real columns of the data files (needs the local server: python -m canary serve --port PORT).
+// The custom metric builder on the real columns of the data files (needs the local server: python -m picky serve --port PORT).
 // Usage: node tests/browser/file_metrics.mjs http://127.0.0.1:PORT/
 // Checks: the Column picker lists the file's columns grouped by file with type tags and a search box; operators follow the column type;
 // "Calls over 3 min %" and "Average call duration" preview on the file; a rate is saved as a secondary metric and an average as the primary goal,
@@ -18,7 +18,7 @@ const prev = () => p.$eval("#w-cmprev", e => e.textContent).catch(() => "");
 const waitPrev = async re => { for (let i = 0; i < 30; i++) { const t = await prev(); if (re.test(t)) return t; await wait(300); } return prev(); };
 const pick = async (id, col) => { await p.click(`[data-fcpick="${id}"] summary`); await wait(150); await p.click(`[data-fccol="${id}"][data-col="${col}"]`); await wait(400); };
 
-await p.goto(url + "#/overview", { waitUntil: "load" }); await p.evaluate(async () => { await fetch("/api/store/reset", { method: "POST", headers: { "X-Canary-Store": "1" }, body: "{}" }).catch(() => 0); }); await p.evaluate(() => localStorage.clear()); await p.reload({ waitUntil: "load" }); await wait(1200);
+await p.goto(url + "#/overview", { waitUntil: "load" }); await p.evaluate(async () => { await fetch("/api/store/reset", { method: "POST", headers: { "X-Picky-Store": "1" }, body: "{}" }).catch(() => 0); }); await p.evaluate(() => localStorage.clear()); await p.reload({ waitUntil: "load" }); await wait(1200);
 await p.evaluate(() => { location.hash = "#/new"; }); await wait(600);
 await p.click("[data-idea]"); await wait(500);
 for (let s = 1; s < 4; s++) { await p.click("#w-next"); await wait(450); }

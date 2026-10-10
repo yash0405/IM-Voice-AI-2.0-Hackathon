@@ -3,11 +3,11 @@ import json
 import unittest
 from dataclasses import replace
 
-from canary import decide, engine, samples
-from canary.engine import Config, build_design, lock_check, run_experiment
-from canary.ledger import verify
-from canary.scenarios import make
-from canary.simulator import TrafficSim
+from picky import decide, engine, samples
+from picky.engine import Config, build_design, lock_check, run_experiment
+from picky.ledger import verify
+from picky.scenarios import make
+from picky.simulator import TrafficSim
 
 BASE = dict(goal="buylead_created", share_b=0.3, baseline=0.45, mde=0.07, window_days=14)
 
@@ -226,7 +226,7 @@ class Versioning(unittest.TestCase):
 
 class SpecNumbers(unittest.TestCase):
     def test_spec_calculator_example_is_internally_inconsistent(self):
-        from canary.planner import spec_calculator_check
+        from picky.planner import spec_calculator_check
         c = spec_calculator_check()
         self.assertGreater(c["days_needed_for_0_8pp"], 15)          # the spec says 12
         self.assertLess(c["baseline_that_gives_1_2pp"], 0.10)
@@ -317,8 +317,8 @@ class FileSafety(unittest.TestCase):
         self.assertEqual(rec["result"]["kind"], "STOP_HARM")
         with self.assertRaises(decide.DataError):
             decide.decide(files("b_harmful"), {**BASE, "direction": "sideways"})
-        from canary.engine import Config, build_design
-        from canary import seqdesign
+        from picky.engine import Config, build_design
+        from picky import seqdesign
         d = build_design(Config(primary_direction="lower", baseline=0.9, mde=0.05, share_b=0.3, secondary_role="none"))
         self.assertEqual(d.n_max, seqdesign.plan_sample_size(0.9, -0.05, 0.3, 0.025, 0.8, 40)["n_max"])
         with self.assertRaises(ValueError):

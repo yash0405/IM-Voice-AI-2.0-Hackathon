@@ -7,8 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from canary import fixloop as fx, prescreen as ps, promptlint as pl, sarvam_pipe as sp
-from canary.variants import load_base, make_variant
+from picky import fixloop as fx, prescreen as ps, promptlint as pl, sarvam_pipe as sp
+from picky.variants import load_base, make_variant
 
 
 def tag(i, issues, converted, label="partial", schema=1):

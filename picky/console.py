@@ -183,7 +183,7 @@ def suggestions() -> list[dict]:
 
 
 def metrics() -> list[dict]:
-    """The metric list (Settings > Metrics and every screen that names a metric): built from the one metric catalog, canary/metriclib.py."""
+    """The metric list (Settings > Metrics and every screen that names a metric): built from the one metric catalog, picky/metriclib.py."""
     return [{**m, "direction": ("higher" if m["direction"] == "higher" else "lower") + " is better",
              "def": metriclib.definition(m), "available": m.get("available", True)} for m in metriclib.BUILTIN]
 
@@ -206,9 +206,9 @@ def console_bundle() -> dict:
         rs = (P.get("rulesets") or {}).get("aa")
         rate = lambda m, k: m["outcomes"].get(k, {"rate": 0})["rate"]
         if rs:
-            ci = rs["final_look"]["canary"]["outcomes"].get("PROMOTE", {"ci": [0, 0]})["ci"]
-            proof = {"final_look_ci": ci, "final_look": rate(rs["final_look"]["canary"], "PROMOTE"), "sequential": rate(rs["sequential"]["canary"], "PROMOTE"), "naive": rate(rs["final_look"]["naive_peek"], "PROMOTE"),
-                     "naive_wrong": rate(rs["final_look"]["naive_peek"], "PROMOTE") + rate(rs["final_look"]["naive_peek"], "STOP_HARM"), "runs": rs["sequential"]["canary"]["runs"]}
+            ci = rs["final_look"]["picky"]["outcomes"].get("PROMOTE", {"ci": [0, 0]})["ci"]
+            proof = {"final_look_ci": ci, "final_look": rate(rs["final_look"]["picky"], "PROMOTE"), "sequential": rate(rs["sequential"]["picky"], "PROMOTE"), "naive": rate(rs["final_look"]["naive_peek"], "PROMOTE"),
+                     "naive_wrong": rate(rs["final_look"]["naive_peek"], "PROMOTE") + rate(rs["final_look"]["naive_peek"], "STOP_HARM"), "runs": rs["sequential"]["picky"]["runs"]}
         aa = P.get("aa_brd")
         if aa:                       # the BRD's own study on the console's defaults (7 days, 1,000 leads a day, 30% to B): these are the numbers shown first
             ci2 = aa["false_winner"]["ci"]
@@ -219,8 +219,8 @@ def console_bundle() -> dict:
         if RS.get("harm") and RS.get("win") and proof:
             h, w = RS["harm"], RS["win"]
             hit = lambda m: sum(rate(m, k) for k in ("STOP_HARM", "STOP_GUARDRAIL"))
-            hs, hf = h["sequential"]["canary"], h["final_look"]["canary"]
-            ps, pf = w["sequential"]["canary"], w["final_look"]["canary"]
+            hs, hf = h["sequential"]["picky"], h["final_look"]["picky"]
+            ps, pf = w["sequential"]["picky"], w["final_look"]["picky"]
             proof["rules"] = {"harm_sequential": hit(hs), "harm_final": hit(hf), "exposure_saved": 1 - hs["mean_exposure_b"] / hf["mean_exposure_b"] if hf["mean_exposure_b"] else 0,
                               "sooner": round(100 * (1 - ps["median_n_when_promoted"] / pf["median_n_when_promoted"])) if ps.get("median_n_when_promoted") and pf.get("median_n_when_promoted") else None}
         if P.get("split_brd") and proof is not None:

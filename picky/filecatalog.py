@@ -1,6 +1,6 @@
 """The data files in the Resources folder as a column catalog for the custom-metric builder, and metrics computed over them.
 
-The folder is <repo parent>/Resources (or CANARY_RESOURCES). Each .csv (and .xlsx when openpyxl is installed) is read once per change
+The folder is <repo parent>/Resources (or PICKY_RESOURCES). Each .csv (and .xlsx when openpyxl is installed) is read once per change
 (cached by path, mtime and size). Only column names, inferred types and category value lists ever leave this module through catalog();
 evaluate() returns aggregates only. Rows stay in this process's memory.
 
@@ -46,7 +46,7 @@ _SCANNED = {"at": None}
 
 
 def folder() -> Path:
-    env = os.environ.get("CANARY_RESOURCES")
+    env = os.environ.get("PICKY_RESOURCES")
     return Path(env) if env else Path(__file__).resolve().parent.parent.parent / "Resources"
 
 
@@ -54,7 +54,7 @@ def folder() -> Path:
 
 # Columns whose meaning the data team named (the Redash "Voice Bot - Dashboard" calls redis_bucket the HL Type), and columns derived from them.
 LABELS = {"redis_bucket": "HL type", "hl_bucket": "HL bucket (Top 3 / Rest)"}
-# HL bucket comes from the HL type through factors.derive (canary/catalog.py), the project's one rule (the PM's "Data type passed" table); never a copy of it here.
+# HL bucket comes from the HL type through factors.derive (picky/catalog.py), the project's one rule (the PM's "Data type passed" table); never a copy of it here.
 DERIVED = {"hl_bucket": "redis_bucket"}
 
 

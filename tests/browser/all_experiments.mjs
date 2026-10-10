@@ -1,5 +1,5 @@
 // All experiments (Live Experiments + History merged) and the time-control clean-up, in headless Chrome.
-// Usage: node tests/browser/all_experiments.mjs "file://$PWD/dist/canary_demo.html"
+// Usage: node tests/browser/all_experiments.mjs "file://$PWD/dist/picky_demo.html"
 import puppeteer from "puppeteer-core";
 
 const url = process.argv[2];

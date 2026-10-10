@@ -13,7 +13,7 @@ What changed when the real prompt arrived (all stated on the page and in docs/QA
   * Our earlier stand-in prompt was wrong about VANI: the call is INBOUND (the buyer called a seller, the call was redirected), it collects
     quantity, specification, name and city/state (no timeline), and it FORBIDS reading values back (No-Echo rule).
   * So "did not read the details back", our most common machine-labelled issue, is not a failure. It is retired from the ranking.
-  * Machine labels made before the real prompt are provisional until `python -m canary autolabel retag --yes` re-tags them (about Rs 23).
+  * Machine labels made before the real prompt are provisional until `python -m picky autolabel retag --yes` re-tags them (about Rs 23).
   * Mining is an association between machine labels, never a cause: that is why every edit goes through the A/B engine.
 """
 from __future__ import annotations

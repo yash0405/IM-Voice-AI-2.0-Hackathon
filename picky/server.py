@@ -24,7 +24,7 @@ _cache: dict = {}
 _lock = threading.Lock()
 
 # Hosted mode (public internet, e.g. Render): only the engine screens are served. The Label Lab, call audio, transcripts, the
-# Sarvam spend ledger and the proof lab stay off, and a password is required. Set by serve(hosted=True) or CANARY_HOSTED=1.
+# Sarvam spend ledger and the proof lab stay off, and a password is required. Set by serve(hosted=True) or PICKY_HOSTED=1.
 HOSTED = {"on": False, "password": None}
 HOSTED_GET = ("/", "/index.html", "/console.css", "/console.js", "/api/console", "/api/samples", "/api/filecatalog")
 HOSTED_POST = ("/api/wizard", "/api/decide", "/api/inspect", "/api/filecatalog/preview")
@@ -80,7 +80,7 @@ def console_live() -> dict:
 
 
 def store_ready():
-    """The history database (canary/store.py), with the demo tests and the History samples written into it once per process."""
+    """The history database (picky/store.py), with the demo tests and the History samples written into it once per process."""
     from . import store
     with _store_lock:
         if not _cache.get("store_seeded") or not Path(store.DB).exists():      # also when the file was deleted while the server ran
@@ -188,7 +188,7 @@ def run_wizard(body: dict) -> dict:
     prompt_a_version, share_b, window_days, improvement (absolute: 0.05 = 5 points for a rate, metric units for an average), leads_per_day
     (CONNECTED leads a day in the audience), segment, metrics [{role, key | def, limit}], confidence, min_leads_per_arm, rule_set, harm_bar,
     approval, assignment, and the simulated truth: effect_rel (on the primary), dur_mult, hang_extra_pp, seed, preset, start.
-    The current value of the primary and its spread are recomputed here from the 30-day history (canary/history.py)."""
+    The current value of the primary and its spread are recomputed here from the 30-day history (picky/history.py)."""
     from . import catalog, console, history, metriclib
     from .engine import run_experiment
     from .simulator import HistorySim
@@ -325,7 +325,7 @@ class H(BaseHTTPRequestHandler):
     def _local_only(self, write: bool = False) -> bool:
         """The history database answers the browser on this computer only, opening this server's own page. Refused with 403:
         a request from another computer or forwarded by a tunnel or proxy (ngrok, cloudflared, tailscale ... add one of FORWARDED), a page
-        from another site or another local port (Origin / Sec-Fetch-Site), and a write without the console's own header (X-Canary-Store: 1),
+        from another site or another local port (Origin / Sec-Fetch-Site), and a write without the console's own header (X-Picky-Store: 1),
         which a page from elsewhere cannot add without asking first. That browser then keeps its state to itself, as before. True: go on."""
         h = {k.lower(): v for k, v in self.headers.items()}
         host = (h.get("host") or "").rsplit(":", 1)[0].strip("[]").lower()
@@ -337,7 +337,7 @@ class H(BaseHTTPRequestHandler):
         same_origin = not h.get("origin") or (origin.scheme == "http" and (origin.hostname or "") in self.LOCAL_HOSTS and port == self.server.server_address[1])
         ok = (self.client_address[0] in ("127.0.0.1", "::1") and host in self.LOCAL_HOSTS and same_origin
               and not any(k.startswith(self.FORWARDED) for k in h) and h.get("sec-fetch-site", "same-origin") in ("same-origin", "none")
-              and (not write or h.get("x-canary-store") == "1"))
+              and (not write or h.get("x-picky-store") == "1"))
         if not ok:
             self._json({"error": "the history database answers this computer's own console only (open http://127.0.0.1 on the machine running the server)"}, 403)
         return ok
@@ -376,7 +376,7 @@ class H(BaseHTTPRequestHandler):
         try:
             if u.path in ("/", "/index.html", "/tools.html"):
                 html = (WEB / ("tools.html" if u.path == "/tools.html" else "index.html")).read_text()
-                flag = "window.CANARY_LIVE=true;" + ("window.CANARY_HOSTED=true;" if HOSTED["on"] else "")
+                flag = "window.PICKY_LIVE=true;" + ("window.PICKY_HOSTED=true;" if HOSTED["on"] else "")
                 html = html.replace('<script src="app.js"></script>', f'<script>{flag}</script><script src="app.js"></script>')
                 html = html.replace('<script src="console.js"></script>', f'<script>{flag}</script><script src="console.js"></script>')
                 if HOSTED["on"]:
@@ -400,7 +400,7 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/store/download":
                 data = store_ready().snapshot()
                 self.send_response(200); self.send_header("Content-Type", "application/vnd.sqlite3")
-                self.send_header("Content-Disposition", 'attachment; filename="canary_history.db"')
+                self.send_header("Content-Disposition", 'attachment; filename="picky_history.db"')
                 self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
             elif u.path == "/api/filecatalog":                    # column names, types and category values of the data files: no rows
                 from . import filecatalog
@@ -495,16 +495,16 @@ class H(BaseHTTPRequestHandler):
 
 
 def serve(port: int = 8765, host: str = "127.0.0.1", hosted: bool = False):
-    hosted = hosted or os.environ.get("CANARY_HOSTED") == "1"
+    hosted = hosted or os.environ.get("PICKY_HOSTED") == "1"
     if hosted:
-        pw = os.environ.get("CANARY_PASSWORD", "")
+        pw = os.environ.get("PICKY_PASSWORD", "")
         if len(pw) < 8:
-            sys.exit("Hosted mode needs CANARY_PASSWORD (at least 8 characters). Refusing to start an open server.")
+            sys.exit("Hosted mode needs PICKY_PASSWORD (at least 8 characters). Refusing to start an open server.")
         HOSTED.update(on=True, password=pw)
     build.assemble_console_js()
     if not hosted:                                                  # hosted mode never touches labels, spend, audio or the history database
         threading.Thread(target=bundle_live, daemon=True).start()   # warm the caches
-        threading.Thread(target=store_ready, daemon=True).start()   # opens data/history.db (or CANARY_DB) and writes the demo tests into it
+        threading.Thread(target=store_ready, daemon=True).start()   # opens data/history.db (or PICKY_DB) and writes the demo tests into it
     threading.Thread(target=console_live, daemon=True).start()
     srv = ThreadingHTTPServer((host, port), H)
     print(f"Picky live on http://{host}:{port}   (Ctrl+C to stop)" + ("   [hosted mode: password required, Label Lab/audio/transcripts off]" if hosted else ""))

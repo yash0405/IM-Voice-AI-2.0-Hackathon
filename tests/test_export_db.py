@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from canary import catalog, console, export_db, ledger, variants
+from picky import catalog, console, export_db, ledger, variants
 
 TABLES = ["variable_catalog", "metrics", "prompts", "experiments", "experiment_versions", "assignments", "calls", "daily_results", "decision_log", "suggestions"]
 JSON_COLUMNS = [("variable_catalog", "allowed_values"), ("metrics", "numerator_dispositions"), ("experiments", "truth"), ("experiment_versions", "config"),
@@ -31,7 +31,7 @@ class ExportDb(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = str(Path(cls.tmp.name) / "canary.db")
+        cls.path = str(Path(cls.tmp.name) / "picky.db")
         cls.counts = export_db.export(cls.path, include_past=False)
         cls.con = sqlite3.connect(cls.path)
         cls.demo = {e["id"]: e for e in console.demo_experiments()}

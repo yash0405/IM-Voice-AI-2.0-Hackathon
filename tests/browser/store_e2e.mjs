@@ -1,23 +1,23 @@
-// The history database in the browser (canary/store.py): what one browser saves, a second browser sees; a server restart keeps it;
+// The history database in the browser (picky/store.py): what one browser saves, a second browser sees; a server restart keeps it;
 // a reset reaches every browser; the offline file is unchanged. Starts its own server on a throw-away database.
-// Usage: node store_e2e.mjs <python with numpy> [port]       (CANARY_ROOT = the repo, when this file is run from elsewhere)
+// Usage: node store_e2e.mjs <python with numpy> [port]       (PICKY_ROOT = the repo, when this file is run from elsewhere)
 import puppeteer from 'puppeteer-core';
 import { spawn, spawnSync } from 'child_process';
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { fileURLToPath } from 'url';
 const [py, port = '8797'] = process.argv.slice(2);
-const ROOT = process.env.CANARY_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'canary-store-')), db = path.join(dir, 'h.db'), base = `http://127.0.0.1:${port}/`;
+const ROOT = process.env.PICKY_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'picky-store-')), db = path.join(dir, 'h.db'), base = `http://127.0.0.1:${port}/`;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (c, n, i) => { if (c) { pass++; console.log('ok   ' + n); } else { fail++; console.log('FAIL ' + n + (i !== undefined ? '  ' + JSON.stringify(i).slice(0, 300) : '')); } };
 
 let srv;
 const start = async () => {
-  srv = spawn(py, ['-m', 'canary', 'serve', '--port', port], { cwd: ROOT, env: { ...process.env, CANARY_DB: db }, stdio: 'ignore' });
+  srv = spawn(py, ['-m', 'picky', 'serve', '--port', port], { cwd: ROOT, env: { ...process.env, PICKY_DB: db }, stdio: 'ignore' });
   for (let i = 0; i < 240; i++) { try { const r = await fetch(base + 'api/store/info'); if (r.ok) return; } catch { } await sleep(500); }
   throw new Error('the server did not start');
 };
 const stop = async () => { const done = new Promise(r => srv.on('exit', r)); srv.kill('SIGTERM'); await done; };
-const post = (path, body) => fetch(base + path, { method: 'POST', headers: { 'X-Canary-Store': '1' }, body: JSON.stringify(body) }).then(r => r.json());
+const post = (path, body) => fetch(base + path, { method: 'POST', headers: { 'X-Picky-Store': '1' }, body: JSON.stringify(body) }).then(r => r.json());
 const sql = q => spawnSync(py, ['-c', `import sqlite3,json,sys; c=sqlite3.connect(sys.argv[1]); print(json.dumps(c.execute(sys.argv[2]).fetchall()))`, db, q], { encoding: 'utf8' }).stdout.trim();
 
 const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--allow-file-access-from-files'] });
@@ -57,7 +57,7 @@ try {
 
   // A browser holding an old, broken test from before the database: that test stays local, everything else still saves
   const p5 = await browser(); await p5.goto(base + '#/overview', { waitUntil: 'load' });
-  await p5.evaluate(() => { const bad = { id: 'exp-old-broken', kind: 'simulated', record: { config: { name: 'old' }, looks: [], result: {}, ledger: [] } }; localStorage.setItem('canary_console_v1', JSON.stringify({ dyn: { 'exp-old-broken': { day: 1 } }, launched: [bad], settings: {}, libLog: [], ui: {} })); });
+  await p5.evaluate(() => { const bad = { id: 'exp-old-broken', kind: 'simulated', record: { config: { name: 'old' }, looks: [], result: {}, ledger: [] } }; localStorage.setItem('picky_console_v1', JSON.stringify({ dyn: { 'exp-old-broken': { day: 1 } }, launched: [bad], settings: {}, libLog: [], ui: {} })); });
   await p5.reload({ waitUntil: 'load' }); await p5.waitForFunction(() => typeof STORE !== 'undefined' && STORE.epoch && document.querySelector('#nav a'), { timeout: 60000 });   // a real reload: the planted state is read
   await p5.waitForFunction(() => [...document.querySelectorAll('.toast')].some(t => /could not be saved/.test(t.textContent)), { timeout: 15000 }).catch(() => { });
   const toasts = await p5.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | '));
@@ -90,7 +90,7 @@ try {
 
   // A browser from before the database joins AFTER another browser has opened the app: it keeps its draft, custom metric and approval
   const p6 = await browser(); await open(p6, '#/settings'); await settle(p6);      // its first save is done before the reset below
-  await p6.evaluate(() => { localStorage.setItem('canary_console_v1', JSON.stringify({ dyn: { demo_hold: { day: 7, paused: false, approval: 'approved', rolledBack: false, manualStop: false, learning: 'old browser' } }, launched: [],
+  await p6.evaluate(() => { localStorage.setItem('picky_console_v1', JSON.stringify({ dyn: { demo_hold: { day: 7, paused: false, approval: 'approved', rolledBack: false, manualStop: false, learning: 'old browser' } }, launched: [],
     settings: { customMetrics: [{ key: 'x_metric', name: 'X metric', type: 'rate', direction: 'higher', group: 'Custom', num: { unit: 'leads', where: [] }, den: { unit: 'leads', where: [] } }] },
     libLog: [{ ts: '2026-10-09T10:00:00', type: 'Saved', text: 'old log', exp: 'x' }], drafts: [{ id: 'd-old', name: 'old draft' }], ui: {} })); });
   await post('api/store/reset', {});                                                     // a clean history, then browser 1 opens the app and saves a draft
@@ -102,9 +102,9 @@ try {
 
   // A browser that was closed while the history was reset elsewhere opens normally and can still save drafts
   const p7 = await browser(); await open(p7); await p7.evaluate(() => { saveDraft({ ...wzDefaults(), name: 'before reset' }); }); await settle(p7);
-  const cache = await p7.evaluate(() => localStorage.getItem('canary_console_v1')); await p7.close();
+  const cache = await p7.evaluate(() => localStorage.getItem('picky_console_v1')); await p7.close();
   await post('api/store/reset', {});
-  const p8 = await browser(); await open(p8); await settle(p8); await p8.evaluate(c => localStorage.setItem('canary_console_v1', c), cache);
+  const p8 = await browser(); await open(p8); await settle(p8); await p8.evaluate(c => localStorage.setItem('picky_console_v1', c), cache);
   await p8.reload({ waitUntil: 'load' }); await p8.waitForFunction(() => typeof STORE !== 'undefined' && STORE.epoch && document.querySelector('#nav a'), { timeout: 60000 }); await sleep(500);
   const re = await p8.evaluate(() => { saveDraft({ ...wzDefaults(), name: 'after reset' }); return { page: $('#page').innerText.length, drafts: DYN.drafts.map(d => d.name) }; });
   await settle(p8);                                                                     // its save is done before the next browser opens
@@ -114,7 +114,7 @@ try {
   const p9 = await browser(); await open(p9);
   const many = await p9.evaluate(async () => { const big = 'y'.repeat(200000); for (let i = 0; i < 30; i++) DYN.launched.push({ ...JSON.parse(JSON.stringify(C.demo[0])), id: 'exp-bulk-' + i, prompt_b: big + i }); saveDyn();
     for (let t = 0; t < 120 && (STORE.busy || STORE.again || DYN.launched.some(e => !STORE.sent['t:' + e.id])); t++) await new Promise(r => setTimeout(r, 500));
-    saveDyn(); return { toasts: [...document.querySelectorAll('.toast')].map(x => x.textContent).join(' | '), cacheChars: localStorage.getItem('canary_console_v1').length }; });
+    saveDyn(); return { toasts: [...document.querySelectorAll('.toast')].map(x => x.textContent).join(' | '), cacheChars: localStorage.getItem('picky_console_v1').length }; });
   ok(JSON.parse(sql("SELECT COUNT(*) FROM experiments WHERE id LIKE 'exp-bulk-%'"))[0][0] === 30 && !/could not|reset the demo/i.test(many.toasts) && many.cacheChars < 1e6, 'Many large tests at once: all 30 stored (sent in parts), no error, the browser cache stays small', many);
   await post('api/store/reset', {});
 
@@ -131,7 +131,7 @@ try {
 
   // An older browser's first save is cut off (tab closed, server busy): its merged drafts are not lost on the next open
   const p10 = await browser(); await block(p10, true); await p10.goto(base + '#/overview', { waitUntil: 'load' }); await p10.waitForFunction(() => typeof STORE !== 'undefined' && STORE.epoch, { timeout: 60000 }); await sleep(500);
-  await p10.evaluate(() => localStorage.setItem('canary_console_v1', JSON.stringify({ dyn: {}, launched: [], settings: {}, libLog: [], drafts: [{ id: 'd-cut', name: 'cut-off draft' }], ui: {} })));
+  await p10.evaluate(() => localStorage.setItem('picky_console_v1', JSON.stringify({ dyn: {}, launched: [], settings: {}, libLog: [], drafts: [{ id: 'd-cut', name: 'cut-off draft' }], ui: {} })));
   await p10.reload({ waitUntil: 'load' }); await p10.waitForFunction(() => typeof STORE !== 'undefined' && STORE.epoch, { timeout: 60000 }); await sleep(800);
   const p11 = await p10.browserContext().newPage(); p11.on('pageerror', e => errs.push(e.message)); await p10.close(); await open(p11); await settle(p11);
   ok(await p11.evaluate(() => DYN.drafts.some(d => d.name === 'cut-off draft')) && sql("SELECT value FROM app_state WHERE key = 'drafts'").includes('cut-off draft'), 'First save cut off: the older browser\'s draft is kept and saved on the next open');
@@ -165,7 +165,7 @@ try {
   ok(rev1 === rev0 && !conflict && JSON.parse(sql("SELECT rev FROM app_state WHERE key = 'settings'"))[0][0] === rev0 + 1, 'A new browser leaves the settings alone; the owner saves again with no false conflict', { rev0, rev1, conflict });
 
   // The offline file has no server: unchanged behaviour
-  const p4 = await browser(); await p4.goto('file://' + path.join(ROOT, 'dist', 'canary_demo.html') + '#/overview', { waitUntil: 'load' }); await sleep(800);
+  const p4 = await browser(); await p4.goto('file://' + path.join(ROOT, 'dist', 'picky_demo.html') + '#/overview', { waitUntil: 'load' }); await sleep(800);
   ok(await p4.evaluate(() => STORE.on === false && $('#state-note').textContent.includes('kept in this browser')), 'Offline file: keeps its state in the browser, as before');
 } finally {
   if (srv && srv.exitCode === null) await stop();

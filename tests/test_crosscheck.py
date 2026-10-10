@@ -8,7 +8,7 @@ import itertools
 import math
 import unittest
 
-from canary import seqdesign, stats
+from picky import seqdesign, stats
 
 try:
     from statsmodels.stats.power import NormalIndPower  # noqa: F401

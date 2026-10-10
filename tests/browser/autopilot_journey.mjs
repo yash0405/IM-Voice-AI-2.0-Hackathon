@@ -1,5 +1,5 @@
 // The autopilot on the spec's screens, end to end in headless Chrome (offline page, or the live server).
-// Usage: node tests/browser/autopilot_journey.mjs "file://$PWD/dist/canary_demo.html"        or   http://127.0.0.1:PORT/
+// Usage: node tests/browser/autopilot_journey.mjs "file://$PWD/dist/picky_demo.html"        or   http://127.0.0.1:PORT/
 // Checks: the spec's menu is unchanged; Overview shows the autopilot, six running tests (A and B grey until decided) and the A vs A chart; one Play
 // runs every demo test to its outcome; the autopilot keeps A on the unanswered held win and rolls back the win that slips in its holdback week;
 // both actions verify in the hash-chained record and are named in the Decision Log; a person can still approve; with the rollback switched off the
@@ -21,7 +21,7 @@ const open = async h => { await p.evaluate(x => { location.hash = x; }, h); awai
 const text = () => p.evaluate(() => document.querySelector("main").innerText);
 const kinds = () => p.evaluate(() => Object.fromEntries(EXPS().filter(e => !isPast(e)).map(e => { const v = view(e); return [e.id, { kind: v.kind, auto: !!v.d.auto, autoRoll: !!v.d.autoRoll }]; })));
 const fresh = async () => {
-  if (LIVE) await p.evaluate(async () => { await fetch("/api/store/reset", { method: "POST", headers: { "X-Canary-Store": "1" }, body: "{}" }).catch(() => 0); });
+  if (LIVE) await p.evaluate(async () => { await fetch("/api/store/reset", { method: "POST", headers: { "X-Picky-Store": "1" }, body: "{}" }).catch(() => 0); });
   await p.goto(url + "#/overview", { waitUntil: "load" }); await p.evaluate(() => localStorage.clear()); await p.reload({ waitUntil: "load" }); await wait(900);
 };
 const settle = async () => { await p.click("#clk-play"); for (let i = 0; i < 60; i++) { await wait(600); if (await p.evaluate(() => !pending() && !PLAYER)) break; } };

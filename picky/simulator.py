@@ -141,7 +141,7 @@ _TRUTH: dict = {}
 
 
 class HistorySim:
-    """Traffic that replays lead outcomes drawn from the 30-day history (canary/history.py): attempts, connection, the answered call's length
+    """Traffic that replays lead outcomes drawn from the 30-day history (picky/history.py): attempts, connection, the answered call's length
     and its disposition. A lead's FACTORS always come from catalog.lead_vars(lead id), as in TrafficSim, so routing and segments are unchanged.
     The call stream (first calls, sticky repeat calls that are not analysed, calls a day) is TrafficSim's; every random number is drawn in
     advance per call number, so a run is reproducible from the seed.

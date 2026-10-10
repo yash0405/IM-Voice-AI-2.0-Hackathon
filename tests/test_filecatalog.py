@@ -1,4 +1,4 @@
-"""The data-file column catalog and metrics over file columns (canary/filecatalog.py), on a small synthetic CSV in a temp folder."""
+"""The data-file column catalog and metrics over file columns (picky/filecatalog.py), on a small synthetic CSV in a temp folder."""
 import csv
 import math
 import os
@@ -7,8 +7,8 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from canary import filecatalog as fc
-from canary import metriclib
+from picky import filecatalog as fc
+from picky import metriclib
 
 F = "calls.csv"
 HEAD = ["disp_dtlid", "fk_lead_id", "call_start_time", "lead_call_status", "lead_call_duration", "disposition_id", "summary",
@@ -57,14 +57,14 @@ class FileCatalog(unittest.TestCase):
         self.rows = make_rows()
         write(self.dir, F, HEAD, self.rows)
         write(self.dir, "notes.csv", ["region", "score"], [{"region": r, "score": s} for r, s in (("N", 1), ("S", 2), ("E", 3))])
-        self.old = os.environ.get("CANARY_RESOURCES")
-        os.environ["CANARY_RESOURCES"] = str(self.dir)
+        self.old = os.environ.get("PICKY_RESOURCES")
+        os.environ["PICKY_RESOURCES"] = str(self.dir)
 
     def tearDown(self):
         if self.old is None:
-            os.environ.pop("CANARY_RESOURCES", None)
+            os.environ.pop("PICKY_RESOURCES", None)
         else:
-            os.environ["CANARY_RESOURCES"] = self.old
+            os.environ["PICKY_RESOURCES"] = self.old
         self.tmp.cleanup()
 
     # brute force over the window (offset >= 10 days of the latest date; the empty date row is out)
@@ -233,7 +233,7 @@ class FileCatalog(unittest.TestCase):
         self.assertEqual((a["col"], a["unit"]), ("call_duration", "calls"))
 
     def test_wizard_launch_uses_file_baseline(self):
-        from canary import server
+        from picky import server
         from tests.test_metrics_overhaul import body
         d = rate([C("lead_call_duration", ">", 100)], [ANS], name="Over 100 s")
         r = server.run_wizard(body(name="File metric", metrics=[{"role": "primary", "def": d}, {"role": "secondary", "key": "early_hangup"}]))
@@ -250,18 +250,18 @@ class HLBucketColumn(unittest.TestCase):
         self.rows = [{"fk_lead_id": f"{i}.0", "call_start_time": (BASE + timedelta(hours=i)).strftime("%d/%m/%y %H:%M"), "redis_bucket": self.TYPES[i % len(self.TYPES)],
                       "lead_call_status": "Answered"} for i in range(150)]
         write(self.dir, "hl.csv", ["fk_lead_id", "call_start_time", "redis_bucket", "lead_call_status"], self.rows)
-        self.old = os.environ.get("CANARY_RESOURCES")
-        os.environ["CANARY_RESOURCES"] = str(self.dir)
+        self.old = os.environ.get("PICKY_RESOURCES")
+        os.environ["PICKY_RESOURCES"] = str(self.dir)
 
     def tearDown(self):
         if self.old is None:
-            os.environ.pop("CANARY_RESOURCES", None)
+            os.environ.pop("PICKY_RESOURCES", None)
         else:
-            os.environ["CANARY_RESOURCES"] = self.old
+            os.environ["PICKY_RESOURCES"] = self.old
         self.tmp.cleanup()
 
     def test_column_follows_the_project_rule(self):
-        from canary import catalog
+        from picky import catalog
         cols = {c["column"]: c for c in fc.catalog()["columns"]}
         self.assertEqual(cols["redis_bucket"]["label"], "HL type")
         hb = cols["hl_bucket"]
@@ -285,7 +285,7 @@ REAL = Path(fc.__file__).resolve().parent.parent.parent / "Resources" / "dtl tab
 @unittest.skipUnless(REAL.exists(), "the real data file is not on this machine")
 class RealFile(unittest.TestCase):
     def test_two_examples(self):
-        old = os.environ.pop("CANARY_RESOURCES", None)
+        old = os.environ.pop("PICKY_RESOURCES", None)
         try:
             F2 = REAL.name
             a = {"source": "file", "file": F2, "type": "rate", "count": "calls", "name": "Calls over 3 min %",
@@ -304,7 +304,7 @@ class RealFile(unittest.TestCase):
             self.assertEqual(top["num"], pm["num"])                                    # Top 3 is exactly the PM's ten Top 3 types
         finally:
             if old is not None:
-                os.environ["CANARY_RESOURCES"] = old
+                os.environ["PICKY_RESOURCES"] = old
 
 
 if __name__ == "__main__":

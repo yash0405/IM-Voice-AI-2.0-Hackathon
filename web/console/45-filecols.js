@@ -1,4 +1,4 @@
-/* The custom metric builder on the real columns of the data files in the resources folder (canary/filecatalog.py scans them; the bundle carries
+/* The custom metric builder on the real columns of the data files in the resources folder (picky/filecatalog.py scans them; the bundle carries
    only column names, types and category values, never rows). The preview is measured on the file by the local server, so the file stays on this
    machine; the saved definition (file, column, operator, value) is what the engine, the test page and the reports read. */
 

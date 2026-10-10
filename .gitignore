@@ -22,11 +22,11 @@ venv/
 .pytest_cache/
 .DS_Store
 
-# the history database the live server writes (canary/store.py); per machine, never committed
+# the history database the live server writes (picky/store.py); per machine, never committed
 data/history.db
 data/history.db-*
 node_modules
 
 # generated or internal files that are not part of the submission
-out/canary.db
+out/picky.db
 data/vani_real_prompt_raw.txt

@@ -80,7 +80,7 @@ def assemble_console_js() -> Path:
     """web/console.js is generated from the parts in web/console/ (kept apart so each screen is a readable file)."""
     parts = sorted((WEB / "console").glob("*.js"))
     out = WEB / "console.js"
-    out.write_text("/* GENERATED from web/console/*.js by canary.build.assemble_console_js: edit the parts, not this file. */\n" + "\n".join(p.read_text() for p in parts))
+    out.write_text("/* GENERATED from web/console/*.js by picky.build.assemble_console_js: edit the parts, not this file. */\n" + "\n".join(p.read_text() for p in parts))
     return out
 
 
@@ -103,7 +103,7 @@ def build_console_html(bundle: dict | None = None) -> Path:
     data = json.dumps(bundle, separators=(",", ":")).replace("</", "<\\/")
     html = html.replace('<link rel="stylesheet" href="console.css">', f"<style>{css}</style>")
     html = html.replace('<script src="console.js"></script>', f"<script>window.CONSOLE_DATA={data};</script><script>{js}</script>")
-    out = DIST / "canary_demo.html"
+    out = DIST / "picky_demo.html"
     out.write_text(html)
     return out
 
@@ -116,11 +116,11 @@ def build_html(bundle: dict | None = None) -> Path:
     js = (WEB / "simple.js").read_text() + "\n" + (WEB / "app.js").read_text()
     data = json.dumps(bundle, separators=(",", ":")).replace("</", "<\\/")
     html = html.replace('<link rel="stylesheet" href="style.css">', f"<style>{css}</style>")
-    html = html.replace('<script src="simple.js"></script>\n', "").replace('<script src="app.js"></script>', f"<script>window.CANARY_DATA={data};</script><script>{js}</script>")
+    html = html.replace('<script src="simple.js"></script>\n', "").replace('<script src="app.js"></script>', f"<script>window.PICKY_DATA={data};</script><script>{js}</script>")
     import shutil
     if arena.ARENA.exists():
         shutil.copytree(arena.ARENA, DIST / "arena", dirs_exist_ok=True)      # audio for the offline demo
-    out = DIST / "canary_tools.html"
+    out = DIST / "picky_tools.html"
     out.write_text(html)
     (OUT / "bundle.json").write_text(json.dumps(bundle))
     return out

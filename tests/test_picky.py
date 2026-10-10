@@ -1,4 +1,4 @@
-"""python -m unittest discover -s tests -v   (run from the canary/ folder)"""
+"""python -m unittest discover -s tests -v   (run from the picky/ folder)"""
 import json
 import random
 import sys
@@ -9,14 +9,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
 
-from canary import ledger, proof, seqdesign
-from canary.build import scenario_bundle
-from canary.engine import Config, build_design
-from canary.evaluator import LLMEvaluator, RuleEvaluator, metrics
-from canary.router import NaiveRouter, Router
-from canary.scenarios import ORDER, SCENARIOS
-from canary.stats import pooled_z, score_diff_ci, srm_pvalue
-from canary.variants import make_variant, load_base
+from picky import ledger, proof, seqdesign
+from picky.build import scenario_bundle
+from picky.engine import Config, build_design
+from picky.evaluator import LLMEvaluator, RuleEvaluator, metrics
+from picky.router import NaiveRouter, Router
+from picky.scenarios import ORDER, SCENARIOS
+from picky.stats import pooled_z, score_diff_ci, srm_pvalue
+from picky.variants import make_variant, load_base
 
 
 class SeqDesign(unittest.TestCase):
@@ -87,7 +87,7 @@ class Stats(unittest.TestCase):
                 self.assertEqual(lo > 0 or hi < 0, abs(z) >= crit)
 
     def test_logging_completeness_check_catches_uneven_loss_but_not_even_loss(self):
-        from canary.stats import loss_pvalue
+        from picky.stats import loss_pvalue
         self.assertLess(loss_pvalue(2000, 2000, 200, 170), 0.001)      # B loses 15% of its calls
         self.assertGreater(loss_pvalue(2000, 1960, 200, 196), 0.5)     # both lose 2%
         self.assertEqual(loss_pvalue(2000, 2000, 200, 200), 1.0)
@@ -171,15 +171,15 @@ class Evaluator(unittest.TestCase):
 
 
 class ProofSanity(unittest.TestCase):
-    def test_canary_controls_false_wins_that_naive_peeking_does_not(self):
+    def test_picky_controls_false_wins_that_naive_peeking_does_not(self):
         cfg = Config(secondary_role="none")
         d = build_design(cfg)
         a = proof._gen(np.random.default_rng(9), 3000, d, cfg, 0.12, 0.12, with_dur=False)
-        r = proof.evaluate(a, 3000, d, cfg, False, methods=["canary", "naive_peek"])
-        canary = r["canary"]["kind"].count("PROMOTE") / 3000
+        r = proof.evaluate(a, 3000, d, cfg, False, methods=["picky", "naive_peek"])
+        picky = r["picky"]["kind"].count("PROMOTE") / 3000
         naive = r["naive_peek"]["kind"].count("PROMOTE") / 3000
-        self.assertLess(canary, 0.045)
-        self.assertGreater(naive, 2 * canary)
+        self.assertLess(picky, 0.045)
+        self.assertGreater(naive, 2 * picky)
 
 
 if __name__ == "__main__":

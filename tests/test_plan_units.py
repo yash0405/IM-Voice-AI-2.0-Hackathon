@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from canary import catalog, history, metriclib, promptlint, variants
+from picky import catalog, history, metriclib, promptlint, variants
 
 ROOT = Path(__file__).resolve().parent.parent
 

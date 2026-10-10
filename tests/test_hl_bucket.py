@@ -1,7 +1,7 @@
 """HL Bucket (Top 3 / Rest) is fixed by the PM's "Data type passed" table. This pins that table so no change can drift from it silently."""
 import unittest
 
-from canary import catalog
+from picky import catalog
 
 # copied by hand from the PM's table (Oct 10, 2026), plus the PM's answer for the five types it did not list: TF and UATF are Top 3, the rest Rest
 PM_TABLE = {"NUR": "Rest", "PIM": "Rest", "UA": "Rest", "PUA": "Rest", "ENQR": "Rest", "PNSM": "Rest", "PNSR": "Rest",

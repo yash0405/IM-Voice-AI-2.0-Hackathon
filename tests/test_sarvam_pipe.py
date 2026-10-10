@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from canary import sarvam_pipe as sp
+from picky import sarvam_pipe as sp
 
 
 class FakeJob:

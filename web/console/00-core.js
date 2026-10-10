@@ -1,11 +1,11 @@
 "use strict";
 /* Picky console. Plain JS that works offline; two vendored libraries (Chart.js for charts, jsdiff for the prompt diff) and the browser's Web Crypto. Every number shown comes from the bundle the Python engine produced
-   (dist/canary_demo.html embeds it; live mode fetches /api/console). Demo state (launched tests, how many days have been played, approvals,
-   rollbacks) is saved in the history database on the local live server (canary/store.py) and cached in this browser; the hosted copy and the
+   (dist/picky_demo.html embeds it; live mode fetches /api/console). Demo state (launched tests, how many days have been played, approvals,
+   rollbacks) is saved in the history database on the local live server (picky/store.py) and cached in this browser; the hosted copy and the
    offline file keep it in this browser only. It is reset from Settings. */
 
-const LIVE = !!window.CANARY_LIVE;
-const HOSTED = !!window.CANARY_HOSTED;
+const LIVE = !!window.PICKY_LIVE;
+const HOSTED = !!window.PICKY_HOSTED;
 let C = window.CONSOLE_DATA || null;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -29,7 +29,7 @@ const toCsv = (head, rows) => [head.map(csvCell).join(","), ...rows.map(r => r.m
 /* ------------------------------------------------------------------ the decision record, re-checked in this browser with its built-in SHA-256 (Web Crypto) */
 const hex = buf => [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
 const sha256 = async str => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str)));
-/** Every entry must point at the one before and hash to its stored hash, exactly as canary/ledger.py wrote it. */
+/** Every entry must point at the one before and hash to its stored hash, exactly as picky/ledger.py wrote it. */
 async function chainOk(entries) {
   if (!(window.crypto && crypto.subtle)) throw new Error("this page is not a secure context, so the browser offers no SHA-256 here");
   let prev = "0".repeat(64); for (const e of entries) { if (e.prev !== prev || await sha256(prev + e.body) !== e.hash) return false; prev = e.hash; } return true;
@@ -63,7 +63,7 @@ const segChips = seg => segList(seg).length ? segList(seg).map(r => `<span class
 const segOf = e => e.audience || (e.record && e.record.config && e.record.config.segment) || null;       // `audience` is what the person chose when an offline launch replays another test's run
 
 /* ------------------------------------------------------------------ experiments and their demo state */
-const SK = "canary_console_v1";
+const SK = "picky_console_v1";
 /* Demo state in this browser. A prompt (about 170 KB) is kept once however many drafts and tests use it, and a full storage is reported. */
 const BIG_TEXT = 20000, fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36) + "_" + s.length.toString(36); };
 function loadDyn() { try { const raw = localStorage.getItem(SK); if (!raw) return null; const o = JSON.parse(raw); return o && o.packed === 2 ? JSON.parse(o.body, (k, v) => typeof v === "string" && v[0] === "\u0001" ? o.texts[v.slice(1)] : v) : o; } catch { return null; } }
@@ -93,7 +93,7 @@ const writeCache = () => { const db = (STORE.on && STORE.epoch) || STORE.track, 
   if (!saveWarned) { saveWarned = true; toast(db ? "This browser's storage is full. Your tests are safe in the history database; only this browser's shortcuts are not saved." : "This browser could not save the demo state (its storage is full). Delete old drafts, or reset the demo in Settings.", 6000); } };
 const saveDyn = () => { writeCache(); storeSync(); };
 
-/* The history database (canary/store.py, one SQLite file on the live server). On the local live server every launched test, its state and every
+/* The history database (picky/store.py, one SQLite file on the live server). On the local live server every launched test, its state and every
    click is saved there, so all browsers on that server share one history and it survives a restart; this browser's copy is a cache. The hosted
    copy and the offline file have no server: they keep the state in this browser only. Only what changed since the last save is sent, with the
    version (rev) this browser last saw: a save based on an older version is refused and this browser reloads the latest. */
@@ -117,7 +117,7 @@ async function storePush() {
   if (!Object.keys(sent).length) return;
   STORE.busy = true;
   try {
-    const r = await fetch("/api/store", { method: "POST", headers: { "X-Canary-Store": "1" }, body: JSON.stringify(body) }), j = await r.json();
+    const r = await fetch("/api/store", { method: "POST", headers: { "X-Picky-Store": "1" }, body: JSON.stringify(body) }), j = await r.json();
     if (r.status === 409) { STORE.on = false; toast(j.reset ? "The history was reset from another browser. Reloading it." : "Another browser saved a newer version of this. Loading the latest.", 4000); if (j.reset) try { localStorage.removeItem(SK); } catch { } setTimeout(() => location.reload(), 1500); return; }
     if (j.error) throw new Error(j.error);
     const rej = (j.rejected || []).map(x => x.id).filter(Boolean);

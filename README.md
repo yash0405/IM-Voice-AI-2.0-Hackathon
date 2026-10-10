@@ -25,7 +25,7 @@ Test it. Pick it. Ship it. Picky tries every new idea on a few calls first and p
 **Data used**
 - VANI's real buyer-side prompt (77 pages, about 25,000 words) and IndiaMART's call-quality matrix (fatal and non-fatal parameters).
 - 713 real call recordings (13.85 h). Sarvam Saaras transcribed 299 of them with speaker separation, and Sarvam-105B tagged each one against the quality matrix.
-- The Hot Lead disposition table (`data_hotlead_disposition_dtl`, 29,591 calls over 30 days). It gives real baselines for planning (answer rate, call duration, meeting fixed) and the columns for custom metrics. The HL Bucket rule (Top 3 = SCHD, OLP, OLPR, PAM, PNCHF, PANF, PUT, NVGT, TF, UATF; Rest = NUR, PIM, UA, PUA, ENQR, PNSM, PNSR) is set in one place, `canary/catalog.py`.
+- The Hot Lead disposition table (`data_hotlead_disposition_dtl`, 29,591 calls over 30 days). It gives real baselines for planning (answer rate, call duration, meeting fixed) and the columns for custom metrics. The HL Bucket rule (Top 3 = SCHD, OLP, OLPR, PAM, PNCHF, PANF, PUT, NVGT, TF, UATF; Rest = NUR, PIM, UA, PUA, ENQR, PNSM, PNSR) is set in one place, `picky/catalog.py`.
 - A built-in traffic simulator replays tests with a known difference between A and B, so every verdict can be checked against the truth.
 
 **Design (before, during, and after a test)**
@@ -59,7 +59,7 @@ Test it. Pick it. Ship it. Picky tries every new idea on a few calls first and p
 - An experiment engine with automatic promotion and early stop.
 - Goal and guardrail metrics, including custom metrics.
 - A dashboard: Overview, New Experiment, All experiments, Suggest A/B Tests, Prompt Library, Decision Log and Settings.
-- A results-file path (`python -m canary decide`) for real exports.
+- A results-file path (`python -m picky decide`) for real exports.
 - A proof lab and a QA report regenerated from code.
 - A reusable skill: `.github/skills/ab-test-decision/SKILL.md` (the A/B decision method for any assistant), with its three scripts in `decision-tools/`.
 
@@ -81,21 +81,21 @@ All numbers below are re-runnable from code with fixed seeds. They are taken fro
 ## Run it locally
 ```bash
 ./start.sh                 # sets up a venv, then opens http://127.0.0.1:8765 (the full app; history saved in data/history.db)
-open dist/canary_demo.html # or: the offline single-file demo, no server needed
+open dist/picky_demo.html # or: the offline single-file demo, no server needed
 ./run.sh                   # everything: tests, proof lab, dashboard, QA report
 ```
-Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps need `pip install sarvamai` and `SARVAM_API_KEY` in `.env`. Each paid step is opt-in (`--yes`) and costed in advance (`python -m canary fix costs`).
+Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps need `pip install sarvamai` and `SARVAM_API_KEY` in `.env`. Each paid step is opt-in (`--yes`) and costed in advance (`python -m picky fix costs`).
 
 ## Repository layout
 | Path | What it is |
 |---|---|
-| `canary/` | The engine (Python package): router, sequential and final-look decision rules, guardrails, ledger, simulator, proof lab, results-file reader, Sarvam labelling, prompt lint, data-file catalog, servers |
+| `picky/` | The engine (Python package): router, sequential and final-look decision rules, guardrails, ledger, simulator, proof lab, results-file reader, Sarvam labelling, prompt lint, data-file catalog, servers |
 | `web/` | The dashboard: plain JS parts in `web/console/*.js`, assembled into `web/console.js`; `console.css` |
-| `data/` | The real prompt (rule per line), the quality-matrix schema, call durations, and `samples/` (six sample results files for `python -m canary decide`: B wins, flat, harmful, early hang-ups, guardrail hold, messy export) |
-| `dist/` | Prebuilt offline demo (`canary_demo.html`) and the engineer tools page |
+| `data/` | The real prompt (rule per line), the quality-matrix schema, call durations, and `samples/` (six sample results files for `python -m picky decide`: B wins, flat, harmful, early hang-ups, guardrail hold, messy export) |
+| `dist/` | Prebuilt offline demo (`picky_demo.html`) and the engineer tools page |
 | `out/` | Generated data the dashboard reads (`console_bundle.json`, proof results) |
 | `deploy/` | Builds the hosted app for GitHub Pages (`.github/workflows/pages.yml` redeploys on every push to `main`) |
-| `tests/` | Python unit tests (`python -m unittest discover -s tests`, 300+ tests) and headless-Chrome browser tests in `tests/browser/` (`npm install puppeteer-core`, Chrome at `/usr/bin/google-chrome`; run e.g. `node tests/browser/autopilot_journey.mjs "file://$PWD/dist/canary_demo.html"`) |
+| `tests/` | Python unit tests (`python -m unittest discover -s tests`, 300+ tests) and headless-Chrome browser tests in `tests/browser/` (`npm install puppeteer-core`, Chrome at `/usr/bin/google-chrome`; run e.g. `node tests/browser/autopilot_journey.mjs "file://$PWD/dist/picky_demo.html"`) |
 | `docs/` | The demo deck (`presentation.html`) and the QA report that backs every number above |
 | `.github/skills/ab-test-decision/SKILL.md` | The reusable A/B decision skill (one self-contained file) |
 | `decision-tools/` | The skill's scripts: `plan_test.py` (can the test finish?), `check_results.py` (is the file trustworthy?), `decide.py` (the engine's verdict) |
@@ -103,13 +103,13 @@ Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps
 ## Commands
 | Command | What it does | Spends credits? |
 |---|---|---|
-| `python -m canary decide FILE --goal ... --share-b 0.3 --baseline ... --window-days ...` | Decide from a results file: ship, stop, hold for a person, or keep A | no |
-| `python -m canary proof` / `qa` | Proof lab (thousands of simulated tests) / write `docs/QA_REPORT.md` | no |
-| `python -m canary build` / `serve [--port N]` | Build the dashboards / run the local server (default port 8765) | no |
-| `python -m canary fix lint` / `loops` / `candidate` / `costs` | Prompt contradictions / repeats in real calls / free candidate edit / cost of each paid step | no |
-| `python -m canary fix propose --yes` / `prescreen --yes` | A Sarvam-drafted edit / simulated buyers hear A and B | yes, capped |
-| `python -m canary autolabel run --yes` | Sarvam transcription and tagging | yes, capped |
-| `python -m canary history` / `export-db` | The live history database / a SQLite export of every test | no |
+| `python -m picky decide FILE --goal ... --share-b 0.3 --baseline ... --window-days ...` | Decide from a results file: ship, stop, hold for a person, or keep A | no |
+| `python -m picky proof` / `qa` | Proof lab (thousands of simulated tests) / write `docs/QA_REPORT.md` | no |
+| `python -m picky build` / `serve [--port N]` | Build the dashboards / run the local server (default port 8765) | no |
+| `python -m picky fix lint` / `loops` / `candidate` / `costs` | Prompt contradictions / repeats in real calls / free candidate edit / cost of each paid step | no |
+| `python -m picky fix propose --yes` / `prescreen --yes` | A Sarvam-drafted edit / simulated buyers hear A and B | yes, capped |
+| `python -m picky autolabel run --yes` | Sarvam transcription and tagging | yes, capped |
+| `python -m picky history` / `export-db` | The live history database / a SQLite export of every test | no |
 
 ## Data hygiene
 Recordings and transcripts are customer data. They went only to the Sarvam platform, and they stay on the team's machine with labels and spend files, all excluded from this repository (`.gitignore`). The hosted app contains no call recordings, transcripts or call rows. Of the call-data file it uses only the column names and category values.

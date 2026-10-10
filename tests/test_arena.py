@@ -3,7 +3,7 @@ import base64, json, sys, tempfile, unittest
 from pathlib import Path
 from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from canary import arena as ar, sarvam_pipe as sp
+from picky import arena as ar, sarvam_pipe as sp
 
 
 class Fake:
@@ -44,7 +44,7 @@ class ArenaTests(unittest.TestCase):
         self.assertNotIn("[END]", lines[-1]["text"])
 
     def test_vani_is_given_the_real_prompt_rendered_for_the_call(self):
-        from canary.variants import load_base
+        from picky.variants import load_base
         for p in ar.PERSONAS:
             sp_ = ar.sim_prompt(load_base()["text"], p)
             self.assertIn(p["product"], sp_ + ar.opening(p))

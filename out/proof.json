@@ -60,7 +60,7 @@
    "true_a": 0.45,
    "true_b": 0.45,
    "methods": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.00975,
@@ -186,7 +186,7 @@
    "true_a": 0.45,
    "true_b": 0.52,
    "methods": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.0105,
@@ -305,7 +305,7 @@
    "true_a": 0.45,
    "true_b": 0.35,
    "methods": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.0065,
@@ -403,7 +403,7 @@
    "true_a": 0.45,
    "true_b": 0.46,
    "methods": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.00875,
@@ -529,7 +529,7 @@
    "true_a": 0.45,
    "true_b": 0.45,
    "methods": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 1.0,
@@ -620,7 +620,7 @@
    "true_a": 0.45,
    "true_b": 0.52,
    "methods": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.0075,
@@ -736,7 +736,7 @@
  },
  "looks_sweep": {
   "1": {
-   "canary": {
+   "picky": {
     "false_promote": 0.024666666666666667,
     "ci": [
      0.02089111980117692,
@@ -752,7 +752,7 @@
    }
   },
   "2": {
-   "canary": {
+   "picky": {
     "false_promote": 0.024,
     "ci": [
      0.020276869632999163,
@@ -768,7 +768,7 @@
    }
   },
   "3": {
-   "canary": {
+   "picky": {
     "false_promote": 0.02266666666666667,
     "ci": [
      0.01905075880866564,
@@ -784,7 +784,7 @@
    }
   },
   "5": {
-   "canary": {
+   "picky": {
     "false_promote": 0.0275,
     "ci": [
      0.02350976432485593,
@@ -800,7 +800,7 @@
    }
   },
   "10": {
-   "canary": {
+   "picky": {
     "false_promote": 0.0235,
     "ci": [
      0.01981669569869152,
@@ -816,7 +816,7 @@
    }
   },
   "20": {
-   "canary": {
+   "picky": {
     "false_promote": 0.026,
     "ci": [
      0.022121854968884094,
@@ -832,7 +832,7 @@
    }
   },
   "40": {
-   "canary": {
+   "picky": {
     "false_promote": 0.025,
     "ci": [
      0.02119852969964748,
@@ -928,9 +928,9 @@
    "share": 0.05,
    "mde": 0.02,
    "n_max": 45875,
-   "canary_false_promote": 0.024,
-   "canary_false_harm_stop": 0.018,
-   "canary_srm_false_alarm": 0.00775,
+   "picky_false_promote": 0.024,
+   "picky_false_harm_stop": 0.018,
+   "picky_srm_false_alarm": 0.00775,
    "naive_false_promote": 0.167,
    "runs": 4000
   },
@@ -939,9 +939,9 @@
    "share": 0.1,
    "mde": 0.02,
    "n_max": 24032,
-   "canary_false_promote": 0.024,
-   "canary_false_harm_stop": 0.0205,
-   "canary_srm_false_alarm": 0.0105,
+   "picky_false_promote": 0.024,
+   "picky_false_harm_stop": 0.0205,
+   "picky_srm_false_alarm": 0.0105,
    "naive_false_promote": 0.16,
    "runs": 4000
   },
@@ -950,9 +950,9 @@
    "share": 0.45,
    "mde": 0.02,
    "n_max": 8281,
-   "canary_false_promote": 0.02525,
-   "canary_false_harm_stop": 0.02075,
-   "canary_srm_false_alarm": 0.00925,
+   "picky_false_promote": 0.02525,
+   "picky_false_harm_stop": 0.02075,
+   "picky_srm_false_alarm": 0.00925,
    "naive_false_promote": 0.1495,
    "runs": 4000
   },
@@ -961,9 +961,9 @@
    "share": 0.05,
    "mde": 0.068,
    "n_max": 9449,
-   "canary_false_promote": 0.02425,
-   "canary_false_harm_stop": 0.0185,
-   "canary_srm_false_alarm": 0.00675,
+   "picky_false_promote": 0.02425,
+   "picky_false_harm_stop": 0.0185,
+   "picky_srm_false_alarm": 0.00675,
    "naive_false_promote": 0.11675,
    "runs": 4000
   },
@@ -972,9 +972,9 @@
    "share": 0.1,
    "mde": 0.068,
    "n_max": 4985,
-   "canary_false_promote": 0.027,
-   "canary_false_harm_stop": 0.0195,
-   "canary_srm_false_alarm": 0.00775,
+   "picky_false_promote": 0.027,
+   "picky_false_harm_stop": 0.0195,
+   "picky_srm_false_alarm": 0.00775,
    "naive_false_promote": 0.1265,
    "runs": 4000
   },
@@ -983,9 +983,9 @@
    "share": 0.45,
    "mde": 0.068,
    "n_max": 1808,
-   "canary_false_promote": 0.02975,
-   "canary_false_harm_stop": 0.0195,
-   "canary_srm_false_alarm": 0.00875,
+   "picky_false_promote": 0.02975,
+   "picky_false_harm_stop": 0.0195,
+   "picky_srm_false_alarm": 0.00875,
    "naive_false_promote": 0.126,
    "runs": 4000
   },
@@ -994,9 +994,9 @@
    "share": 0.05,
    "mde": 0.09,
    "n_max": 4652,
-   "canary_false_promote": 0.021,
-   "canary_false_harm_stop": 0.018,
-   "canary_srm_false_alarm": 0.0085,
+   "picky_false_promote": 0.021,
+   "picky_false_harm_stop": 0.018,
+   "picky_srm_false_alarm": 0.0085,
    "naive_false_promote": 0.09275,
    "runs": 4000
   },
@@ -1005,9 +1005,9 @@
    "share": 0.1,
    "mde": 0.09,
    "n_max": 2470,
-   "canary_false_promote": 0.0225,
-   "canary_false_harm_stop": 0.02325,
-   "canary_srm_false_alarm": 0.00825,
+   "picky_false_promote": 0.0225,
+   "picky_false_harm_stop": 0.02325,
+   "picky_srm_false_alarm": 0.00825,
    "naive_false_promote": 0.10575,
    "runs": 4000
   },
@@ -1016,9 +1016,9 @@
    "share": 0.45,
    "mde": 0.09,
    "n_max": 936,
-   "canary_false_promote": 0.024,
-   "canary_false_harm_stop": 0.02425,
-   "canary_srm_false_alarm": 0.0065,
+   "picky_false_promote": 0.024,
+   "picky_false_harm_stop": 0.02425,
+   "picky_srm_false_alarm": 0.0065,
    "naive_false_promote": 0.10875,
    "runs": 4000
   }
@@ -1454,7 +1454,7 @@
    "true_a": 0.45,
    "true_b": 0.45,
    "sequential": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.008,
@@ -1523,7 +1523,7 @@
     "final_n": 4200
    },
    "final_look": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.00775,
@@ -1597,7 +1597,7 @@
    "true_a": 0.45,
    "true_b": 0.48,
    "sequential": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.0065,
@@ -1666,7 +1666,7 @@
     "final_n": 4200
    },
    "final_look": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.00575,
@@ -1740,7 +1740,7 @@
    "true_a": 0.45,
    "true_b": 0.52,
    "sequential": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.00625,
@@ -1802,7 +1802,7 @@
     "final_n": 4200
    },
    "final_look": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.007,
@@ -1876,7 +1876,7 @@
    "true_a": 0.45,
    "true_b": 0.38,
    "sequential": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.0035,
@@ -1938,7 +1938,7 @@
     "final_n": 4200
    },
    "final_look": {
-    "canary": {
+    "picky": {
      "outcomes": {
       "HALT_SRM": {
        "rate": 0.0055,

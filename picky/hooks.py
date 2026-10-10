@@ -3,7 +3,7 @@ touched the platform yet. Each hook is a tiny interface the rest of the system a
 
 1. Transcriber   - Sarvam speech-to-text (batch API supports diarization; max 20 files per job).
                    Write <idx>.json (list of {"speaker","text"}) into a folder, then:
-                   python -m canary eval --transcripts DIR      (scores a tagger on real hand labels)
+                   python -m picky eval --transcripts DIR      (scores a tagger on real hand labels)
 2. Completer     - Sarvam chat-completion model behind the auto-disposition tagger:
                    LLMEvaluator(complete=my_sarvam_chat_fn).classify(transcript)
                    Prompt template: data/evaluator_prompt.md. Mind the rate limits (tens of requests/min).

@@ -1,4 +1,4 @@
-"""The history database (canary/store.py) and its endpoints on the live server: tests, state, clicks, the decision record, reset, locking."""
+"""The history database (picky/store.py) and its endpoints on the live server: tests, state, clicks, the decision record, reset, locking."""
 import copy
 import json
 import sqlite3
@@ -10,8 +10,8 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from canary import build, server, store
-from canary.ledger import verify
+from picky import build, server, store
+from picky.ledger import verify
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -373,7 +373,7 @@ class Http(unittest.TestCase):
         cls.td.cleanup()
 
     def call(self, path, body=None, headers=None):
-        h = {**({"X-Canary-Store": "1"} if body is not None else {}), **(headers or {})}       # the console's own header on a save
+        h = {**({"X-Picky-Store": "1"} if body is not None else {}), **(headers or {})}       # the console's own header on a save
         req = urllib.request.Request(self.base + path, data=None if body is None else json.dumps(body).encode(), method="GET" if body is None else "POST",
                                      headers={k: v for k, v in h.items() if v is not None})
         try:
@@ -414,7 +414,7 @@ class Http(unittest.TestCase):
                 code, raw = self.call(path, body, h)
                 self.assertEqual(code, 403, (h, path))
         port = self.srv.server_address[1]
-        for h in ({"X-Canary-Store": None}, {"Origin": "null"}, {"Origin": f"http://127.0.0.1:{port + 1}"}, {"Origin": "https://evil.example"},
+        for h in ({"X-Picky-Store": None}, {"Origin": "null"}, {"Origin": f"http://127.0.0.1:{port + 1}"}, {"Origin": "https://evil.example"},
                   {"Sec-Fetch-Site": "cross-site"}, {"Via": "1.1 proxy"}, {"True-Client-IP": "1.2.3.4"}, {"Tailscale-User-Login": "x"},
                   {"Origin": "http://127.0.0.1:abc"}, {"Fly-Client-IP": "1.2.3.4"}, {"X-Envoy-External-Address": "1.2.3.4"}, {"CDN-Loop": "x"}, {"X-Azure-ClientIP": "1"}):
             self.assertEqual(self.call("/api/store/reset", {}, h)[0], 403, h)        # another page, another port, a proxy: no reset
@@ -433,7 +433,7 @@ class Http(unittest.TestCase):
         self.assertEqual((code, json.loads(raw)["skipped"]), (200, []))
 
     def test_a_results_file_decision_is_stored_as_files(self):
-        from canary import samples
+        from picky import samples
         rec = server.run_decide({"files": [{"name": "r.csv", "text": samples.to_csv(samples.make_rows("b_wins"))}],
                                  "opts": {"goal": "buylead_created", "baseline": 0.45, "share_b": 0.3, "window_days": 14, "complete": True}})["record"]
         doc = {"id": "files-123", "kind": "files", "preset": "Results files", "hypothesis": "", "truth": None, "record": rec, "start_day": 9999}

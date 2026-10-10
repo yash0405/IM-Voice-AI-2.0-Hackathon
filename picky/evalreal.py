@@ -1,6 +1,6 @@
 """Score a tagger on REAL hand labels once transcripts exist.
 
-    python -m canary eval --transcripts DIR      # DIR holds <idx>.txt (or .json turns) per labelled call
+    python -m picky eval --transcripts DIR      # DIR holds <idx>.txt (or .json turns) per labelled call
 With no transcripts it reports what is missing, plus the synthetic benchmark for the plumbing.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ def run(transcripts_dir: str | None = None) -> dict:
     lab = labels.consensus_labels()
     out = {"real_labels": len(lab), "synthetic_benchmark_accuracy": benchmark_report()["overall"]["accuracy"]}
     if not lab:
-        out["status"] = "no real labels yet: use the Label Lab (python -m canary serve)"
+        out["status"] = "no real labels yet: use the Label Lab (python -m picky serve)"
         return out
     if not transcripts_dir:
         out["status"] = "labels exist but no --transcripts folder given (needs Sarvam speech-to-text output)"

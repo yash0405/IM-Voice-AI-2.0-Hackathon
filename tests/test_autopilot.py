@@ -4,8 +4,8 @@ import json
 import unittest
 from datetime import datetime
 
-from canary import console, engine
-from canary.ledger import verify
+from picky import console, engine
+from picky.ledger import verify
 
 
 def body(entry):
@@ -66,8 +66,8 @@ class AutopilotTails(unittest.TestCase):
             self.assertEqual(self.demo[key]["record"]["tails"], {}, key)
 
     def test_results_files_never_act_on_their_own(self):
-        """For results files Canary only advises: no autopilot branch is written."""
-        from canary import decide, samples
+        """For results files Picky only advises: no autopilot branch is written."""
+        from picky import decide, samples
         files = [{"name": "results.csv", "text": samples.to_csv(samples.make_rows("guardrail_hold")), "arm": None}]
         rec = decide.decide(files, {"goal": "buylead_created", "baseline": 0.45, "share_b": 0.3, "window_days": 14, "mde": 0.07})
         self.assertEqual(rec["result"]["kind"], "HOLD_FOR_APPROVAL")

@@ -2,7 +2,7 @@
 name: ab-test-decision
 description: Decides whether to ship, stop, hold or keep a change after an A/B test, and plans tests that can actually finish. Use it whenever someone has results for a control (A) and a candidate (B) - a new bot or agent prompt, voice or chat flow, model, message, feature or setting - and asks "did B win?", "is it safe to roll out?", "is this significant?", "can we stop early?", "how long should the test run?", "how much traffic does B need?", or shares a results file or dashboard numbers from a split test. Also use it when a manager wants to act on early numbers, when a test looks too good or too flat, or when someone wants a plain-language verdict on a test. Reads messy per-call or per-day result files, counts each lead once, checks the split and the data, applies pre-registered sequential rules with guardrails such as call length, and writes an honest verdict with ranges. Never runs the test itself and never decides from a plan read off the results.
 license: MIT
-compatibility: Python 3.10+. check_results.py and plan_test.py use only the standard library. decide.py needs numpy and scipy and the Picky engine (the repository root, or the folder named by CANARY_HOME).
+compatibility: Python 3.10+. check_results.py and plan_test.py use only the standard library. decide.py needs numpy and scipy and the Picky engine (the repository root, or the folder named by PICKY_HOME).
 metadata:
   version: "1.1"
   domain: experimentation

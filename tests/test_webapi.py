@@ -2,7 +2,7 @@
 import json
 import unittest
 
-from canary import variants, webapi
+from picky import variants, webapi
 
 
 class WebApi(unittest.TestCase):

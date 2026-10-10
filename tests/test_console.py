@@ -4,7 +4,7 @@ import re
 import unittest
 from pathlib import Path
 
-from canary import build, console, promptlint, server, variants
+from picky import build, console, promptlint, server, variants
 
 ROOT = Path(__file__).resolve().parent.parent
 

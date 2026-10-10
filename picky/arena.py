@@ -4,7 +4,7 @@ For each buyer persona, Sarvam's chat model plays the buyer and plays VANI under
 (the candidate). The call is an INBOUND redirect, as in production: the buyer called a seller, the seller was unavailable, and VANI
 answers with its predefined opening. VANI's instructions are the REAL prompt, rendered for the call. Every line is spoken with
 Sarvam Bulbul voices, the full call is saved as one mp3, and the same Sarvam tagger that labels the real recordings scores it.
-Everything is generated once and cached, so the demo plays offline.  python -m canary arena plan | run [--yes --budget N]
+Everything is generated once and cached, so the demo plays offline.  python -m picky arena plan | run [--yes --budget N]
 
 The real prompt is long (about 20,000 tokens rendered), so a simulated call costs about Rs 4 in tokens before any voice: see plan().
 Results made with a different base prompt are marked stale and are never presented as the current prompt's behaviour.

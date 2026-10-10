@@ -8,7 +8,7 @@ What it is not: proof. 24 simulated buyers cannot prove a lift, and the simulate
 comes from the A/B engine on live traffic.
 
 The pass rule is fixed here, before any result exists, so it cannot be tuned after seeing the numbers (see GATE).
-  python -m canary fix prescreen-plan | prescreen --yes --budget N | status
+  python -m picky fix prescreen-plan | prescreen --yes --budget N | status
 """
 from __future__ import annotations
 

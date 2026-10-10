@@ -1,11 +1,11 @@
 """Auto-label the call recordings with the Sarvam platform, spending as little credit as possible.
 
-    python -m canary autolabel plan   --n 100                 # free: shows the cost, spends nothing
-    python -m canary autolabel run    --n 5   --budget 10 --yes   # pilot
-    python -m canary autolabel run    --n 100 --budget 70 --yes   # first real sample
-    python -m canary autolabel status                          # free: counts and estimated spend
-    python -m canary autolabel queue                           # free: picks the calls a human should check
-    python -m canary autolabel report                          # free: conversion rate, accuracy
+    python -m picky autolabel plan   --n 100                 # free: shows the cost, spends nothing
+    python -m picky autolabel run    --n 5   --budget 10 --yes   # pilot
+    python -m picky autolabel run    --n 100 --budget 70 --yes   # first real sample
+    python -m picky autolabel status                          # free: counts and estimated spend
+    python -m picky autolabel queue                           # free: picks the calls a human should check
+    python -m picky autolabel report                          # free: conversion rate, accuracy
 
 Pipeline per call:  audio -> Sarvam Saaras batch speech-to-text -> Sarvam chat model tagger -> label file.
 Credit protection (every rule is tested):
@@ -139,7 +139,7 @@ class Pipe:
         if client is None:
             key = load_key()
             if not key:
-                raise SystemExit("No Sarvam key found. Put SARVAM_API_KEY=... in canary/.env (or export it), then re-run.")
+                raise SystemExit("No Sarvam key found. Put SARVAM_API_KEY=... in picky/.env (or export it), then re-run.")
             from sarvamai import SarvamAI
             client = SarvamAI(api_subscription_key=key)
         self.client, self.sleep, self.diarize = client, sleep, diarize
@@ -352,7 +352,7 @@ def retag_plan() -> dict:
     base = len(build_prompt("")) / 3.6
     tin = int(todo * base + chars / 3.2); tout = todo * EST_OUT_TOKENS
     return {"transcripts": n, "to_retag": todo, "est_tokens_in": tin, "est_tokens_out": tout, "est_inr": round(llm_cost(tin, tout), 2),
-            "minutes": round(todo * 4.5 / 60, 0), "needs_stt": False, "command": "python -m canary autolabel retag --yes --budget N"}
+            "minutes": round(todo * 4.5 / 60, 0), "needs_stt": False, "command": "python -m picky autolabel retag --yes --budget N"}
 
 
 def labelled() -> list[dict]:

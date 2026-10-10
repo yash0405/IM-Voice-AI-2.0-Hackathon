@@ -1,7 +1,7 @@
 """Export everything Picky knows into ONE SQLite file, so a judge can run SQL over it.
 
-    python -m canary.export_db                      # writes out/canary.db (demo experiments + past tests, with per-lead rows)
-    python -m canary.export_db --out x.db --no-past --no-calls
+    python -m picky.export_db                      # writes out/picky.db (demo experiments + past tests, with per-lead rows)
+    python -m picky.export_db --out x.db --no-past --no-calls
 
 Every test, version and decision is traceable:  prompts -> experiments -> experiment_versions -> daily_results / decision_log, and
 assignments / calls for the leads. Tables: variable_catalog, metrics, prompts, experiments, experiment_versions, assignments, calls,
@@ -20,7 +20,7 @@ HEADER NOTES (also stored in the `meta` table and as comments in the schema, so 
 * assignments and calls exist only for the demo experiments (they are re-run with capture). Past tests keep only their daily summaries and
   decision log: they have no per-lead rows.
 * decision_log keeps EVERY ledger entry with the exact JSON text that was hashed (`body`). entry_hash = sha256(prev_hash + body), hex, UTF-8;
-  the first prev_hash is 64 zeros (canary/ledger.py). SQLite has no sha256, so link continuity is checked in SQL (each prev_hash equals the
+  the first prev_hash is 64 zeros (picky/ledger.py). SQLite has no sha256, so link continuity is checked in SQL (each prev_hash equals the
   previous entry_hash) and the re-hash is done by any tool that has sha256.
 * experiments.status uses the BRD's words. A finished record is Completed, except STOP_HARM / STOP_GUARDRAIL / HALT_SRM, which are Stopped.
 * Columns beyond the spec, added only for traceability: experiments.truth / variant_a_hash / variant_b_hash / variant_b_version,
@@ -45,7 +45,7 @@ from .ledger import GENESIS, verify
 from .simulator import Scenario, TrafficSim
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUT = ROOT / "out" / "canary.db"
+DEFAULT_OUT = ROOT / "out" / "picky.db"
 SCHEMA_VERSION = 1
 STOPPED = {"STOP_HARM", "STOP_GUARDRAIL", "HALT_SRM"}
 TABLES = ["meta", "variable_catalog", "metrics", "prompts", "experiments", "experiment_versions", "assignments", "calls", "daily_results",
@@ -70,7 +70,7 @@ CREATE TABLE variable_catalog (
   synthetic      INTEGER NOT NULL CHECK (synthetic IN (0, 1))
 );
 
--- The built-in metrics (canary/metriclib.py): goals the engine decides on, guardrails, and plain metrics (reach). A test launched from the
+-- The built-in metrics (picky/metriclib.py): goals the engine decides on, guardrails, and plain metrics (reach). A test launched from the
 -- wizard locks its own list (primary / guardrails / secondary, custom metrics included) inside experiment_versions.config.
 CREATE TABLE metrics (
   key                    TEXT PRIMARY KEY,
@@ -413,7 +413,7 @@ def export(path: str, include_past: bool = True, with_calls: bool = True) -> dic
 
     meta = [("generated_at", datetime.now(timezone.utc).isoformat(timespec="seconds")),
             ("schema_version", str(SCHEMA_VERSION)),
-            ("source", "canary.console.demo_experiments() and past_tests(); per-lead rows from re-running each demo experiment with capture (canary.engine.run_experiment)"),
+            ("source", "picky.console.demo_experiments() and past_tests(); per-lead rows from re-running each demo experiment with capture (picky.engine.run_experiment)"),
             ("note", "Everything in this file is synthetic: simulated call outcomes with an injected known effect, an assumed daily volume, placeholder lead-variable mixes, "
                      "and past tests that are re-runs of our scenarios plus synthetic result files."),
             ("synthetic", "true"),
@@ -464,8 +464,8 @@ def export(path: str, include_past: bool = True, with_calls: bool = True) -> dic
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m canary.export_db", description="Export every experiment, version, call and decision into one SQLite file (all data is synthetic).")
-    ap.add_argument("--out", default=str(DEFAULT_OUT), help="the SQLite file to write; an existing file is replaced (default: out/canary.db)")
+    ap = argparse.ArgumentParser(prog="python -m picky.export_db", description="Export every experiment, version, call and decision into one SQLite file (all data is synthetic).")
+    ap.add_argument("--out", default=str(DEFAULT_OUT), help="the SQLite file to write; an existing file is replaced (default: out/picky.db)")
     ap.add_argument("--no-past", action="store_true", help="leave out the finished past tests (the demo experiments only)")
     ap.add_argument("--no-calls", action="store_true", help="leave out the per-lead rows (assignments, calls) and the determinism re-run")
     args = ap.parse_args(argv)

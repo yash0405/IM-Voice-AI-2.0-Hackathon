@@ -5,7 +5,7 @@ import threading
 import unittest
 from http.server import ThreadingHTTPServer
 
-from canary import server
+from picky import server
 
 
 class HostedMode(unittest.TestCase):
@@ -44,7 +44,7 @@ class HostedMode(unittest.TestCase):
     def test_engine_screens_work_with_the_password(self):
         status, data = self.req("GET", "/", self.auth)
         self.assertEqual(status, 200)
-        self.assertIn(b"CANARY_HOSTED=true", data)
+        self.assertIn(b"PICKY_HOSTED=true", data)
         self.assertEqual(self.req("GET", "/api/samples", self.auth)[0], 200)
         self.assertEqual(self.req("GET", "/api/sample/b_wins", self.auth)[0], 200)
 
@@ -58,7 +58,7 @@ class HostedMode(unittest.TestCase):
     def test_wizard_runs_and_oversize_bodies_are_refused(self):
         hdr = {**self.auth, "Content-Type": "application/json"}
         import json
-        from canary import variants
+        from picky import variants
         body = {"name": "t", "window_days": 7, "leads_per_day": 500, "effect_rel": 0.1, "prompt_b": variants.load_base()["text"],
                 "metrics": [{"role": "primary", "key": "buylead_created"}]}
         status, _ = self.req("POST", "/api/wizard", hdr, json.dumps(body).encode())

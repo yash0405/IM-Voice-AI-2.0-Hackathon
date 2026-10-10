@@ -8,7 +8,7 @@ A segment is a list of rules, AND between rules and OR within a rule's values, s
 No rules (None or []) means all traffic (a neutral test).
 
 HONEST LABEL. The recordings we were given carry no lead attributes. The factors and values below are the ones the New Experiment spec
-lists; how common each value is (the mix) is a PLACEHOLDER so that the simulator and the 30-day history (canary/history.py) have something
+lists; how common each value is (the mix) is a PLACEHOLDER so that the simulator and the 30-day history (picky/history.py) have something
 to split. Every screen that shows it says "synthetic". When the real lead table arrives, replace the mix (or load it) and nothing else changes.
 """
 from __future__ import annotations

@@ -50,8 +50,8 @@ function loadScript(src) { return new Promise((ok, bad) => { const s = document.
     await py.loadPackage(["numpy", "scipy", "jinja2"]);
     step(80, "Starting Picky...");
     py.unpackArchive(zip, "zip", { extractDir: "/app" });
-    py.runPython("import sys, os\nsys.path.insert(0, '/app')\nos.chdir('/app')\nfrom canary import webapi");
-    const handle = py.pyimport("canary.webapi").handle;
+    py.runPython("import sys, os\nsys.path.insert(0, '/app')\nos.chdir('/app')\nfrom picky import webapi");
+    const handle = py.pyimport("picky.webapi").handle;
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
       const path = new URL(typeof url === "string" ? url : url.url, location.href).pathname, i = path.indexOf("/api/");
@@ -67,7 +67,7 @@ function loadScript(src) { return new Promise((ok, bad) => { const s = document.
     const style = document.createElement("style"); style.textContent = read("/app/web/console.css"); document.head.appendChild(style);
     document.body.removeAttribute("style"); document.body.innerHTML = doc.body.innerHTML;
     document.title = "Picky";
-    window.CANARY_LIVE = true; window.CANARY_HOSTED = true; window.CANARY_STATIC = true;
+    window.PICKY_LIVE = true; window.PICKY_HOSTED = true; window.PICKY_STATIC = true;
     const s = document.createElement("script"); s.textContent = read("/app/web/console.js"); document.body.appendChild(s);
     document.dispatchEvent(new Event("DOMContentLoaded"));              // the console waits for it to attach its tooltip
     const tag = document.createElement("div");

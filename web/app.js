@@ -1,9 +1,9 @@
 "use strict";
 /* Picky dashboard. Plain JS, no libraries, no network needed. Every number shown comes from the
-   bundle produced by the Python engine (dist/canary_demo.html embeds it; live mode fetches it). */
+   bundle produced by the Python engine (dist/picky_demo.html embeds it; live mode fetches it). */
 
-let D = window.CANARY_DATA || null;
-const LIVE = !!window.CANARY_LIVE;
+let D = window.PICKY_DATA || null;
+const LIVE = !!window.PICKY_LIVE;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -140,7 +140,7 @@ function renderExperiment() {
   const app = $("#app"); const rec = S.rec, m = S.meta, c = rec.config, d = rec.design;
   const chips = D.scenarios.map(s => { const [cl, ic] = SCN_ICON[s.meta.key] || ["neutral", "approx"];
     return `<button data-key="${s.meta.key}" aria-pressed="${s.meta.key === S.key}"><span class="ic ${cl}">${icon(ic)}</span><span><div class="t">${esc(s.meta.title)}</div><div class="s">expect: ${(KIND[s.meta.expect] || { pill: s.meta.expect }).pill}</div></span></button>`; }).join("");
-  const custom = `<button data-custom="1" aria-pressed="${S.key === "custom"}" ${LIVE ? "" : 'disabled title="Needs the live engine: python -m canary serve"'}><span class="ic neutral">${icon("plus")}</span><span><div class="t">Custom experiment</div><div class="s">${LIVE ? "your own numbers" : "live mode only"}</div></span></button>`;
+  const custom = `<button data-custom="1" aria-pressed="${S.key === "custom"}" ${LIVE ? "" : 'disabled title="Needs the live engine: python -m picky serve"'}><span class="ic neutral">${icon("plus")}</span><span><div class="t">Custom experiment</div><div class="s">${LIVE ? "your own numbers" : "live mode only"}</div></span></button>`;
   const hasTruth = m.true_a != null;
   const dk = m.dur_mult_b && m.dur_mult_b !== 1 ? ` · B calls ${((m.dur_mult_b - 1) * 100).toFixed(0)}% longer` : "";
   const dr = m.log_drop_b ? ` · B loses ${(m.log_drop_b * 100).toFixed(0)}% of its non-converting calls from the log` : "";
@@ -480,7 +480,7 @@ function openCustom() {
 }
 
 /* ------------------------------------------------------------------ proof lab */
-const MNAME = { canary: "Picky (ours)", naive_peek: "Naive peeking (p<0.05 at every look)", fixed_horizon: "Fixed-horizon z-test", higher_rate: "Higher rate wins" };
+const MNAME = { picky: "Picky (ours)", naive_peek: "Naive peeking (p<0.05 at every look)", fixed_horizon: "Fixed-horizon z-test", higher_rate: "Higher rate wins" };
 const outc = (m, k) => (m.outcomes[k] ? m.outcomes[k].rate : 0);
 /* proof sections 6 and 7: the spec's single-look rule vs ours, and decisions from results files */
 function renderProofExtra(P) {
@@ -488,11 +488,11 @@ function renderProofExtra(P) {
   const pc1 = x => (x * 100).toFixed(1) + "%", oc = (m, k) => (m.outcomes[k] ? m.outcomes[k].rate : 0);
   const rs = Object.entries(P.rulesets).map(([k, v]) => {
     const row = (name, m, cls) => `<tr class="${cls}"><td>${name}</td><td class="num">${pc1(oc(m, "PROMOTE"))}</td><td class="num">${pc1(oc(m, "STOP_HARM") + oc(m, "STOP_GUARDRAIL"))}</td><td class="num">${m.median_n_when_promoted ? nf(m.median_n_when_promoted) : "-"}</td><td class="num">${nf(m.mean_exposure_b)}</td></tr>`;
-    return `<tr class="grp"><td colspan="5"><b>${esc(v.label)}</b></td></tr>${row("Sequential: early promote and early stop (ours, default)", v.sequential.canary, "ours")}${row("Single look at the end + strict daily harm check (the spec)", v.final_look.canary, "")}${row("Plain p&lt;0.05 every day (no correction)", v.final_look.naive_peek, "")}`;
+    return `<tr class="grp"><td colspan="5"><b>${esc(v.label)}</b></td></tr>${row("Sequential: early promote and early stop (ours, default)", v.sequential.picky, "ours")}${row("Single look at the end + strict daily harm check (the spec)", v.final_look.picky, "")}${row("Plain p&lt;0.05 every day (no correction)", v.final_look.naive_peek, "")}`;
   }).join("");
   const fl = Object.values(P.files).map(v => `<tr><td>${esc(v.label)}</td><td class="num">${nf(v.runs)}</td><td class="num">${pc1(oc(v, "PROMOTE"))}</td><td class="num">${pc1(oc(v, "STOP_HARM") + oc(v, "STOP_GUARDRAIL"))}</td><td class="num">${pc1(oc(v, "INCONCLUSIVE") + oc(v, "HOLD_FOR_APPROVAL"))}</td><td class="num">${v.ledger_ok} of ${v.runs}</td></tr>`).join("");
   return `
-  <div class="sec"><h2>6. The dashboard spec's rule, against ours</h2><p>The spec proposes one winner call at the end plus a very strict daily harm check. The BRD proposes daily checks on stricter-early boundaries. They are different rules, so Picky runs either one (a setting) and we measured both on identical simulated traffic: ${nf(P.rulesets.aa.sequential.canary.runs)} tests per case, 14 days, 300 leads a day, 30% to B.</p>
+  <div class="sec"><h2>6. The dashboard spec's rule, against ours</h2><p>The spec proposes one winner call at the end plus a very strict daily harm check. The BRD proposes daily checks on stricter-early boundaries. They are different rules, so Picky runs either one (a setting) and we measured both on identical simulated traffic: ${nf(P.rulesets.aa.sequential.picky.runs)} tests per case, 14 days, 300 leads a day, 30% to B.</p>
     <div class="card"><table class="t"><thead><tr><th>Rule</th><th class="num">Ships B</th><th class="num">Stops B</th><th class="num">Calls to promote</th><th class="num">B calls served</th></tr></thead><tbody>${rs}</tbody></table>
     <p class="sub" style="margin-top:8px">Both valid rules keep false wins near the 2.5% budget when nothing changed. The spec's single look is simpler to explain; it can never promote early and catches a clearly worse B less often (its daily bar is stricter). Ours promotes sooner and protects better, at the price of a slightly higher false-stop rate. Neither is free: that is the trade, shown with numbers.</p></div></div>
   <div class="sec"><h2>7. Decisions made from results files</h2><p>The voice test runs elsewhere; the files come to us. This is the whole file path (write a file, read it, check it, decide), repeated on synthetic files with a known answer. The planned power is 80% for a +7 point lift.</p>
@@ -502,40 +502,40 @@ function renderProofExtra(P) {
 
 function renderProof() {
   const P = D.proof, app = $("#app");
-  if (!P) { app.innerHTML = `<div class="card"><h3>Proof Lab</h3><p class="muted">No proof run found. Run <code>python -m canary proof</code> then rebuild.</p></div>`; return; }
+  if (!P) { app.innerHTML = `<div class="card"><h3>Proof Lab</h3><p class="muted">No proof run found. Run <code>python -m picky proof</code> then rebuild.</p></div>`; return; }
   const sc = P.scenarios, aa = sc.aa.methods, srm = sc.srm_bug.methods, hm = sc.harm.methods;
-  const exposure = 1 - hm.canary.mean_exposure_b / hm.fixed_horizon.mean_exposure_b;
+  const exposure = 1 - hm.picky.mean_exposure_b / hm.fixed_horizon.mean_exposure_b;
   const tile = (title, big, vs, sub) => `<div class="card"><h3>${title}</h3><div class="big"><span class="n">${big}</span><span class="vs">${vs}</span></div><div class="sub" style="margin-top:8px">${sub}</div></div>`;
   const matrix = Object.entries(sc).map(([key, s]) => {
     const rows = Object.keys(MNAME).map(mk => {
       const m = s.methods[mk], ships = outc(m, "PROMOTE"), stops = outc(m, "STOP_HARM") + outc(m, "STOP_GUARDRAIL") + outc(m, "HALT_SRM");
       const cls = s.truth === "better" ? "good" : s.truth === "tiny" ? "neutral" : "bad";
       const verdict = s.truth === "better" ? "right" : s.truth === "tiny" ? "" : "wrong";
-      return `<tr class="${mk === "canary" ? "ours" : ""}"><td>${MNAME[mk]}</td><td style="width:34%"><div style="display:flex;align-items:center;gap:8px"><div class="pbar" style="flex:1"><i class="${cls}" style="width:${Math.max(0.6, ships * 100)}%"></i></div><span style="min-width:48px;text-align:right">${pct(ships)}</span></div></td><td class="num">${mk === "fixed_horizon" || mk === "higher_rate" ? "-" : pct(stops, 0)}</td><td class="num">${m.median_n_when_promoted ? nf(m.median_n_when_promoted) : "-"}</td><td class="num">${nf(m.mean_exposure_b)}</td></tr>`;
+      return `<tr class="${mk === "picky" ? "ours" : ""}"><td>${MNAME[mk]}</td><td style="width:34%"><div style="display:flex;align-items:center;gap:8px"><div class="pbar" style="flex:1"><i class="${cls}" style="width:${Math.max(0.6, ships * 100)}%"></i></div><span style="min-width:48px;text-align:right">${pct(ships)}</span></div></td><td class="num">${mk === "fixed_horizon" || mk === "higher_rate" ? "-" : pct(stops, 0)}</td><td class="num">${m.median_n_when_promoted ? nf(m.median_n_when_promoted) : "-"}</td><td class="num">${nf(m.mean_exposure_b)}</td></tr>`;
     }).join("");
     const lead = s.truth === "better" ? "Shipping B is <b>right</b>." : s.truth === "tiny" ? "B is only +1pp better; either call is defensible." : "Shipping B is <b>wrong</b>.";
-    return `<section class="card"><h3>${esc(s.label)}</h3><div class="sub">${lead} ${nf(s.methods.canary.runs)} simulated tests.</div>
+    return `<section class="card"><h3>${esc(s.label)}</h3><div class="sub">${lead} ${nf(s.methods.picky.runs)} simulated tests.</div>
       <table class="t" style="margin-top:8px"><thead><tr><th>Method</th><th>Ships B</th><th class="num">Stops / halts</th><th class="num">Calls to promote</th><th class="num">B calls served</th></tr></thead><tbody>${rows}</tbody></table></section>`;
   }).join("");
   // looks sweep chart data
-  const ks = Object.keys(P.looks_sweep).map(Number).sort((a, b) => a - b), rowsK = ks.map((k, i) => ({ n: i, k, c: P.looks_sweep[k].canary, nv: P.looks_sweep[k].naive_peek }));
+  const ks = Object.keys(P.looks_sweep).map(Number).sort((a, b) => a - b), rowsK = ks.map((k, i) => ({ n: i, k, c: P.looks_sweep[k].picky, nv: P.looks_sweep[k].naive_peek }));
   const gridRows = [...new Set(P.grid.map(x => x.baseline))].sort((a, b) => a - b), gridCols = [...new Set(P.grid.map(x => x.share))].sort((a, b) => a - b);   // read from the data, never hard-coded
   const gcell = (b, s) => P.grid.find(x => x.baseline === b && x.share === s);
   const sp = P.split_accuracy;
   const spRows = sp.map(x => `<tr><td>${pct(x.share, 0)}</td><td class="num">${nf(x.n)}</td><td class="num">${x.hash.mean_abs_err_pp.toFixed(2)}</td><td class="num"><b>${x.balanced.mean_abs_err_pp.toFixed(2)}</b></td><td class="num">${x.naive_random.mean_abs_err_pp.toFixed(2)}</td><td class="num">${pct(x.hash.inside_95_band, 0)}</td><td class="num">${x.balanced.worst_prefix_pp ? x.balanced.worst_prefix_pp.toFixed(2) : "-"}</td></tr>`).join("");
   const st = P.stickiness;
   app.innerHTML = `
-  <div class="note info"><b>Everything on this page is computed, not claimed.</b> Re-run it with <code>python -m canary proof</code> (seed ${P.seed}, ${nf(P.runs)} tests per case, ${nf(P.aa_runs)} for no-difference cases, ${P.seconds}s). Picky's decisions come from the same function the live engine uses; the typical approaches see exactly the same simulated calls.</div>
+  <div class="note info"><b>Everything on this page is computed, not claimed.</b> Re-run it with <code>python -m picky proof</code> (seed ${P.seed}, ${nf(P.runs)} tests per case, ${nf(P.aa_runs)} for no-difference cases, ${P.seconds}s). Picky's decisions come from the same function the live engine uses; the typical approaches see exactly the same simulated calls.</div>
   <div class="proof-hero sec">
-    ${tile("False win when nothing changed", pct(outc(aa.canary, "PROMOTE")), `vs <b>${pct(outc(aa.naive_peek, "PROMOTE"))}</b> naive peeking`, `A = B in truth. Fraction of ${nf(sc.aa.methods.canary.runs)} tests that crowned B anyway. Our error budget is 2.5%.`)}
-    ${tile("Broken test: bad B shipped", pct(outc(srm.canary, "PROMOTE")), `vs <b>${pct(outc(srm.naive_peek, "PROMOTE"))}</b> naive peeking`, `B silently loses 35% of its non-converting calls from the log. Picky halts the test (${pct(outc(srm.canary, "HALT_SRM"), 0)} of runs); typical tools ship.`)}
-    ${tile("Less traffic wasted on a bad B", "-" + (exposure * 100).toFixed(0) + "%", `B calls served, vs a fixed-horizon test`, `${esc(sc.harm.label)}. Picky stops it in ${pct(outc(hm.canary, "STOP_HARM"), 0)} of runs, serving ${nf(hm.canary.mean_exposure_b)} instead of ${nf(hm.fixed_horizon.mean_exposure_b)} calls to B on average.`)}
+    ${tile("False win when nothing changed", pct(outc(aa.picky, "PROMOTE")), `vs <b>${pct(outc(aa.naive_peek, "PROMOTE"))}</b> naive peeking`, `A = B in truth. Fraction of ${nf(sc.aa.methods.picky.runs)} tests that crowned B anyway. Our error budget is 2.5%.`)}
+    ${tile("Broken test: bad B shipped", pct(outc(srm.picky, "PROMOTE")), `vs <b>${pct(outc(srm.naive_peek, "PROMOTE"))}</b> naive peeking`, `B silently loses 35% of its non-converting calls from the log. Picky halts the test (${pct(outc(srm.picky, "HALT_SRM"), 0)} of runs); typical tools ship.`)}
+    ${tile("Less traffic wasted on a bad B", "-" + (exposure * 100).toFixed(0) + "%", `B calls served, vs a fixed-horizon test`, `${esc(sc.harm.label)}. Picky stops it in ${pct(outc(hm.picky, "STOP_HARM"), 0)} of runs, serving ${nf(hm.picky.mean_exposure_b)} instead of ${nf(hm.fixed_horizon.mean_exposure_b)} calls to B on average.`)}
   </div>
   <div class="sec"><h2>1. Why repeated checks need a correction</h2><p>Checking a p-value at every look and stopping the first time it dips below 0.05 declares false winners far more often than 5%. The more you look, the worse it gets. Picky spends its error budget across looks, so it stays near 2.5% (one-sided) however often you peek.</p>
     <div class="card"><div class="legend"><span><i style="border-color:var(--ink)"></i>Naive peeking</span><span><i style="border-color:var(--accent)"></i>Picky</span><span><i style="border-color:var(--ink-3)"></i>2.5% error budget</span></div><div class="cv" id="c-sweep"></div><div class="sub">False-win rate when A = B, by number of looks. ${nf(P.aa_runs / 2)} simulated tests per point.</div></div></div>
   <div class="sec"><h2>2. Six truths, four methods</h2><p>Same simulated calls for every method. "Ships B" is red when shipping would be a mistake, green when it is right. Calls to promote is the median over runs that promoted.</p><div class="mx">${matrix}</div></div>
   <div class="sec"><h2>3. Does it hold at other base rates and traffic shares?</h2><p>False-win rate of Picky when A = B, for rare, typical and common outcomes and small to large test slices. Naive peeking in small print.</p>
-    <div class="card"><table class="t heat"><thead><tr><th>Baseline rate</th>${gridCols.map(s => `<th style="text-align:center">${pct(s, 0)} to B</th>`).join("")}</tr></thead><tbody>${gridRows.map(b => `<tr><td><b>${pct(b, 0)}</b></td>${gridCols.map(s => { const g = gcell(b, s); const v = g.canary_false_promote; return `<td class="cell" style="background:${v > 0.032 ? "var(--warn-wash)" : "var(--good-wash)"}" title="MDE ${pp(g.mde, 0)}, n_max ${nf(g.n_max)}, ${nf(g.runs)} runs"><b>${pct(v)}</b><div class="muted" style="font-size:11px">naive ${pct(g.naive_false_promote)}</div></td>`; }).join("")}</tr>`).join("")}</tbody></table>
+    <div class="card"><table class="t heat"><thead><tr><th>Baseline rate</th>${gridCols.map(s => `<th style="text-align:center">${pct(s, 0)} to B</th>`).join("")}</tr></thead><tbody>${gridRows.map(b => `<tr><td><b>${pct(b, 0)}</b></td>${gridCols.map(s => { const g = gcell(b, s); const v = g.picky_false_promote; return `<td class="cell" style="background:${v > 0.032 ? "var(--warn-wash)" : "var(--good-wash)"}" title="MDE ${pp(g.mde, 0)}, n_max ${nf(g.n_max)}, ${nf(g.runs)} runs"><b>${pct(v)}</b><div class="muted" style="font-size:11px">naive ${pct(g.naive_false_promote)}</div></td>`; }).join("")}</tr>`).join("")}</tbody></table>
     <div class="sub" style="margin-top:8px">${nf(P.runs)} tests per cell. Anything above ~3.2% is shaded: the normal approximation is slightly liberal when the test slice is tiny and the outcome is rare. We report it instead of hiding it.</div></div></div>
   <div class="sec"><h2>4. Traffic split accuracy and stickiness</h2><p>Mean absolute error between configured and achieved B share, in percentage points, over repeated assignments. "Balanced" uses permuted blocks, so it stays tight to the target at every moment, not just at round numbers; "hash" is stateless and binomial; "coin flip" is the typical per-call random.</p>
     <div class="two"><section class="card"><table class="t"><thead><tr><th>Share</th><th class="num">Leads</th><th class="num">Hash</th><th class="num">Balanced</th><th class="num">Coin flip</th><th class="num">Hash in 95% band</th><th class="num" title="Largest gap at any moment once 500 leads are in">Balanced worst (after 500)</th></tr></thead><tbody>${spRows}</tbody></table></section>
@@ -636,7 +636,7 @@ function renderLabels() {
     <div class="three">
       ${step("1 &middot; Machine labels", "Sarvam labels, a person spot-checks", "Sarvam transcribes (speaker-separated) and tags a random sample. A person checks about 40 of them in Label calls (30 blind, 10 uncertain), about 25 minutes.", real >= 30 ? "done" : "now")}
       ${step("2 &middot; Baseline", "A real baseline rate", "From the labels we get the real conversion rate with an honest interval. The scenarios use it instead of an assumption.", ((D.auto || {}).report || {}).buylead_rate_loose ? "done" : "")}
-      ${step("3 &middot; Score", "Score any tagger", "Once transcripts exist (Sarvam speech-to-text) the same labels score the LLM tagger: accuracy, kappa, confusion matrix. <code>python -m canary eval --transcripts DIR</code>", "")}
+      ${step("3 &middot; Score", "Score any tagger", "Once transcripts exist (Sarvam speech-to-text) the same labels score the LLM tagger: accuracy, kappa, confusion matrix. <code>python -m picky eval --transcripts DIR</code>", "")}
     </div></div>
   <div class="two sec" style="margin-top:22px">
     <section class="card"><h3>Real labels</h3><div class="sub">${LIVE ? "Live" : "Snapshot from the last build"}</div>
@@ -644,7 +644,7 @@ function renderLabels() {
         <div class="tile"><div class="k">Real ${esc(goalLabel(L.goal || "buylead_created"))} rate</div><div class="v">${goal ? pct(goal.rate) : "-"}</div><div class="d">${goal ? `95% ${pct(goal.ci[0])} to ${pct(goal.ci[1])}, n=${goal.n}` : "needs labels"}</div></div>
         <div class="tile"><div class="k">Labeller agreement</div><div class="v">${L.agreement ? "kappa " + L.agreement.kappa.toFixed(2) : "-"}</div><div class="d">${L.agreement ? `${L.agreement.shared} shared calls` : "needs two labellers"}</div></div></div>
       ${Object.keys(L.distribution || {}).length ? `<table class="t" style="margin-top:10px"><tbody>${Object.entries(L.distribution).map(([k, v]) => `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${v}</td></tr>`).join("")}</tbody></table>` : ""}
-      ${LIVE ? "" : `<p class="sub" style="margin-top:10px">Label Lab needs the live engine: <code>python -m canary serve</code>, then open this tab.</p>`}</section>
+      ${LIVE ? "" : `<p class="sub" style="margin-top:10px">Label Lab needs the live engine: <code>python -m picky serve</code>, then open this tab.</p>`}</section>
     <section class="card"><h3>Rule tagger on synthetic scripts</h3><div class="sub">${esc(B.note)}</div>
       <div class="tiles" style="grid-template-columns:repeat(3,1fr)"><div class="tile"><div class="k">Accuracy, all ${B.n}</div><div class="v">${pct(o.accuracy, 0)}</div><div class="d">95% ${pct(o.accuracy_ci[0], 0)} to ${pct(o.accuracy_ci[1], 0)}</div></div>
         <div class="tile"><div class="k">Easy / hard phrasings</div><div class="v">${pct(B.easy.accuracy, 0)} / ${pct(B.hard.accuracy, 0)}</div><div class="d">hard = wording the rules do not list</div></div>

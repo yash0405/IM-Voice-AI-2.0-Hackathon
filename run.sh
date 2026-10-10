@@ -6,5 +6,5 @@ cd "$(dirname "$0")"
 . .venv/bin/activate
 pip install -q -r requirements.txt
 python -m unittest discover -s tests
-python -m canary all            # proof lab -> dist/canary_demo.html -> docs/QA_REPORT.md
-echo "Offline demo: open dist/canary_demo.html   |   Live engine + Label Lab: python -m canary serve"
+python -m picky all            # proof lab -> dist/picky_demo.html -> docs/QA_REPORT.md
+echo "Offline demo: open dist/picky_demo.html   |   Live engine + Label Lab: python -m picky serve"

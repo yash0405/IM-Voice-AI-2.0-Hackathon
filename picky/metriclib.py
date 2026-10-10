@@ -142,7 +142,7 @@ def validate(m: dict, columns: list | None = None, check_data: bool = True) -> d
     return out
 
 
-# ---------------------------------------------------------------------------- metrics over a data file (canary/filecatalog.py)
+# ---------------------------------------------------------------------------- metrics over a data file (picky/filecatalog.py)
 
 # file column -> the simulator's column (history.py). A file metric runs in a test only when every column it uses is here.
 FILE_SIM = {"lead_call_duration": "call_duration", "lead_call_status": "call_status"}

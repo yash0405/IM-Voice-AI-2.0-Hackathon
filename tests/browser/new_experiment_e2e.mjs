@@ -49,7 +49,7 @@ const v2 = await p.evaluate(() => ({ t: document.querySelector('#w-vc').innerTex
 ok(v2.t.includes('Missing: {{buyer_city}}') && v2.t.includes('New variable not supplied by the bot: {{buyer_town}}') && v2.next && v2.amber === 2, 'Step 2: missing and new variables are amber and block Next', v2);
 await shot('04_step2_variables');
 await click('#w-save'); const drafts = await p.evaluate(() => DYN.drafts);
-ok(await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('canary_console_v1')); return o.packed === 2 && Object.keys(o.texts).length >= 1; }), 'Storage: the big prompt text is stored once, by reference');
+ok(await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('picky_console_v1')); return o.packed === 2 && Object.keys(o.texts).length >= 1; }), 'Storage: the big prompt text is stored once, by reference');
 ok(drafts.length === 1 && drafts[0].w.promptB.includes('buyer_town'), 'Step 2: Save Test saves B as typed even when the checks fail');
 ok((await p.$$eval('a[href="#/suggest"][target=_blank]', a => a.length)) === 1 && !(await p.$('#w-main [data-create]')), 'Step 2: "Need ideas?" link opens Suggest in a new view; no suggestion cards here');
 await p.evaluate(() => { const t = document.querySelector('#w-b'); t.value = t.value.split('buyer_town').join('buyer_city'); t.dispatchEvent(new Event('input')); }); await sleep(600);

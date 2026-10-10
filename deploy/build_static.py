@@ -17,8 +17,8 @@ SKIP_NAMES = ("vani_real_prompt_raw.txt",)                  # not used at run ti
 def collect(src: Path) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-        for p in sorted((src / "canary").glob("*.py")):
-            z.write(p, f"canary/{p.name}")
+        for p in sorted((src / "picky").glob("*.py")):
+            z.write(p, f"picky/{p.name}")
         tracked = set(subprocess.run(["git", "ls-files", "data"], cwd=src, capture_output=True, text=True, check=True).stdout.split())   # only what git tracks: ignored local files (labels, transcripts, spend logs) never ship
         for p in sorted((src / "data").rglob("*")):
             if p.is_file() and p.relative_to(src).as_posix() in tracked and p.suffix not in SKIP_DATA and p.name not in SKIP_NAMES and not p.name.startswith(("sarvam_agent", "history.db")):   # history.db: the local server's own history, never shipped
@@ -26,8 +26,8 @@ def collect(src: Path) -> bytes:
         z.write(src / "out" / "console_bundle.json", "out/console_bundle.json")
         z.write(src / "web" / "index.html", "web/index.html")
         z.write(src / "web" / "console.css", "web/console.css")
-        parts = sorted((src / "web" / "console").glob("*.js"))   # regenerate console.js exactly as canary.build.assemble_console_js does
-        js = "/* GENERATED from web/console/*.js by canary.build.assemble_console_js: edit the parts, not this file. */\n" + "\n".join(p.read_text() for p in parts)
+        parts = sorted((src / "web" / "console").glob("*.js"))   # regenerate console.js exactly as picky.build.assemble_console_js does
+        js = "/* GENERATED from web/console/*.js by picky.build.assemble_console_js: edit the parts, not this file. */\n" + "\n".join(p.read_text() for p in parts)
         z.writestr("web/console.js", js)
     return buf.getvalue()
 
