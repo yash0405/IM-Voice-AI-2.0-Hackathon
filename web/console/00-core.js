@@ -1,5 +1,5 @@
 "use strict";
-/* Picky console. Plain JS, no libraries, works offline. Every number shown comes from the bundle the Python engine produced
+/* Picky console. Plain JS that works offline; two vendored libraries (Chart.js for charts, jsdiff for the prompt diff) and the browser's Web Crypto. Every number shown comes from the bundle the Python engine produced
    (dist/canary_demo.html embeds it; live mode fetches /api/console). Demo state (launched tests, how many days have been played, approvals,
    rollbacks) is saved in the history database on the local live server (canary/store.py) and cached in this browser; the hosted copy and the
    offline file keep it in this browser only. It is reset from Settings. */
@@ -26,22 +26,14 @@ const download = (name, text, type = "text/csv") => { const a = document.createE
 const csvCell = v => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const toCsv = (head, rows) => [head.map(csvCell).join(","), ...rows.map(r => r.map(csvCell).join(","))].join("\n");
 
-/* ------------------------------------------------------------------ sha256 (pure JS: works on file://) - re-checks the decision record in the browser */
-function sha256(str) {
-  const K = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
-  const bytes = new TextEncoder().encode(str), l = bytes.length, total = ((l + 9 + 63) >> 6) << 6, buf = new Uint8Array(total); buf.set(bytes); buf[l] = 0x80;
-  const dv = new DataView(buf.buffer); dv.setUint32(total - 4, (l * 8) >>> 0); dv.setUint32(total - 8, Math.floor(l / 0x20000000));
-  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]), w = new Uint32Array(64), rr = (x, n) => (x >>> n) | (x << (32 - n));
-  for (let o = 0; o < total; o += 64) {
-    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
-    for (let i = 16; i < 64; i++) { const s0 = rr(w[i-15],7) ^ rr(w[i-15],18) ^ (w[i-15] >>> 3), s1 = rr(w[i-2],17) ^ rr(w[i-2],19) ^ (w[i-2] >>> 10); w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0; }
-    let [a, b, c, d, e, f, g, hh] = H;
-    for (let i = 0; i < 64; i++) { const S1 = rr(e,6) ^ rr(e,11) ^ rr(e,25), ch = (e & f) ^ (~e & g), t1 = (hh + S1 + ch + K[i] + w[i]) >>> 0, S0 = rr(a,2) ^ rr(a,13) ^ rr(a,22), mj = (a & b) ^ (a & c) ^ (b & c), t2 = (S0 + mj) >>> 0; hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0; }
-    H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += hh;
-  }
-  return [...H].map(x => x.toString(16).padStart(8, "0")).join("");
+/* ------------------------------------------------------------------ the decision record, re-checked in this browser with its built-in SHA-256 (Web Crypto) */
+const hex = buf => [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
+const sha256 = async str => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str)));
+/** Every entry must point at the one before and hash to its stored hash, exactly as canary/ledger.py wrote it. */
+async function chainOk(entries) {
+  if (!(window.crypto && crypto.subtle)) throw new Error("this page is not a secure context, so the browser offers no SHA-256 here");
+  let prev = "0".repeat(64); for (const e of entries) { if (e.prev !== prev || await sha256(prev + e.body) !== e.hash) return false; prev = e.hash; } return true;
 }
-function chainOk(entries) { let prev = "0".repeat(64); for (const e of entries) { if (e.prev !== prev || sha256(prev + e.body) !== e.hash) return false; prev = e.hash; } return true; }
 
 /* ------------------------------------------------------------------ statistics helpers (display only: decisions come from the engine) */
 function wilson(x, n, z = 1.96) { if (!n) return [0, 1]; const p = x / n, d = 1 + z * z / n, c = (p + z * z / (2 * n)) / d, h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d; return [Math.max(0, c - h), Math.min(1, c + h)]; }
@@ -186,6 +178,9 @@ const dyn = e => (DYN.dyn[e.id] = DYN.dyn[e.id] || { day: e.kind === "simulated"
   approval: isPast(e) && e.record.result.kind === "HOLD_FOR_APPROVAL" ? "rejected" : null,       // history samples are already settled: a person kept A
   rolledBack: false, manualStop: false, learning: "" });
 
+/** Which pre-chained branch of the record the test has taken: a person's click, or the autopilot's own action (d.auto / d.autoRoll). */
+const tailKey = d => d.approval === "approved" ? "approve" : d.approval === "rejected" ? (d.auto ? "auto_reject" : "reject") : d.rolledBack ? (d.autoRoll ? "auto_rollback" : "rollback") : null;
+
 /** Day-by-day rows of a record: the last look of each day. */
 function dayRows(rec) { const m = new Map(); rec.looks.forEach(r => m.set(r.day, r)); return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([day, row]) => ({ day, row })); }
 const lastDay = e => { const r = dayRows(e.record); return r.length ? r[r.length - 1].day : 0; };
@@ -301,7 +296,7 @@ function promotedExperiments() {
 const EV_TYPES = ["Saved", "Started", "Harm alert", "Split alert", "Stopped", "Promoted", "Approved", "Rejected", "Rolled back", "Held", "Inconclusive", "Holdback", "Paused", "Resumed"];
 function eventsFor(e) {
   const v = view(e), rec = e.record, out = [], name = rec.config.name, id = e.id;
-  const tail = v.d.approval === "approved" ? (rec.tails || {}).approve : v.d.approval === "rejected" ? (rec.tails || {}).reject : (v.d.rolledBack ? (rec.tails || {}).rollback : null);
+  const tail = (rec.tails || {})[tailKey(v.d)] || null;
   const push = (ts, type, text, hash) => out.push({ ts, type, text, hash: hash ? hash.slice(0, 10) : "", exp: name, id });
   const visibleUntilDay = v.day;
   for (const ent of rec.ledger) {
@@ -320,9 +315,9 @@ function eventsFor(e) {
   }
   if (tail) for (const ent of tail) {
     const b = JSON.parse(ent.body), p = b.payload;
-    if (b.type === "approval") push(b.ts, p.action === "approved" ? "Approved" : "Rejected", `${p.action[0].toUpperCase() + p.action.slice(1)} by ${p.by}${p.simulated ? " (a demo click)" : ""}.`, ent.hash);
+    if (b.type === "approval") push(b.ts, p.action === "approved" ? "Approved" : "Rejected", p.policy ? `${p.by}: ${p.policy}.` : `${p.action[0].toUpperCase() + p.action.slice(1)} by ${p.by}${p.simulated ? " (a demo click)" : ""}.`, ent.hash);
     else if (b.type === "promotion") push(b.ts, "Promoted", `Production prompt ${p.production_before.slice(0, 7)} → ${p.production_after.slice(0, 7)} (${p.approval}).`, ent.hash);
-    else if (b.type === "rollback") push(b.ts, "Rolled back", `${p.reason} (${p.by}${p.simulated ? ", a demo click" : ""}).`, ent.hash);
+    else if (b.type === "rollback") push(b.ts, "Rolled back", p.by === AUTOPILOT_BY ? `${p.by}: ${p.reason}.` : `${p.reason} (${p.by}${p.simulated ? ", a demo click" : ""}).`, ent.hash);
   }
   (v.d.console || []).forEach(x => out.push({ ts: x.ts, type: x.type, text: x.text, hash: "", exp: name, id }));
   return out.filter(x => x.type !== "Started" || true);

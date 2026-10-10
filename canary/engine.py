@@ -907,7 +907,7 @@ def promoted_reason(cfg_or_share, days: int | None = None, scope_rule: str = "")
             f"winner promoted: B is the production prompt{scope}; {h:.0%} of leads stay on A for {d} days to confirm the gain holds")
 
 
-AUTOPILOT = "Canary autopilot"
+AUTOPILOT = "Picky autopilot"
 HELD_TIMEOUT_DAYS = 2          # a held test nobody answers is closed the safe way (keep A) after this many days
 
 

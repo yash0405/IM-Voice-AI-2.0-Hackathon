@@ -3,11 +3,13 @@
 // The fixture holds the catalog, the 30-day history, the metric catalog, the real prompt A and numbers computed with plain SQL.
 const fs = require("fs"), path = require("path");
 const fx = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const src = fs.readFileSync(path.resolve(__dirname, "..", "..", "web", "console", "05-plan.js"), "utf8");
+const part = f => fs.readFileSync(path.resolve(__dirname, "..", "..", "web", "console", f), "utf8");
+const Diff = (() => { const g = {}; new Function("self", "exports", "module", "define", part("02-vendor-diff.js")).call(g, g); return g.Diff; })();   // the vendored jsdiff the page loads before 05-plan.js
+const src = part("05-plan.js");
 const stubs = "const normPpf = p => { throw new Error('normPpf not needed for the table confidences'); };";
 const DYNX = { settings: {} };
-const lib = new Function("C", "DYN", stubs + src + ";return {metricBody, liftWords, segList, segDescribe, segFromRows, segShare, segLeads, segMatch, HIST, callVal, audienceVolume, connectShare, metricEval, baselineFor, metricCheck, metricWords, durationPlan, improvementOf, promptVars, varCheck, diffRows, diffStats, applyEdits, roleFull, testMetrics, allMetrics, fmtMetric, fmtDelta, fmtPts};")(
-  { catalog: fx.catalog, history: fx.history, metric_catalog: fx.metric_catalog, library: fx.library }, DYNX);
+const lib = new Function("C", "DYN", "Diff", stubs + src + ";return {metricBody, liftWords, segList, segDescribe, segFromRows, segShare, segLeads, segMatch, HIST, callVal, audienceVolume, connectShare, metricEval, baselineFor, metricCheck, metricWords, durationPlan, improvementOf, promptVars, varCheck, diffRows, diffStats, applyEdits, roleFull, testMetrics, allMetrics, fmtMetric, fmtDelta, fmtPts};")(
+  { catalog: fx.catalog, history: fx.history, metric_catalog: fx.metric_catalog, library: fx.library }, DYNX, Diff);
 let pass = 0, fail = 0;
 const ok = (cond, name, info) => { if (cond) { pass++; console.log("ok   " + name); } else { fail++; console.log("FAIL " + name + (info !== undefined ? "  " + JSON.stringify(info) : "")); } };
 const near = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));

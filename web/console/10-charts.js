@@ -1,30 +1,59 @@
-/* Charts: hand-drawn SVG, thin gridlines, navy and blue series with direct labels (never colour alone), tooltips on hover. */
+/* Charts: Chart.js (vendored in 01-vendor-chart.js). Navy and blue series with direct labels (never colour alone), thin gridlines, tooltips on hover. */
 
-const niceTicks = (lo, hi, n = 5) => { const st = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(st)), f = st / mag, s = (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * mag, out = []; for (let v = Math.ceil(lo / s - 1e-9) * s; v <= hi + 1e-9; v += s) out.push(+v.toFixed(10)); return out; };
+const CHART_FONT = { family: getComputedStyle(document.documentElement).getPropertyValue("--font") || "system-ui", size: 12 };
+/** Charts whose canvas left the page (the screen was redrawn) are released. */
+const releaseCharts = () => Object.values(Chart.instances || {}).forEach(ch => { if (!ch.canvas.isConnected) ch.destroy(); });
+/** A plugin that writes the last value of A and B next to their lines, and a dashed "final call" line on the planned last day. */
+const trendMarks = { id: "trendMarks", afterDatasetsDraw(ch, args, o) {
+  const { ctx, chartArea: ar, scales: { x, y } } = ch; ctx.save(); ctx.font = `600 12px ${CHART_FONT.family}`;
+  if (o.finalDay) { const px = x.getPixelForValue(o.finalDay - 1); ctx.strokeStyle = "#a0a7b1"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(px, ar.top); ctx.lineTo(px, ar.bottom); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#667085"; ctx.textAlign = "right"; ctx.fillText("final call", px - 4, ar.top + 10); }
+  if (o.last) { const px = x.getPixelForValue(o.last.i) + 8, ya = y.getPixelForValue(o.last.a), yb = y.getPixelForValue(o.last.b), sep = Math.abs(ya - yb) < 14 ? 7 : 0; ctx.textAlign = "left";
+    ctx.fillStyle = "#243b53"; ctx.fillText(`A ${o.last.fa}`, px, ya + 4 + (o.last.a >= o.last.b ? -sep : sep)); ctx.fillStyle = "#4c7cf3"; ctx.fillText(`B ${o.last.fb}`, px, yb + 4 + (o.last.b > o.last.a ? -sep : sep)); }
+  ctx.restore(); } };
 
 /** Cumulative goal rate of A and B by day with shaded 95% ranges. rows = [{day, row}] up to the day shown; win = planned days. */
 function trendChart(el, rows, win, opts = {}) {
-  const w = Math.max(320, el.clientWidth || 640), h = opts.h || 280, ml = 48, mr = 64, mt = 12, mb = 32;
   if (!rows.length) { el.innerHTML = `<div class="empty">No results yet.</div>`; return; }
+  releaseCharts();
   const c = opts.c || {}, avg = primaryDef(c).type === "average", fv = (x, d = 0) => fmtP(x, c, d);          // a rate is drawn in %, an average in its own unit
-  const pts = rows.map(({ day, row }) => ({ day, nA: row.nA, xA: row.xA, nB: row.nB, xB: row.xB, a: row.rateA, b: row.rateB, ca: armCI(row, "A", c), cb: armCI(row, "B", c) }));
-  let lo = Math.min(...pts.map(p => Math.min(p.ca[0], p.cb[0]))), hi = Math.max(...pts.map(p => Math.max(p.ca[1], p.cb[1])));
-  const pad = Math.max(avg ? (hi - lo) * 0.08 || 1 : 0.02, (hi - lo) * 0.08); lo = Math.max(0, lo - pad); hi = avg ? hi + pad : Math.min(1, hi + pad);
-  const yt = niceTicks(lo, hi, 5), y0 = yt[0] - 0.005 > 0 ? Math.min(lo, yt[0]) : lo, y1 = Math.max(hi, yt[yt.length - 1]);
-  const sx = d => ml + (d - 0.5) / win * (w - ml - mr), sy = v => mt + (1 - (v - y0) / (y1 - y0)) * (h - mt - mb);
-  const band = (key, ci, col) => { const top = pts.map(p => `${sx(p.day).toFixed(1)},${sy(p[ci][1]).toFixed(1)}`), bot = pts.slice().reverse().map(p => `${sx(p.day).toFixed(1)},${sy(p[ci][0]).toFixed(1)}`); return pts.length > 1 ? `<path d="M${top.join("L")}L${bot.join("L")}Z" fill="${col}" opacity=".14"/>` : `<line x1="${sx(pts[0].day)}" x2="${sx(pts[0].day)}" y1="${sy(pts[0][ci][0])}" y2="${sy(pts[0][ci][1])}" stroke="${col}" stroke-width="6" opacity=".25"/>`; };
-  const line = (k, col) => `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${sx(p.day).toFixed(1)},${sy(p[k]).toFixed(1)}`).join("")}" fill="none" stroke="${col}" stroke-width="2"/>${pts.map(p => `<circle cx="${sx(p.day).toFixed(1)}" cy="${sy(p[k]).toFixed(1)}" r="3.5" fill="#fff" stroke="${col}" stroke-width="2"/>`).join("")}`;
-  const last = pts[pts.length - 1], dy = Math.abs(sy(last.b) - sy(last.a)) < 14 ? 7 : 0;
-  let g = yt.map(t => `<g class="grid"><line x1="${ml}" x2="${w - mr}" y1="${sy(t)}" y2="${sy(t)}"/></g><text x="${ml - 8}" y="${sy(t) + 4}" text-anchor="end">${fv(t)}</text>`).join("");
-  g += Array.from({ length: win }, (_, i) => i + 1).map(d => `<text x="${sx(d)}" y="${h - 10}" text-anchor="middle">${d}</text>`).join("") + `<text x="${ml}" y="${h - 10}" text-anchor="end">day</text>`;
-  g += band("a", "ca", "var(--a)") + band("b", "cb", "var(--b)") + line("a", "#243b53") + line("b", "#4c7cf3");
-  g += `<text x="${sx(last.day) + 10}" y="${sy(last.a) + 4 + (last.a >= last.b ? -dy : dy)}" class="lbl-a">A ${fv(last.a)}</text><text x="${sx(last.day) + 10}" y="${sy(last.b) + 4 + (last.b > last.a ? -dy : dy)}" class="lbl-b">B ${fv(last.b)}</text>`;
-  if (opts.finalDay) g += `<line x1="${sx(opts.finalDay)}" x2="${sx(opts.finalDay)}" y1="${mt}" y2="${h - mb}" stroke="var(--off)" stroke-dasharray="4 4"/><text x="${sx(opts.finalDay) - 4}" y="${mt + 10}" text-anchor="end">final call</text>`;
-  g += `<rect class="hit" x="${ml}" y="${mt}" width="${w - ml - mr}" height="${h - mt - mb}" fill="transparent"/>`;
-  el.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="Cumulative ${avg ? "goal average" : "goal rate"} for A and B by day, with 95% ranges">${g}</svg>`;
-  $(".hit", el).addEventListener("mousemove", ev => { const b = ev.currentTarget.getBoundingClientRect(), d = Math.round((ev.clientX - b.left) / (w - ml - mr) * win + 0.5 - 0.5); const p = pts.find(q => q.day === Math.min(Math.max(1, d), win)) || pts[pts.length - 1];
-    tip.show(`<b>Day ${p.day}</b><div class="r"><span>A</span><span>${fv(p.a, 1)} (${fv(p.ca[0], 1)} to ${fv(p.ca[1], 1)})</span></div><div class="r"><span>B</span><span>${fv(p.b, 1)} (${fv(p.cb[0], 1)} to ${fv(p.cb[1], 1)})</span></div><div class="r"><span>leads</span><span>${nf(p.nA)} / ${nf(p.nB)}</span></div>`, ev); });
-  $(".hit", el).addEventListener("mouseleave", () => tip.hide());
+  const days = Array.from({ length: win }, (_, i) => i + 1), at = new Map(rows.map(({ day, row }) => [day, row]));
+  const val = f => days.map(d => at.has(d) ? f(at.get(d)) : null), ci = (arm, k) => val(r => armCI(r, arm, c)[k]);
+  const last = rows[rows.length - 1], lastRow = last.row;
+  el.innerHTML = `<div style="position:relative;height:${opts.h || 280}px"><canvas role="img" aria-label="Cumulative ${avg ? "goal average" : "goal rate"} for A and B by day, with 95% ranges"></canvas></div>`;
+  const band = (arm, col) => [{ data: ci(arm, 0), borderWidth: 0, pointRadius: 0, fill: false, spanGaps: false },
+    { data: ci(arm, 1), borderWidth: 0, pointRadius: 0, backgroundColor: col, fill: "-1", spanGaps: false }];
+  const line = (arm, col) => ({ label: arm === "A" ? "A (today's prompt)" : "B (new prompt)", data: val(r => r["rate" + arm]), borderColor: col, backgroundColor: "#fff", borderWidth: 2, pointRadius: 3.5, pointBorderWidth: 2, fill: false });
+  new Chart($("canvas", el), {
+    type: "line",
+    data: { labels: days, datasets: [...band("A", "rgba(36,59,83,.14)"), ...band("B", "rgba(76,124,243,.14)"), line("A", "#243b53"), line("B", "#4c7cf3")] },
+    plugins: [trendMarks],
+    options: { responsive: true, maintainAspectRatio: false, animation: false, layout: { padding: { right: 64 } },
+      interaction: { mode: "index", intersect: false },
+      scales: { x: { title: { display: true, text: "day", font: CHART_FONT, color: "#667085" }, grid: { display: false }, ticks: { font: CHART_FONT, color: "#667085" } },
+        y: { grid: { color: "#e3e7ec" }, border: { display: false }, ticks: { font: CHART_FONT, color: "#667085", callback: v => fv(v) } } },
+      plugins: { legend: { display: false },
+        trendMarks: { finalDay: opts.finalDay || null, last: { i: last.day - 1, a: lastRow.rateA, b: lastRow.rateB, fa: fv(lastRow.rateA), fb: fv(lastRow.rateB) } },
+        tooltip: { filter: it => it.datasetIndex >= 4, callbacks: {
+          title: items => `Day ${items[0].label}`,
+          label: it => { const r = at.get(+it.label), arm = it.datasetIndex === 4 ? "A" : "B", [lo, hi] = armCI(r, arm, c); return `${arm}: ${fv(r["rate" + arm], 1)} (${fv(lo, 1)} to ${fv(hi, 1)})`; },
+          footer: items => { const r = at.get(+items[0].label); return `leads ${nf(r.nA)} / ${nf(r.nB)}`; } } } } }
+  });
+}
+
+/** False winners when A = B: Picky's rule against checking p < 0.05 every day, as two horizontal bars with their values written on them. */
+function aaChart(el, picky, naive, caption = "") {
+  releaseCharts();
+  el.innerHTML = `<div style="position:relative;height:112px"><canvas role="img" aria-label="False winners when A equals B: Picky ${pct(picky, 1)}, checking every day ${pct(naive, 1)}"></canvas></div>${caption ? `<p class="note">${esc(caption)}</p>` : ""}`;
+  const vals = [picky * 100, naive * 100], top = Math.ceil(Math.max(...vals) / 5) * 5 + 5;
+  new Chart($("canvas", el), { type: "bar",
+    data: { labels: ["Picky's rule", "p < 0.05 checked every day"], datasets: [{ data: vals, backgroundColor: ["#22a699", "#dc6262"], borderRadius: 4, barThickness: 24 }] },
+    plugins: [{ id: "aaVals", afterDatasetsDraw(ch) { const { ctx } = ch; ctx.save(); ctx.font = `600 13px ${CHART_FONT.family}`; ctx.fillStyle = "#263238"; ctx.textBaseline = "middle";
+      ch.getDatasetMeta(0).data.forEach((b, i) => ctx.fillText(`${vals[i].toFixed(1)}% false winners`, b.x + 8, b.y)); ctx.restore(); } }],
+    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, animation: false, layout: { padding: { right: 130 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { min: 0, max: top, grid: { color: "#e3e7ec" }, border: { display: false }, ticks: { callback: v => v + "%", font: CHART_FONT, color: "#667085" } },
+        y: { grid: { display: false }, ticks: { font: { ...CHART_FONT, size: 13 }, color: "#263238" } } } } });
 }
 
 /** Two horizontal bars: configured against achieved share of B. */

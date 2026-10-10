@@ -31,7 +31,6 @@ function advance(e, n = 1) {
   const after = view(e); if (!before.decided && after.decided) toast(`${e.record.config.name}: ${KIND_LABEL[after.kind] || after.kind}`);
   return true;
 }
-function advanceAll() { let moved = 0; EXPS().forEach(e => { if (view(e).running && advance(e)) moved++; }); if (!moved) toast("No running tests to advance."); route(); }
 
 /** What the live prompt gained in the test that promoted it, against the base prompt that test compared it with. Lifts of different tests do not add (each B was
     compared with the base prompt, not with the previous live one), so only the latest all-traffic promotion is shown; winners' lifts run high, so the low end is shown too. */
@@ -58,71 +57,71 @@ function trafficMap(list) {
     ${clash.length ? `<div class="banner neg" style="margin-top:12px"><div><b>Overlap.</b> ${clash.map(([x, y]) => `${esc(x.name)} and ${esc(y.name)}`).join("; ")} include some of the same leads, so their results interfere. Finish one first.</div></div>` : `<p class="note" style="margin-top:8px">Each test replays the same history on its own, so each bar shows how that test splits its own traffic. Launches from New Experiment are checked for overlap: two tests may not include the same leads at once.</p>`}`;
 }
 
+/** A and B as two small bars. Grey until the engine decides: early numbers swing, and acting on them is the peeking trap the engine prevents. */
+function abBars(v) {
+  if (!v.cur) return `<div class="note">No results yet</div>`;
+  const c = v.config, avg = primaryDef(c).type === "average", top = Math.max(v.cur.rateA, v.cur.rateB, 1e-9), w = x => Math.max(2, (avg ? x / top : x) * 100);
+  const bar = arm => `<div class="abrow"><span class="ab-k">${arm}</span><span class="ab-bar"><i class="${v.decided ? arm.toLowerCase() : "grey"}" style="width:${w(v.cur["rate" + arm])}%"></i></span><span class="ab-v">${fmtP(v.cur["rate" + arm], c)}</span></div>`;
+  return `<div class="ab" title="${v.decided ? `${goalName(c)}: the engine's final numbers` : `${goalName(c)} so far. Grey until the engine decides: do not act on early numbers.`}">${bar("A")}${bar("B")}</div>`;
+}
 function runningCard(e) {
-  const v = view(e), c = v.config, pctDone = Math.min(100, v.day / v.win * 100), need = needLeads(e), have = v.cur ? v.cur.n : 0;
-  const harm = v.cur ? (v.cur.decision === "STOP_HARM" ? ["Harm alert", "neg"] : v.cur.z <= -1.96 ? ["Watch: B looks worse", "warn"] : ["No harm signal", "pos"]) : ["No results yet", "plain"];
-  return `<div class="card" style="display:grid;gap:12px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h3><a href="#/live/${encodeURIComponent(e.id)}">${esc(c.name)}</a></h3><div class="note">${esc(e.kind === "files" ? "Results files" : e.preset || "Simulated")} · started ${fdate(e.sched_date || c.start)}</div><div style="margin-top:4px">${segChips(c.segment)}</div></div>${statusPill(v)}</div>
-    <div><div style="display:flex;justify-content:space-between;font-size:13px"><span>Day <b>${v.day}</b> of ${v.win}</span><span class="muted">${nf(have)} of ${nf(need)} leads needed</span></div><div class="bar" style="margin-top:4px" title="Leads collected against leads needed"><i style="width:${Math.min(100, have / need * 100)}%"></i></div><div class="bar" style="margin-top:4px;height:4px" title="Days: ${v.day} of ${v.win}"><i style="width:${pctDone}%;background:var(--off)"></i></div></div>
-    <div class="kpi" title="Interim lift of B over A. Grey until the final call: a person should not act on it."><div class="k">Current lift of B over A <span class="note">(interim, not a decision)</span></div><div class="v" style="font-size:26px;color:var(--off)">${esc(liftParts(v)[0])}</div><div class="d">${esc(liftParts(v)[1])}</div></div>
-    <div>${pill(harm[0], harm[1])}</div>
-    <div class="actions"><a class="btn sm" href="#/live/${encodeURIComponent(e.id)}">Open</a>${v.running ? `<button class="btn sm" data-adv="${esc(e.id)}">Advance 1 day (demo)</button>` : ""}${v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval ? `<a class="btn sm primary" href="#/live/${encodeURIComponent(e.id)}">Decide</a>` : ""}${v.scheduled ? `<a class="btn sm primary" href="#/live/${encodeURIComponent(e.id)}">Scheduled</a>` : ""}</div></div>`;
+  const v = view(e), c = v.config, link = `#/live/${encodeURIComponent(e.id)}`, held = v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval;
+  return `<div class="card rcard"><div class="rc-top"><a href="${link}">${esc(c.name)}</a>${statusPill(v)}</div>
+    ${segRules(c.segment).length ? `<div>${segChips(c.segment)}</div>` : ""}
+    <div><div class="rc-day"><span>Day <b>${v.day}</b> of ${v.win}</span><span class="note">${v.scheduled ? "scheduled" : held ? "waiting for a yes" : `final call on day ${v.win}`}</span></div><div class="bar"><i style="width:${Math.min(100, v.day / v.win * 100)}%"></i></div></div>
+    ${abBars(v)}
+    <div class="actions">${held ? `<a class="btn sm primary" href="${link}">Decide</a>` : `<a class="btn sm" href="${link}">Open</a>`}${v.running ? `<button class="btn sm" data-adv="${esc(e.id)}">Advance 1 day</button>` : ""}${v.scheduled ? `<a class="btn sm primary" href="${link}">Scheduled</a>` : ""}</div></div>`;
 }
 
 function attention() {
   const items = [], L = (e, txt) => `<a href="#/live/${encodeURIComponent(e.id)}">${esc(e.record.config.name)}</a> ${txt}`;
   EXPS().filter(isDemoWorld).forEach(e => { const v = view(e);
-    if (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval) items.push(["Approval pending", "warn", L(e, "won on the goal but needs a person to approve or reject it.")]);
+    if (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval) items.push(["Approval pending", "warn", L(e, `won on the goal but needs a yes.${AP().held ? ` If nobody answers within ${heldDays()} days, the autopilot keeps A.` : ""}`)]);
     else if (["STOP_HARM", "STOP_GUARDRAIL"].includes(v.kind)) items.push(["Harm alert", "neg", L(e, "was stopped: " + (v.kind === "STOP_HARM" ? "B was clearly worse." : "a guardrail was broken.") + " Its leads are back on A.")]);
     else if (v.kind === "HALT_SRM") items.push(["Split alert", "neg", L(e, "was halted: the split or the log is broken, so nothing can be trusted.")]);
-    else if (v.running && v.day >= v.win - 1 && v.day < v.win) items.push(["Ending soon", "run", L(e, `reaches its final call on day ${v.win} (now day ${v.day}).`)]);
+    else if (v.running && v.day >= v.win - 1 && v.day < v.win) items.push(["Ending soon", "run", L(e, `reaches its final call on day ${v.win}.`)]);
     else if (v.running && v.cur && v.cur.z <= -1.96) items.push(["Watch", "warn", L(e, "looks worse so far. It stops only if it crosses the strict daily harm bar.")]);
     if (v.holdback && !v.holdback.done) items.push(["Holdback", "run", L(e, `is promoted; ${pct(v.holdback.all.share, 0)} of leads stay on A: day ${v.holdback.day} of ${v.holdback.all.days}.`)]);
   });
   DYN.drafts.forEach(d => items.push(["Draft", "plain", `<a href="#/new" data-open-draft="${esc(d.id)}">${esc(d.name)}</a> was saved but not launched.`]));
   return items;
 }
+/** Finished tests as one stacked bar: won, stopped, no clear winner. */
+function scoreBar(t) {
+  const other = t.inc + t.halted + t.held, seg = (k, cls, label) => k ? `<i class="${cls}" style="flex:${k}" title="${label}: ${k}"></i>` : "";
+  return `<div class="stack" role="img" aria-label="${t.win} won, ${t.stop} stopped, ${other} with no clear winner">${seg(t.win, "pos", "Won")}${seg(t.stop, "neg", "Stopped")}${seg(other, "plain", "No clear winner or held")}</div>
+    <div class="stack-legend"><span><i class="pos"></i>Won <b>${t.win}</b></span><span><i class="neg"></i>Stopped <b>${t.stop}</b></span><span><i class="plain"></i>No clear winner <b>${other}</b></span></div>`;
+}
+const tile = (k, v, d, cls = "") => `<div class="card kpi tile ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
 
 ROUTES.overview = (el) => {
-  const t = totals(), prod = productionState(), ev = allEvents().filter(x => x.type !== "Started" && x.id && byId(x.id) && !isPast(byId(x.id))).slice(0, 5), pr = C.proof, impact = businessImpact(), att = attention(), nPast = EXPS().filter(isPast).length;
+  const t = totals(), prod = productionState(), ev = allEvents().filter(x => x.type !== "Started" && x.id && byId(x.id) && !isPast(byId(x.id)) && !/^Production prompt /.test(x.text)).slice(0, 5), pr = C.proof, impact = businessImpact(), att = attention(), nPast = EXPS().filter(isPast).length;
   const live = EXPS().filter(e => { const v = view(e); return v.running || v.scheduled || v.d.paused && !v.ended || (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval); });
   const mapList = EXPS().filter(e => { const v = view(e); return !isPast(e) && (v.running || v.d.paused && !v.ended) && !v.scheduled; }).map(trafficRow);
   const sugg = (C.suggestions || []).filter(c => !c.disabled && !c.from_history && c.expected_pp).sort((a, b) => priority(b).score - priority(a).score)[0];
-  const scoreN = t.win + t.stop + t.inc + t.halted + t.held, nSched = live.filter(e => view(e).scheduled).length;
-  el.innerHTML = head("Overview", "Tests that are running, the prompt that is live, what needs attention, and how the tests have gone so far.",
-    `<button class="btn" id="adv-all">Advance all running tests 1 day (demo)</button><a class="btn" href="#/import">Import results files</a><a class="btn primary" href="#/new">New experiment</a>`) +
-    `<div class="grid g4" style="margin-bottom:16px">
-      <div class="card kpi"><div class="k">Running tests</div><div class="v">${t.running}</div><div class="d">${nSched ? nSched + " scheduled" : "replaying historical calls"}</div></div>
-      <div class="card kpi"><div class="k">Waiting for approval</div><div class="v">${t.held}</div><div class="d">${t.held ? "a person decides" : "nothing is waiting"}</div></div>
-      <div class="card kpi"><div class="k">Harm alerts</div><div class="v" style="${t.alerts ? "color:#b23b3b" : ""}">${t.alerts}</div><div class="d">stopped for harm, or a broken split</div></div>
-      <div class="card kpi"><div class="k">Completed this month</div><div class="v">${t.month}</div><div class="d">October, played in this demo</div></div></div>
-    <div class="grid g2" style="margin-bottom:16px">
-      <div class="card"><h2>Business impact</h2><div class="sub">What the live prompt gained in the test that promoted it.</div>${impact ? `<div class="kpi" style="margin-top:12px"><div class="v" style="color:${impact.rel > 0 ? "#167a70" : "var(--navy)"}">${sgn(impact.rel * 100, 1)}%</div><div class="d">${esc(impact.goal)}${impact.lower ? " (lower is better)" : ""}, measured in <a href="#/report/${encodeURIComponent(impact.id)}">${esc(impact.name)}</a> since ${esc(fdate(impact.since))}; at least <b>${sgn(impact.low * 100, 0)}%</b> at the low end of the 95% range</div></div><p class="note" style="margin-top:8px">Simulated, with a known injected effect; the lifts of winners tend to run high. Gains of different tests are not added: each test compared its B with the base prompt.</p>` : `<div class="empty" style="margin-top:12px">No change has been promoted yet in this demo. Play a winning test to its last day.</div>`}</div>
-      <div class="card"><h2>Live prompt</h2><div class="sub">The version that serves callers right now.</div>
-        <dl class="kv" style="margin-top:12px"><dt>Live version</dt><dd><b>${esc(prod.live.id)}</b> ${pill(prod.live.id === "v1" ? "as received" : "promoted in this demo", prod.live.id === "v1" ? "plain" : "pos")}</dd><dt>Name</dt><dd>${esc(prod.live.name)}</dd><dt>Live since</dt><dd>${prod.live.time ? esc(fdt(prod.live.time)) : "the start (the real VANI prompt)"}</dd><dt>Promoted by</dt><dd>${prod.live.expId ? `<a href="#/report/${encodeURIComponent(prod.live.expId)}">${esc(prod.live.from)}</a>` : "-"}</dd>${prod.live.expView && prod.live.expView.cur ? `<dt>Its rate in the test</dt><dd>${pct(prod.live.expView.cur.rateB, 1)} against ${pct(prod.live.expView.cur.rateA, 1)} for A</dd>` : ""}<dt>Fingerprint</dt><dd class="mono">${esc(prod.live.hash)}</dd></dl>
-        <div class="actions" style="margin-top:12px"><a class="btn sm" href="#/library">Open Prompt Library</a></div></div></div>
-    <div class="card" style="margin-bottom:16px"><h2>Needs attention</h2><div class="sub">Approvals, harm and split alerts, tests about to end, holdbacks, and drafts not launched.</div>${att.length ? `<div style="display:grid;gap:8px;margin-top:12px">${att.map(([k, c, txt]) => `<div style="display:flex;gap:12px;align-items:baseline"><span style="min-width:120px">${pill(k, c)}</span><span>${txt}</span></div>`).join("")}</div>` : `<div class="empty" style="margin-top:12px">Nothing needs attention.</div>`}</div>
-    <h2 style="font-size:16px;font-weight:600;color:var(--navy);margin:24px 0 12px">Running tests</h2>
+  const scoreN = t.win + t.stop + t.inc + t.halted + t.held;
+  el.innerHTML = head("Overview", "What is running, what needs you, and what Picky decided.", `${clockButtons()}<a class="btn" href="#/import">Import results</a><a class="btn primary" href="#/new">New experiment</a>`) + autopilotStrip() +
+    `<div class="grid g4 tiles">${tile("Running tests", t.running, "live now")}${tile("Waiting for approval", t.held, t.held ? "needs a yes" : "nothing waiting", t.held ? "warn" : "")}${tile("Harm alerts", t.alerts, "stopped or halted", t.alerts ? "neg" : "")}${tile("Completed this month", t.month, "in this demo")}</div>
+    ${att.length ? `<div class="card attn"><h2>Needs attention</h2><div class="attn-list">${att.map(([k, c, txt]) => `<div class="attn-row"><span>${pill(k, c)}</span><span>${txt}</span></div>`).join("")}</div></div>` : ""}
+    <h2 class="sec-title">Running tests</h2>
     ${live.length ? `<div class="grid g3">${live.map(runningCard).join("")}</div>` : `<div class="empty">No tests are running. <a href="#/new">Start a new experiment</a> or pick an idea from <a href="#/suggest">Suggest A/B Tests</a>.</div>`}
-    <div class="card" style="margin-top:16px"><h2>Traffic map</h2><div class="sub">How today's traffic splits: outside the test, A and B inside it, for each running test.</div><div style="margin-top:12px">${trafficMap(mapList)}</div></div>
     <div class="grid g2" style="margin-top:16px">
-      <div class="card"><h2>Recent decisions</h2><div class="sub">The last five events from the Decision Log.</div>
-        ${ev.length ? `<div class="ledger" style="margin-top:8px">${ev.map(x => `<div class="e"><span class="note">${esc(fdt(x.ts))}</span><span><b>${esc(x.type)}</b> · ${esc(x.exp)}<br><span class="muted">${esc(x.text.length > 160 ? x.text.slice(0, 157) + "..." : x.text)}</span></span></div>`).join("")}</div>` : `<div class="empty" style="margin-top:12px">No decisions yet in this demo. Advance a running test to its last day. The Decision Log also holds the history samples.</div>`}
-        <div class="actions" style="margin-top:12px"><a class="btn sm" href="#/log">Open Decision Log</a></div></div>
-      <div class="card"><h2>Scorecard</h2><div class="sub">Out of ${scoreN} finished or decided tests (${nPast} are history samples): won, stopped, inconclusive.</div>
-        <div class="grid g3" style="margin-top:12px"><div class="kpi"><div class="k">Won</div><div class="v">${t.win}</div><div class="d"><span class="delta up">▲</span> shipped</div></div><div class="kpi"><div class="k">Stopped</div><div class="v">${t.stop}</div><div class="d"><span class="delta down">▼</span> worse or unsafe</div></div><div class="kpi"><div class="k">Inconclusive</div><div class="v">${t.inc}</div><div class="d">no evidence${t.halted ? `; ${t.halted} halted` : ""}${t.held ? `; ${t.held} held` : ""}</div></div></div>
-        <p class="note" style="margin-top:8px">Only tests played in this demo change the live prompt.</p></div></div>
-    ${sugg ? `<div class="card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div style="max-width:760px"><h2>Top suggestion</h2><div class="sub"><b>${esc(sugg.title)}</b>: ${esc(sugg.hypothesis.length > 200 ? sugg.hypothesis.slice(0, 197) + "..." : sugg.hypothesis)}</div></div><div class="actions"><button class="btn primary" id="top-create">Create experiment</button><a class="btn" href="#/suggest">All ideas</a></div></div></div>` : ""}
-    ${pr ? `<div class="card" style="margin-top:16px"><h2>A vs A check: how often is a winner wrongly declared?</h2><div class="sub">The strongest proof the statistics are sound. When A and an identical copy are compared, the right answer is always "no winner".</div>
-      <div class="grid g3" style="margin-top:16px"><div class="kpi"><div class="k">Promoted although A = B</div><div class="v">${pct(pr.final_look, 1)}</div><div class="d">of ${nf(pr.runs)} engine runs; 95% range ${pct(pr.final_look_ci[0], 1)} to ${pct(pr.final_look_ci[1], 1)}; the target is 2.5% (one side of a 95% test)</div></div>
-      <div class="kpi"><div class="k">Looks different either way</div><div class="v">${pr.either != null ? pct(pr.either, 1) : "-"}</div><div class="d">promoted or logged as a loss: this is the BRD's "about 5%"; a loss ships nothing</div></div>
-      <div class="kpi"><div class="k">A plain p &lt; 0.05 check every day</div><div class="v">${pct(pr.naive, 1)}</div><div class="d">false winners; ${pct(pr.naive_wrong, 0)} counting false stops too</div></div></div>
-      <div class="actions" style="margin-top:16px"><button class="btn primary" id="aa-run">Run 1,000 A vs A tests now</button><span class="note">in this browser, seeded, about a second; the same rules as the engine, without the call-length guardrail</span></div><div id="aa-out" style="margin-top:12px"></div>
-      <div class="note" style="margin-top:8px">Simulated, with a known answer. The engine's own study: <span class="mono">python -m canary proof</span>.</div></div>` : ""}`;
-  $("#adv-all").onclick = advanceAll;
-  $$("[data-adv]", el).forEach(b => b.onclick = () => { const e = byId(b.dataset.adv); if (advance(e)) route(); });
+      <div class="card"><div class="card-k">Live prompt</div><div class="lp"><span class="ver">${esc(prod.live.id)}</span><div><b>${esc(prod.live.name)}</b><div class="note">${prod.live.time ? "since " + esc(fdate(prod.live.time)) : "as received"}${prod.live.expId ? ` · from <a href="#/report/${encodeURIComponent(prod.live.expId)}">${esc(prod.live.from)}</a>` : ""} ${info("Fingerprint " + prod.live.hash)}</div></div></div>
+        ${impact ? `<div class="impact"><span class="impact-v" style="color:${impact.rel > 0 ? "#167a70" : "var(--navy)"}">${sgn(impact.rel * 100, 1)}%</span><span>${esc(impact.goal)}${impact.lower ? " (lower is better)" : ""}<br><span class="note">at least ${sgn(impact.low * 100, 0)}% at the low end of the range ${info("Simulated, with a known injected effect; winners' lifts tend to run high. Gains of different tests are not added: each test compared its B with the base prompt.")}</span></span></div>` : `<p class="note" style="margin-top:12px">Business impact appears here once a winner is promoted.</p>`}
+        <div class="actions" style="margin-top:12px"><a class="btn sm" href="#/library">Prompt Library</a></div></div>
+      <div class="card"><div class="card-k">Scorecard <span class="note">${scoreN} decided tests (${nPast} are history samples)</span></div>${scoreBar(t)}<p class="note" style="margin-top:8px">Only tests played in this demo change the live prompt.</p></div></div>
+    ${pr ? `<div class="card" style="margin-top:16px"><div class="sec-row"><div><h2>Why the verdicts can be trusted</h2><div class="sub">False winners when B is secretly identical to A (${nf(pr.runs)} simulated tests)</div></div><button class="btn" id="aa-run">Run 1,000 A vs A tests now</button></div>
+      <div id="aa-chart" style="margin-top:8px"></div><div id="aa-out"></div>
+      ${fold("The numbers", `<dl class="kv"><dt>Promoted although A = B</dt><dd><b>${pct(pr.final_look, 1)}</b>, range ${pct(pr.final_look_ci[0], 1)} to ${pct(pr.final_look_ci[1], 1)}; the target is 2.5% (one side of a 95% test)</dd><dt>Looks different either way</dt><dd><b>${pr.either != null ? pct(pr.either, 1) : "-"}</b>: promoted or logged as a loss (the BRD's "about 5%"); a loss ships nothing</dd><dt>A plain p &lt; 0.05 every day</dt><dd><b>${pct(pr.naive, 1)}</b> false winners; ${pct(pr.naive_wrong, 0)} counting false stops too</dd></dl><p class="note">Simulated, with a known answer. The engine's own study: <span class="mono">python -m canary proof</span>. The button runs the same rules in this browser, without the call-length guardrail.</p>`)}</div>` : ""}
+    <div class="grid g2" style="margin-top:16px">
+      <div>${fold("Traffic split today", trafficMap(mapList), `${mapList.length} running`)}${fold("Recent decisions", ev.length ? `<div class="ledger">${ev.map(x => `<div class="e"><span class="note">${esc(fdt(x.ts))}</span><span><b>${esc(x.type)}</b> · ${esc(x.exp)}<br><span class="muted">${esc(x.text.length > 140 ? x.text.slice(0, 137) + "..." : x.text)}</span></span></div>`).join("")}</div><div class="actions" style="margin-top:8px"><a class="btn sm" href="#/log">Open Decision Log</a></div>` : `<p class="note">No decisions yet in this demo. Press Next day or Play.</p>`, ev.length ? `${ev.length} latest` : "")}</div>
+      ${sugg ? `<div class="card sugg1"><div class="card-k">Top suggestion</div><p><b>${esc(sugg.title)}</b></p><p class="note">${esc(sugg.hypothesis.length > 150 ? sugg.hypothesis.slice(0, 147) + "..." : sugg.hypothesis)}</p><div class="actions" style="margin-top:8px"><button class="btn primary sm" id="top-create">Create experiment</button><a class="btn sm" href="#/suggest">All ideas</a></div></div>` : ""}</div>`;
+  bindClock(el);
+  $$("[data-adv]", el).forEach(b => b.onclick = () => { const e = byId(b.dataset.adv); if (advance(e)) refresh(); });
   $$("[data-open-draft]", el).forEach(a => a.onclick = () => { const d = DYN.drafts.find(x => x.id === a.dataset.openDraft); if (d) WZ = { ...wzDefaults(), ...JSON.parse(JSON.stringify(d.w)) }; });
   const tc = $("#top-create"); if (tc) tc.onclick = () => createFrom(sugg);
-  const ar = $("#aa-run"); if (ar) ar.onclick = () => { ar.disabled = true; ar.textContent = "Running..."; setTimeout(() => { $("#aa-out").innerHTML = aaResult(runAA(1000, Date.now() % 100000)); ar.disabled = false; ar.textContent = "Run 1,000 A vs A tests again"; }, 30); };
+  if (pr) aaChart($("#aa-chart"), pr.final_look, pr.naive);
+  const ar = $("#aa-run"); if (ar) ar.onclick = () => { ar.disabled = true; ar.textContent = "Running..."; setTimeout(() => { const o = runAA(1000, Date.now() % 100000); aaChart($("#aa-chart"), o.promote / o.runs, o.naive / o.runs, `This run: ${nf(o.runs)} tests in this browser, seed ${o.seed}`); $("#aa-out").innerHTML = fold("This run, in detail", aaResult(o), "", false); ar.disabled = false; ar.textContent = "Run 1,000 A vs A tests again"; }, 30); };
 };
 
 /* ---- A vs A in the browser: the one-look rule on identical prompts, a thousand times. */

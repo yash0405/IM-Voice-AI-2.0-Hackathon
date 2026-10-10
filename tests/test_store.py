@@ -194,6 +194,26 @@ class Clicks(StoreBase):
         (detail,), = self.q("SELECT detail FROM actions WHERE action = 'advance_day'")
         self.assertEqual(json.loads(detail), {"from": 2, "to": 7})
 
+    def test_the_autopilot_keeps_a_and_its_own_entries_are_logged(self):
+        """A held win nobody answered: the autopilot keeps A. The decision log gets the autopilot's pre-chained entries (not a person's),
+        the chain still verifies, and the click log says the autopilot acted."""
+        n0 = self.log_ok("demo_hold")
+        self.put(state={"demo_hold": st(7)})
+        self.put(state={"demo_hold": st(7, approval="rejected", auto=True, waited=2)})
+        self.assertEqual(self.status("demo_hold")[:2], ("Completed", "Rejected: kept A"))
+        self.assertEqual(self.log_ok("demo_hold"), n0 + len(DEMO["demo_hold"]["record"]["tails"]["auto_reject"]))
+        self.assertTrue(any('"by":"Picky autopilot"' in r[0] for r in self.q("SELECT body FROM decision_log WHERE experiment_id = 'demo_hold'")))
+        self.assertEqual([r[0] for r in self.q("SELECT action FROM actions ORDER BY id")], ["advance_day", "autopilot_reject"])
+
+    def test_the_autopilot_rolls_back_a_win_that_slips(self):
+        self.put(state={"demo_fade": st(7)})
+        self.assertEqual(self.status("demo_fade")[:2], ("Completed", "Promoted"))
+        self.put(state={"demo_fade": st(7, hold=5, rolledBack=True, autoRoll=True)})
+        self.assertEqual(self.status("demo_fade")[:2], ("Completed", "Promoted, then rolled back"))
+        self.log_ok("demo_fade")
+        self.assertTrue(any("holdback alert" in r[0] for r in self.q("SELECT reason FROM decision_log WHERE experiment_id = 'demo_fade'")))
+        self.assertIn("autopilot_rollback", [r[0] for r in self.q("SELECT action FROM actions ORDER BY id")])
+
     def test_a_harmful_b_shows_stopped_and_a_person_can_stop_a_test(self):
         self.put(state={"demo_worse": st(9999)})
         self.assertEqual(self.status("demo_worse")[0], "Stopped")

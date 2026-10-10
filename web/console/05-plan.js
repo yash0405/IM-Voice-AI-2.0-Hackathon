@@ -235,38 +235,16 @@ function promptVars(text) {
 }
 /** Every variable of A must still be in B, and B must not use a variable the bot does not supply. */
 function varCheck(a, b) { const A = promptVars(a), B = promptVars(b); const missing = A.filter(v => !B.includes(v)), added = B.filter(v => !A.includes(v)); return { ok: !missing.length && !added.length, missing, added, n: A.length }; }
-/** Myers' shortest edit script between two line arrays: fast when the prompts differ in few places. null when there are more than `maxD` differences. */
-function myersOps(A, B, maxD = 4000) {
-  const N = A.length, M = B.length, MAX = Math.min(N + M, maxD), off = MAX + 2, V = new Int32Array(2 * MAX + 5), trace = [];
-  for (let d = 0; d <= MAX; d++) {
-    trace.push(V.slice(off - d - 1, off + d + 2));                      // V before round d, indices -(d+1)..(d+1)
-    for (let k = -d; k <= d; k += 2) {
-      let x = (k === -d || (k !== d && V[off + k - 1] < V[off + k + 1])) ? V[off + k + 1] : V[off + k - 1] + 1, y = x - k;
-      while (x < N && y < M && A[x] === B[y]) { x++; y++; }
-      V[off + k] = x;
-      if (x >= N && y >= M) {                                            // walk back through the rounds
-        const ops = []; let cx = N, cy = M;
-        for (let dd = d; dd >= 0; dd--) {
-          const t = trace[dd], at = kk => t[kk + dd + 1], kk = cx - cy;
-          const pk = (kk === -dd || (kk !== dd && at(kk - 1) < at(kk + 1))) ? kk + 1 : kk - 1, px = dd === 0 ? 0 : at(pk), py = px - pk;
-          while (cx > px && cy > py) { ops.push(["=", cx - 1, cy - 1]); cx--; cy--; }
-          if (dd > 0) { if (cx === px) ops.push(["+", cy - 1]); else ops.push(["-", cx - 1]); cx = px; cy = py; }
-        }
-        return ops.reverse();
-      }
-    }
-  }
-  return null;
-}
-/** Line diff of A and B (common ends trimmed, then Myers on the middle). Rows: {t: "same"|"del"|"add", a, b}. */
+/** Line diff of A and B by jsdiff (npm "diff", vendored in 02-vendor-diff.js). Rows: {t: "same"|"del"|"add", a, b, ia, ib} (1-based line numbers).
+    Past 4,000 differences (two unrelated prompts) every line of A is shown removed and every line of B added. */
 function diffRows(a, b) {
-  const A = String(a).split("\n"), B = String(b).split("\n"); let s = 0; while (s < A.length && s < B.length && A[s] === B[s]) s++;
-  let ea = A.length, eb = B.length; while (ea > s && eb > s && A[ea - 1] === B[eb - 1]) { ea--; eb--; }
-  const rows = []; for (let i = 0; i < s; i++) rows.push({ t: "same", a: A[i], b: B[i], ia: i + 1, ib: i + 1 });
-  const ops = myersOps(A.slice(s, ea), B.slice(s, eb));
-  if (!ops) { for (let i = s; i < ea; i++) rows.push({ t: "del", a: A[i], ia: i + 1 }); for (let j = s; j < eb; j++) rows.push({ t: "add", b: B[j], ib: j + 1 }); }
-  else for (const [op, i, j] of ops) rows.push(op === "=" ? { t: "same", a: A[s + i], b: B[s + j], ia: s + i + 1, ib: s + j + 1 } : op === "-" ? { t: "del", a: A[s + i], ia: s + i + 1 } : { t: "add", b: B[s + i], ib: s + i + 1 });
-  for (let i = ea, j = eb; i < A.length; i++, j++) rows.push({ t: "same", a: A[i], b: B[j], ia: i + 1, ib: j + 1 });
+  const A = String(a).split("\n"), B = String(b).split("\n"), parts = Diff.diffArrays(A, B, { maxEditLength: 4000 }), rows = []; let ia = 0, ib = 0;
+  if (!parts) { A.forEach(x => rows.push({ t: "del", a: x, ia: ++ia })); B.forEach(x => rows.push({ t: "add", b: x, ib: ++ib })); return rows; }
+  for (const part of parts) for (const line of part.value) {
+    if (part.added) rows.push({ t: "add", b: line, ib: ++ib });
+    else if (part.removed) rows.push({ t: "del", a: line, ia: ++ia });
+    else rows.push({ t: "same", a: line, b: line, ia: ++ia, ib: ++ib });
+  }
   return rows;
 }
 const diffStats = rows => ({ added: rows.filter(r => r.t === "add").length, removed: rows.filter(r => r.t === "del").length, same: rows.every(r => r.t === "same") });

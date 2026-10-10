@@ -287,7 +287,8 @@ def view(doc: dict, st: dict) -> dict:
 def _tail(rec: dict, st: dict) -> list:
     """The decision-record entries a person's click adds (pre-chained by the engine: canary/engine.decision_tails)."""
     tails = rec.get("tails") or {}
-    key = "approve" if st.get("approval") == "approved" else "reject" if st.get("approval") == "rejected" else "rollback" if st.get("rolledBack") else None
+    key = ("approve" if st.get("approval") == "approved" else ("auto_reject" if st.get("auto") else "reject") if st.get("approval") == "rejected"
+           else ("auto_rollback" if st.get("autoRoll") else "rollback") if st.get("rolledBack") else None)
     return list(tails.get(key) or []) if key else []
 
 
@@ -301,11 +302,13 @@ def actions_between(old: dict, new: dict) -> list[tuple[str, dict]]:
     if nh != oh:
         out.append(("holdback_day", {"from": oh, "to": nh}))
     if new.get("approval") != old.get("approval"):
-        out.append(({"approved": "approve", "rejected": "reject"}.get(new.get("approval"), "approval_cleared"), {}))
+        act = {"approved": "approve", "rejected": "reject"}.get(new.get("approval"), "approval_cleared")
+        out.append(("autopilot_" + act if new.get("auto") and act == "reject" else act, {"by": "autopilot"} if new.get("auto") and act == "reject" else {}))
     for key, on, off in (("rolledBack", "rollback", "rollback_undone"), ("manualStop", "stop", "stop_undone"), ("paused", "pause", "resume"),
                          ("started", "start", "unstart")):
         if bool(new.get(key)) != bool(old.get(key)):
-            out.append((on if new.get(key) else off, {}))
+            auto = key == "rolledBack" and new.get(key) and new.get("autoRoll")
+            out.append(("autopilot_" + on if auto else on if new.get(key) else off, {"by": "autopilot"} if auto else {}))
     if (new.get("learning") or "") != (old.get("learning") or ""):
         out.append(("learning_note", {"text": str(new.get("learning") or "")[:500]}))
     return out
