@@ -28,3 +28,9 @@ data/history.db-*
 # live call test: per-test state (calls, transcripts, log) and the saved agent ids
 data/live/
 node_modules
+
+# generated or internal files that are not part of the submission
+out/canary.db
+data/vani_real_prompt_raw.txt
+data/sarvam_agent_A.md
+data/sarvam_agent_B.md

@@ -4,6 +4,7 @@
 **Problem statement:** 5. Agent A/B Testing & Auto-Rollout
 **Live app (open to everyone, nothing to install):** https://yash0405.github.io/IM-Voice-AI-2.0-Hackathon/
 **Demo video:** *(link to be added)*
+**Presentation deck:** [docs/presentation.html](docs/presentation.html) (download and open in a browser)
 
 ## Short pitch
 Picky tests any change to VANI on a small, sticky slice of calls, decides with pre-registered statistics (false winners held to 2.5%), stops a worse version early, and rolls out only the winner, logging every decision in a tamper-evident record.
@@ -99,7 +100,7 @@ Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps
 | `out/` | Generated data the dashboard reads (`console_bundle.json`, proof results) |
 | `deploy/` | Builds the hosted app for GitHub Pages (`.github/workflows/pages.yml` redeploys on every push to `main`) |
 | `tests/` | Python unit tests (`python -m unittest discover -s tests`) and browser tests (`tests/browser/`) |
-| `docs/` | QA report, demo script, how to test, integration notes, labelling guide, leaders' Q&A |
+| `docs/` | The demo deck (`presentation.html`), QA report, how to test, integration notes, labelling guide, leaders' Q&A |
 | `skill/`, `skills.md` | The reusable A/B decision skill, and how the project was built |
 
 ## Commands
