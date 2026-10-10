@@ -61,7 +61,7 @@ Picky tests any change to VANI on a small, sticky slice of calls, decides with p
 - A dashboard: Overview, New Experiment, All experiments, Suggest A/B Tests, Prompt Library, Decision Log and Settings.
 - A results-file path (`python -m canary decide`) for real exports.
 - A proof lab and a QA report regenerated from code.
-- A reusable skill: `.github/skills/ab-test-decision/SKILL.md` (the decision method for any assistant), with its scripts, reference notes and tests in `skill/`.
+- A reusable skill: `.github/skills/ab-test-decision/SKILL.md` (the A/B decision method for any assistant), with its three scripts in `decision-tools/`.
 
 ## Impact on success metrics
 All numbers below are re-runnable from code with fixed seeds. They are taken from [docs/QA_REPORT.md](docs/QA_REPORT.md).
@@ -101,8 +101,8 @@ Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps
 | `deploy/` | Builds the hosted app for GitHub Pages (`.github/workflows/pages.yml` redeploys on every push to `main`) |
 | `tests/` | Python unit tests (`python -m unittest discover -s tests`, 300+ tests) and headless-Chrome browser tests in `tests/browser/` (`npm install puppeteer-core`, Chrome at `/usr/bin/google-chrome`; run e.g. `node tests/browser/autopilot_journey.mjs "file://$PWD/dist/canary_demo.html"`) |
 | `docs/` | The demo deck (`presentation.html`) and the QA report that backs every number above |
-| `.github/skills/ab-test-decision/SKILL.md` | The reusable A/B decision skill (the only file in `.github/skills`) |
-| `skill/` | What the skill uses: `scripts/` (plan, check, decide), `references/` (rules, file formats, pitfalls, report wording, validation) and `evals/` (test requests and results) |
+| `.github/skills/ab-test-decision/SKILL.md` | The reusable A/B decision skill (one self-contained file) |
+| `decision-tools/` | The skill's scripts: `plan_test.py` (can the test finish?), `check_results.py` (is the file trustworthy?), `decide.py` (the engine's verdict) |
 
 ## Commands
 | Command | What it does | Spends credits? |
