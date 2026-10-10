@@ -76,7 +76,25 @@ So a live listening test is good for **obvious** differences (a patch that break
 
 ## Safety of the key
 
-The server only answers requests addressed to `localhost`; POSTs must come from the page itself (Origin and JSON checks); the one Sarvam call it makes is the documented "signed URL" request for the two configured agents; the browser then talks to Sarvam's voice servers with that short-lived link. Do not start it with `--host 0.0.0.0` unless you trust the network: it holds a key that can start billable calls. Calls cost Sarvam credits (check your balance first; a 10-call demo is roughly 10 to 15 minutes of voice).
+On its own the server only answers the browser on this computer (requests addressed to `localhost`, not relayed by a tunnel or proxy); POSTs must come from the page itself (Origin and JSON checks); the one Sarvam call it makes is the documented "signed URL" request for the two configured agents; the browser then talks to Sarvam's voice servers with that short-lived link. Calls cost Sarvam credits (check your balance first; a 10-call demo is roughly 10 to 15 minutes of voice).
+
+### Sharing it with the team (ngrok, or a hosted copy)
+
+A tunnel such as ngrok shows the server a public host name, so without this step every visitor gets `403 this server only answers requests addressed to localhost`. That refusal is deliberate (it stops other web pages from reaching a server that holds a key). To let the team in, set a team password (8+ characters) when you start it:
+
+Put one line in the `.env` file that already holds the Sarvam key (the hackathon folder's `.env`, git-ignored): `CANARY_PASSWORD=choose-a-team-password` (no spaces or quotes). Or set it just for one run:
+
+```bash
+CANARY_PASSWORD='choose-a-team-password' python -m canary live --port 8790
+ngrok http 8790                      # share the https link and the password
+```
+
+- Visitors are asked for the password by their browser (any user name). Your own browser on `http://127.0.0.1:8790` is not asked and sees everything, as before.
+- A visitor sees the same console plus this screen, as in the hosted copy: Label Lab, call audio, transcripts, labels and the history database stay on this computer (404). Their history stays in their own browser.
+- Anyone with the password can start billable Sarvam calls through your key. Share the password only with the team and stop the server when the session is over.
+- ngrok's free plan shows each visitor a one-time "Visit Site" page first. That is ngrok's, not Picky's.
+- Listening beyond this computer (`--host 0.0.0.0`, or a hosted service) is refused unless `CANARY_PASSWORD` is set. On a host such as Render use `python -m canary live --host 0.0.0.0 --port $PORT` with `CANARY_PASSWORD` and `SARVAM_VOICE_API_KEY` as environment variables; `/healthz` answers without a password for the platform's health check.
+- `tests/browser/tunnel_access.mjs` checks a running public link end to end (password wall, every screen, local data not reachable).
 
 ## What was tested, and what was not
 

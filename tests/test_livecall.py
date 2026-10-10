@@ -373,6 +373,79 @@ class Server(Env):
         self.assertEqual(cm.exception.code, 403)
         self.assertEqual(livecall.list_tests(), [])
 
+    # ---- team access: a tunnel (ngrok) or a hosted copy, with the team password
+    TUNNEL = {"Host": "team-demo.ngrok-free.dev", "X-Forwarded-For": "203.0.113.9", "X-Forwarded-Host": "team-demo.ngrok-free.dev"}
+
+    def _basic(self, pw, user="team"):
+        import base64
+        return {"Authorization": "Basic " + base64.b64encode(f"{user}:{pw}".encode()).decode()}
+
+    def test_tunnel_is_refused_without_a_password_and_says_how_to_fix_it(self):
+        liveserver.SHARE["password"] = None
+        code, body = self.req("/api/live/state", headers=self.TUNNEL)
+        self.assertEqual(code, 403)
+        self.assertIn(b"CANARY_PASSWORD", body)
+        code, _ = self.req("/api/live/state", headers={"X-Forwarded-For": "203.0.113.9"})        # a tunnel that keeps the localhost Host header is still not local
+        self.assertEqual(code, 403)
+
+    def test_team_access_needs_the_password(self):
+        liveserver.SHARE["password"] = "team-pass-1234"
+        try:
+            for hdr in (self.TUNNEL, {**self.TUNNEL, **self._basic("wrong-password")}):
+                resp = urllib.request.Request(self.base + "/api/live/state", headers=hdr)
+                with self.assertRaises(urllib.error.HTTPError) as cm:
+                    urllib.request.urlopen(resp, timeout=10)
+                self.assertEqual(cm.exception.code, 401)
+                self.assertIn("Basic", cm.exception.headers["WWW-Authenticate"])
+            ok = {**self.TUNNEL, **self._basic("team-pass-1234")}
+            code, body = self.req("/api/live/state", headers=ok)
+            self.assertEqual(code, 200)
+            self.assertNotIn(b"SECRETKEY", body)
+            code, page = self.req("/", headers=ok)
+            self.assertEqual(code, 200)
+            self.assertIn(b"window.CANARY_LIVECALL=true", page)                      # the live call screen is there for the team
+            self.assertIn(b"window.CANARY_HOSTED=true", page)                        # and the page knows it has no labels, audio or history database
+            self.assertEqual(self.req("/healthz", headers=self.TUNNEL)[0], 200)      # a platform health check needs no password
+            code, body = self.req("/sarvam/orgs/o1/workspaces/w1/apps/appA/url?interaction_type=call&version=1", headers=ok)
+            self.assertEqual(code, 200)                                              # the proxy works for a visitor ...
+            self.assertEqual(self.seen[-1]["key"], "sk_test_SECRETKEY")              # ... with the server's key, which the visitor never sees
+            self.assertEqual(self.req("/api/console", headers=ok)[0], 200)
+            self.assertIn(self.req("/api/inspect", {"text": "variant,disposition\nA,x\nB,y\n", "name": "f.csv"}, headers=ok)[0], (200, 400))
+        finally:
+            liveserver.SHARE["password"] = None
+
+    def test_team_access_keeps_labels_audio_transcripts_and_history_on_this_computer(self):
+        liveserver.SHARE["password"] = "team-pass-1234"
+        try:
+            ok = {**self.TUNNEL, **self._basic("team-pass-1234")}
+            for path in ("/audio/1", "/api/transcript/1", "/api/labels/next?labeler=x", "/api/labels/summary", "/arena/a_A.mp3", "/api/evalbench",
+                         "/api/bundle", "/api/store", "/api/store/download", "/tools.html"):
+                self.assertEqual(self.req(path, headers=ok)[0], 404, path)
+            for path in ("/api/labels", "/api/store", "/api/store/reset", "/api/run"):
+                self.assertEqual(self.req(path, {"x": 1}, headers=ok)[0], 404, path)
+        finally:
+            liveserver.SHARE["password"] = None
+
+    def test_this_computers_own_browser_is_unchanged_when_team_access_is_on(self):
+        liveserver.SHARE["password"] = "team-pass-1234"
+        try:
+            code, page = self.req("/")
+            self.assertEqual(code, 200)
+            self.assertNotIn(b"CANARY_HOSTED", page)                                 # still the full local console
+            self.assertEqual(self.req("/api/live/state")[0], 200)                    # no password asked of the person at the keyboard
+            self.assertEqual(self.req("/api/store")[0], 200)                         # history database and Label Lab routes are still there locally
+            self.assertEqual(self.req("/api/labels/summary")[0], 200)
+            self.assertEqual(self.req("/api/live/state", headers={"Host": "evil.example.com"})[0], 401)   # DNS-rebinding page: password wall
+        finally:
+            liveserver.SHARE["password"] = None
+
+    def test_the_server_refuses_to_listen_beyond_this_computer_without_a_password(self):
+        self.assertIsNone(liveserver.check_exposure("127.0.0.1", ""))
+        self.assertIsNone(liveserver.check_exposure("127.0.0.1", "team-pass-1234"))         # tunnel case: loopback bind plus a password
+        self.assertIsNone(liveserver.check_exposure("0.0.0.0", "team-pass-1234"))           # hosted case
+        self.assertIn("Refusing", liveserver.check_exposure("0.0.0.0", ""))
+        self.assertIn("8 characters", liveserver.check_exposure("127.0.0.1", "short"))
+
     def test_full_flow_over_http(self):
         code, body = self.req("/api/live/test", {"name": "http", "calls_per_arm": 3, "confidence": 90, "blind": True}, headers={"Origin": self.base})
         self.assertEqual(code, 200)

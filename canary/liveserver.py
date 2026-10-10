@@ -6,13 +6,21 @@ key-holding proxy. The browser SDK asks for a short-lived signed WebSocket URL; 
 
 Because this process holds a key that can start billable calls, it only answers requests addressed to 127.0.0.1/localhost, and the live-call
 POSTs must come from this same page (Origin header and JSON content type), so another web page cannot drive them.
+
+Team access (for a tunnel such as ngrok, or a hosted copy): start it with CANARY_PASSWORD set (8+ characters; environment variable or a line in .env). Then a request that is not from this
+computer's own browser (another host name, or relayed by a tunnel or proxy, which add forwarding headers) is let in only with that password (HTTP Basic,
+any user name) and only on the screens the hosted copy has plus the live call routes: Label Lab, call audio, transcripts, labels and the history
+database stay on this computer. Without the password such requests are refused, as before.
 """
 from __future__ import annotations
 
+import base64
+import hmac
 import json
 import mimetypes
 import os
 import re
+import sys
 import threading
 import urllib.error
 import urllib.parse
@@ -32,6 +40,9 @@ _TABLE: dict = {}
 _TABLE_LOCK = threading.Lock()
 SERVER_PORT = [DEFAULT_PORT]
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+SHARE = {"password": None}                          # team access: set by serve() from CANARY_PASSWORD; None = this computer only
+REMOTE_GET = console_server.HOSTED_GET + ("/livecall.css", "/vendor/sarvam-conv-ai-sdk.browser.js")
+REMOTE_PREFIX = ("/api/live/", "/sarvam/")          # the live call test API and the key-holding proxy for the two configured agents
 
 
 def plan_table(conf: float) -> list[dict]:
@@ -110,11 +121,48 @@ class H(console_server.H):
         self.end_headers()
         self.wfile.write(data)
 
-    def _host_ok(self) -> bool:
-        """Only answer requests addressed to this machine (blocks DNS-rebinding pages from reaching a server that holds a key)."""
+    def _is_local(self) -> bool:
+        """This computer's own browser: from the loopback address, addressed to localhost, and not relayed by a tunnel or proxy (they add forwarding
+        headers). Blocks DNS-rebinding pages (another host name) and tunnel visitors from reaching a server that holds a key."""
         h = (self.headers.get("Host") or "").strip().lower()
         name = h[: h.index("]") + 1] if h.startswith("[") else h.rsplit(":", 1)[0]
-        return name in ALLOWED_HOSTS or getattr(self.server, "open_host", False)
+        return (self.client_address[0] in ("127.0.0.1", "::1") and name in ALLOWED_HOSTS
+                and not any(k.lower().startswith(console_server.H.FORWARDED) for k in self.headers))
+
+    def _admit(self, post: bool) -> bool:
+        """True: go on. False: the answer has been sent. This computer's own browser is untouched; anyone else needs the team password."""
+        if self._is_local():
+            return True
+        pw = SHARE["password"]
+        path = self.path.split("?")[0]
+        if not pw:
+            self._send(403, "text/plain", b"this server only answers requests addressed to localhost. To share it with the team, start it with CANARY_PASSWORD set (see LIVE_CALL_TEST.md).")
+            return False
+        if path == "/healthz":
+            self._json({"ok": True})
+            return False
+        got = self.headers.get("Authorization", "")
+        ok = False
+        if got.startswith("Basic "):
+            try:
+                ok = hmac.compare_digest(base64.b64decode(got[6:]).decode("utf8", "replace").partition(":")[2].encode(), pw.encode())
+            except Exception:
+                ok = False
+        if not ok:
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="Picky (team access)", charset="UTF-8"')
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+        allowed = (path in console_server.HOSTED_POST or path.startswith("/api/live/")) if post else (
+            path in REMOTE_GET or path.startswith(REMOTE_PREFIX) or re.fullmatch(r"/api/sample/[a-z_]+", path))
+        if not allowed:
+            self._send(404, "text/plain", b"not found")
+            return False
+        if post and int(self.headers.get("Content-Length") or 0) > console_server.HOSTED_MAX_BODY:
+            self._json({"error": "body too large"}, 413)
+            return False
+        return True
 
     def _origin_ok(self) -> bool:
         o = self.headers.get("Origin")
@@ -132,14 +180,14 @@ class H(console_server.H):
     def _console_page(self):
         """The normal console page, told that the live call test is available (the screen and its menu entry only exist when this flag is set)."""
         html = (console_server.WEB / "index.html").read_text()
-        flag = "window.CANARY_LIVE=true;window.CANARY_LIVECALL=true;"
+        flag = "window.CANARY_LIVE=true;window.CANARY_LIVECALL=true;" + ("" if self._is_local() else "window.CANARY_HOSTED=true;")   # a visitor's page has no history database, labels or audio
         html = html.replace('<script src="console.js"></script>', f'<script>{flag}</script><script src="console.js"></script>')
         self._send(200, "text/html; charset=utf-8", html.encode())
 
     # ---- GET
     def do_GET(self):
-        if not self._host_ok():
-            return self._send(403, "text/plain", b"this server only answers requests addressed to localhost")
+        if not self._admit(post=False):
+            return
         u = urllib.parse.urlparse(self.path)
         try:
             if self._live_get(u):
@@ -222,8 +270,8 @@ class H(console_server.H):
 
     # ---- POST
     def do_POST(self):
-        if not self._host_ok():
-            return self._send(403, "text/plain", b"this server only answers requests addressed to localhost")
+        if not self._admit(post=True):
+            return
         p = self.path.split("?")[0]
         if not (p.startswith("/api/live/")):
             return super().do_POST()                         # the normal console endpoints (wizard, file import ...)
@@ -264,18 +312,32 @@ class H(console_server.H):
             self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
 
+def check_exposure(host: str, password: str) -> str | None:
+    """Why the server must not start with this host and password, or None when it is fine."""
+    if password and len(password) < 8:
+        return "CANARY_PASSWORD must be at least 8 characters."
+    if host not in ("127.0.0.1", "localhost", "::1") and not password:
+        return "Listening beyond this computer needs CANARY_PASSWORD (8+ characters): this server holds a Sarvam key that can start billable calls. Refusing to start an open server."
+    return None
+
+
 def serve(port: int = DEFAULT_PORT, host: str = "127.0.0.1"):
+    pw = livecall.env_value("CANARY_PASSWORD")                                      # the process environment, else the .env file next to the Sarvam key
+    bad = check_exposure(host, pw)
+    if bad:
+        sys.exit(bad)
+    SHARE["password"] = pw or None
     SERVER_PORT[0] = port
     build.assemble_console_js()                                                    # web/console.js from its parts (includes the live call screen)
     srv = ThreadingHTTPServer((host, port), H)
-    srv.open_host = host not in ("127.0.0.1", "localhost")
     threading.Thread(target=lambda: [plan_table(0.9)], daemon=True).start()       # warm the pre-test table
     threading.Thread(target=console_server.console_live, daemon=True).start()      # warm the console data
     con = livecall.connection()
     print(f"Picky (console + live call test) on http://{host}:{port}   (Ctrl+C to stop)")
     print(f"  Sarvam Voice Agents key: {'set' if con['key_set'] else 'NOT set (add SARVAM_VOICE_API_KEY to .env; see LIVE_CALL_TEST.md)'}")
-    if host not in ("127.0.0.1", "localhost"):
-        print("WARNING: this server holds a Sarvam key that can start billable calls. Do not expose it beyond a network you trust.")
+    if pw:
+        print("  Team access ON: visitors through a tunnel or a host name need the password (any user name); Label Lab, audio and transcripts stay on this computer.")
+        print("  Anyone with the password can start billable Sarvam calls through this server. Stop it when the session is over.")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -13,3 +13,5 @@ node tests/browser/store_e2e.mjs "$(command -v python3)"                       #
 Screenshots go to `/tmp/canary_shots`. The Python tests (`python -m unittest discover -s tests`) do not need any of this.
 
 `live_flow.mjs` tests the "Live call test" screen inside the console (port chosen automatically) against `mock_sarvam.mjs`, a stand-in for Sarvam's voice runtime that follows the SDK source: `npm install puppeteer-core ws; PY=/path/to/python node tests/browser/live_flow.mjs`. Screenshots go to `$SHOTS` (default `/tmp/canary_live_shots`).
+
+`AS_TEAM_VISITOR=1 node tests/browser/live_flow.mjs` runs the same flow as a teammate behind a tunnel (team password on, requests treated as remote). `TUNNEL_URL=https://... TUNNEL_PASSWORD=... node tests/browser/tunnel_access.mjs` checks a running public link: password wall, every screen, Label Lab/audio/transcripts not reachable.

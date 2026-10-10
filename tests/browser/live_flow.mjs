@@ -1,6 +1,7 @@
 // End-to-end browser test of the Live call test screen of the console, against a mock of Sarvam's voice runtime (see mock_sarvam.mjs).
 //   npm install puppeteer-core ws        # once; Chrome at /usr/bin/google-chrome, python venv in $PY (default python3)
 //   PY=/path/to/python node tests/browser/live_flow.mjs
+//   AS_TEAM_VISITOR=1 ...   same flow as a teammate behind a tunnel: team password on, requests carry forwarding headers, so the server treats them as remote
 // Starts the real live server on a free port with a temp state folder, drives the page with a fake microphone, and checks: the setup screen,
 // the connection check, lock, 6 real SDK calls (mock voice), no results visible before the threshold, the released verdict, blind reveal, CSV.
 import puppeteer from 'puppeteer-core';
@@ -24,7 +25,7 @@ const port = await free();
 const state = fs.mkdtempSync(path.join(os.tmpdir(), 'canary_live_'));
 const py = spawn(process.env.PY || 'python3', ['-m', 'canary', 'live', '--port', String(port)], {
   cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..'),
-  env: { ...process.env, CANARY_LIVE_DIR: state, SARVAM_VOICE_API_KEY: MOCK_KEY, SARVAM_VOICE_RUNTIME_BASE: `http://127.0.0.1:${mock.port}/api/app-runtime/` }, stdio: ['ignore', 'pipe', 'pipe'] });
+  env: { ...process.env, ...(process.env.AS_TEAM_VISITOR ? { CANARY_PASSWORD: 'visitor-pass-1234' } : {}), CANARY_LIVE_DIR: state, SARVAM_VOICE_API_KEY: MOCK_KEY, SARVAM_VOICE_RUNTIME_BASE: `http://127.0.0.1:${mock.port}/api/app-runtime/` }, stdio: ['ignore', 'pipe', 'pipe'] });
 let srvlog = ''; py.stdout.on('data', d => srvlog += d); py.stderr.on('data', d => srvlog += d);
 for (let i = 0; i < 60 && !srvlog.includes('live call test on'); i++) await sleep(250);
 const base = `http://127.0.0.1:${port}`;
@@ -33,6 +34,7 @@ const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', hea
   args: ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
 const errs = [];
 const p = await b.newPage(); await p.setViewport({ width: 1280, height: 900 });
+if (process.env.AS_TEAM_VISITOR) { await p.authenticate({ username: 'team', password: 'visitor-pass-1234' }); await p.setExtraHTTPHeaders({ 'X-Forwarded-For': '203.0.113.9' }); }
 p.on('pageerror', e => errs.push('PAGEERROR ' + e.message));
 p.on('console', m => { if (process.env.DEBUG) console.log('  [page]', m.type(), m.text().slice(0, 160)); if (m.type() === 'error') errs.push('console: ' + m.text()); });
 p.on('dialog', d => d.accept(d.message().includes('abandon') ? 'x' : 'no sound'));
