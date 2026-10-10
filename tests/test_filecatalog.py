@@ -24,7 +24,7 @@ def make_rows():
         rows.append({"disp_dtlid": f"{1000 + i}.0", "fk_lead_id": f"{500 + i // 2}.0", "call_start_time": "" if i == 5 else d.strftime("%d/%m/%y %H:%M"),
                      "lead_call_status": "Answered" if ans else "NotAnswered", "lead_call_duration": f"{20 + i * 2}.0" if ans else "0.0",
                      "disposition_id": "51.0" if ans and i % 2 else "0.0", "summary": f"call summary number {i} words", "drop_reason": "",
-                     "client_number": "8065584595.0", "fk_click_to_call_id": f"{77000 + i}.0", "fk_other_call_id": f"{9000 + i}.0" if i % 4 == 0 else ""})
+                     "client_number": "9000000001.0", "fk_click_to_call_id": f"{77000 + i}.0", "fk_other_call_id": f"{9000 + i}.0" if i % 4 == 0 else ""})
     return rows
 
 
