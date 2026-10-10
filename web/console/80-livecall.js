@@ -1,11 +1,10 @@
-/* Live call test: a screen of the console (menu entry "Live call test"). Hear prompt A and prompt B on Sarvam voice agents, give a signal after
+/* (Taken off the menu and the routes for the final build: no screen opens this code now.) Live call test: a screen of the console (menu entry "Live call test"). Hear prompt A and prompt B on Sarvam voice agents, give a signal after
    each call, and the result is released only when every prompt has the number of finished calls fixed before the test.
    It exists only on the server started with `python -m canary live` (port 8790), which sets window.CANARY_LIVECALL; everywhere else (offline
    file, hosted app, the normal server) this file does nothing and the menu is unchanged. All rules and statistics are on the server
    (canary/livecall.py, canary/livestats.py); this screen only shows them. The Sarvam browser SDK is loaded the first time a call starts. */
 (() => {
   if (!window.CANARY_LIVECALL) return;
-  NAV.splice(3, 0, ["livecall", "Live call test"]);                       // right after All experiments
 
   const mmss = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
   const lcPts = x => (x >= 0 ? "+" : "−") + Math.abs(Math.round(x * 100)) + " points";
@@ -383,5 +382,4 @@
   });
   window.addEventListener("beforeunload", e => { if (UI.rt && !UI.rt.ended) { e.preventDefault(); e.returnValue = ""; } });
 
-  ROUTES.livecall = () => { ensureCss(); $("#page").innerHTML = head("Live call test", "") + `<p class="muted">Loading...</p>`; load().catch(e => { if (nowIn()) $("#page").innerHTML = head("Live call test", "") + banner("Could not load the live call test: " + esc(e.message), "neg"); }); };
 })();
