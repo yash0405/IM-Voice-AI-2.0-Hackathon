@@ -126,7 +126,7 @@ def past_tests() -> list[dict]:
 
 def library() -> dict:
     base = variants.load_base()
-    versions = [{"id": "v1", "name": "VANI buyer-side prompt (real prompt, as received)", "hash": base["hash"], "origin": "provided", "parent": None,
+    versions = [{"id": "v1", "name": "Voice bot prompt (real prompt, as received)", "hash": base["hash"], "origin": "provided", "parent": None,
                  "lines": base["text"].count("\n") + 1, "diff": [], "variables": {"ok": True, "dropped": [], "added": [], "base": promptlint.variables(base["text"])},
                  "lint": promptlint.analyse(base["text"]).get("n_conflicts", None)}]
     cands = []
