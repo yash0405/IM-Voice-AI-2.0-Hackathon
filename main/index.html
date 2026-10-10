@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Canary</title>
+<title>Picky - Test it, pick it, ship it</title>
 <style id="loader-style">
   :root { --navy:#243b53; --blue:#4c7cf3; --bg:#f3f5f7; --line:#d9e2ec; --mute:#627d98; --neg:#dc6262; }
   html, body { margin:0; height:100%; }
@@ -24,13 +24,13 @@
 </head>
 <body>
 <form class="box" id="gate" autocomplete="off">
-  <h1>Canary</h1>
-  <p>A/B testing and auto-rollout for voice agents. Enter the team password to open the app.</p>
+  <h1>Picky</h1>
+  <p><b>Test it, pick it, ship it.</b> A/B testing and auto-rollout for voice agents. Enter the team password to open the app.</p>
   <input id="pw" type="password" placeholder="Team password" autofocus aria-label="Team password">
   <button id="go" type="submit">Open</button>
   <div class="bar" id="bar"><i id="fill"></i></div>
   <div id="msg" role="status"></div>
-  <div class="foot">Branch main &middot; ad7e7f5. The first open downloads the engine (about 30 MB, then cached); it runs entirely in your browser.</div>
+  <div class="foot">Branch main &middot; 528fed6. The first open downloads the engine (about 30 MB, then cached); it runs entirely in your browser.</div>
 </form>
 <script>
 (() => {                                                                 // own scope: the app declares its own $ and helpers
@@ -64,7 +64,7 @@ $("gate").addEventListener("submit", async ev => {
     const py = await loadPyodide({ indexURL: PYODIDE });
     step(45, "Loading numpy, scipy and jinja2...");
     await py.loadPackage(["numpy", "scipy", "jinja2"]);
-    step(80, "Starting Canary...");
+    step(80, "Starting Picky...");
     py.unpackArchive(zip, "zip", { extractDir: "/app" });
     py.runPython("import sys, os\nsys.path.insert(0, '/app')\nos.chdir('/app')\nfrom canary import webapi");
     const handle = py.pyimport("canary.webapi").handle;
@@ -82,13 +82,13 @@ $("gate").addEventListener("submit", async ev => {
     $("loader-style").remove();
     const style = document.createElement("style"); style.textContent = read("/app/web/console.css"); document.head.appendChild(style);
     document.body.removeAttribute("style"); document.body.innerHTML = doc.body.innerHTML;
-    document.title = "Canary";
+    document.title = "Picky";
     window.CANARY_LIVE = true; window.CANARY_HOSTED = true; window.CANARY_STATIC = true;
     const s = document.createElement("script"); s.textContent = read("/app/web/console.js"); document.body.appendChild(s);
     document.dispatchEvent(new Event("DOMContentLoaded"));              // the console waits for it to attach its tooltip
     const tag = document.createElement("div");
     tag.style.cssText = "position:fixed;right:8px;bottom:6px;font:11px/1 system-ui,sans-serif;color:#627d98;background:#ffffffd9;padding:3px 6px;border-radius:6px";
-    tag.textContent = "branch main · ad7e7f5"; document.body.appendChild(tag);
+    tag.textContent = "branch main · 528fed6"; document.body.appendChild(tag);
   } catch (e) {
     $("bar").style.display = "none"; say("Could not start: " + e.message, true); $("go").disabled = false;
   }
