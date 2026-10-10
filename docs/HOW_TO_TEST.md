@@ -19,7 +19,7 @@ Three ways to test it, from quickest to most complete. Each takes a few minutes.
    - *Proprietors only*: B wins **for that segment only**.
    - *WhatsApp details earlier*: B wins but calls run 12% longer, so it **waits for a yes**. Nobody answers, so after 2 days the **autopilot keeps A**.
    - *Promise details right after the call*: B wins, then slips after rollout. The **autopilot rolls it back**.
-2. Open **Live Experiments** and pick any test. You get the verdict, a day-by-day strip (green means no harm that day) and the chart. Press **Verify record**: it should show "Chain intact".
+2. Open **All experiments** (running, draft and finished tests in one list; filter by status, date, metric, audience or source) and click any row. You get the verdict, a day-by-day strip (green means no harm that day) and the chart. Press **Verify record**: it should show "Chain intact".
 3. Open the **Decision Log**: every action is listed with its reason, including "Picky autopilot".
 4. Optional: **Settings** → **Reset the demo** first (a reset also restores the switches). Then, in **Settings** → Autopilot, switch off "Roll back by itself" and press Play again on Overview. The slipping win now shows up under **Needs attention** for a person instead.
 
