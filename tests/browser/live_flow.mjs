@@ -93,7 +93,7 @@ try {
   await p.waitForSelector('.lc-verdict', { timeout: 8000 }); await sleep(300);
   const head = await txt('.lc-verdict h2'); ok(head.length > 0, 'released: verdict shown -> ' + head);
   ok((await txt('.lc-verdict')).includes('Reveal:'), 'released: blind reveal shown');
-  ok(new RegExp(`Grade ${PER * 2} calls with Sarvam \\(about ₹[0-9.]+\\)`).test(await txt('#lc-grade')), 'released: Sarvam grading is offered with its cost, and never runs by itself');
+  ok(new RegExp(`Grade ${PER * 2} calls with Sarvam \\(at most ₹[0-9.]+\\)`).test(await txt('#lc-grade')), 'released: Sarvam grading is offered with its cost, and never runs by itself');
   ok((await txt('body')).includes('chain verified'), 'released: log chain verified');
   await p.screenshot({ path: path.join(shots, '5_result.png'), fullPage: true });
   await p.evaluate(() => { location.hash = '#/history'; }); await sleep(500);

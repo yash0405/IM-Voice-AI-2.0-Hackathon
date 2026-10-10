@@ -57,7 +57,7 @@ Three ways to test it, from quickest to most complete. Each takes a few minutes.
 ## Automated checks (for the team)
 
 ```bash
-python -m unittest discover -s tests -q                      # 300 Python tests (5 more with: pip install statsmodels pandas; pip install --no-deps gbstats)
+python -m unittest discover -s tests -q                      # 304 Python tests (5 more with: pip install statsmodels pandas; pip install --no-deps gbstats)
 node tests/browser/autopilot_journey.mjs "file://$PWD/dist/canary_demo.html"   # 33 checks: Play, autopilot, record, wizard, phone width
 PY=python node tests/browser/live_flow.mjs                    # the voice screen against a mock Sarvam (no key, no credits)
 ```

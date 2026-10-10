@@ -236,15 +236,24 @@ function promptVars(text) {
 /** Every variable of A must still be in B, and B must not use a variable the bot does not supply. */
 function varCheck(a, b) { const A = promptVars(a), B = promptVars(b); const missing = A.filter(v => !B.includes(v)), added = B.filter(v => !A.includes(v)); return { ok: !missing.length && !added.length, missing, added, n: A.length }; }
 /** Line diff of A and B by jsdiff (npm "diff", vendored in 02-vendor-diff.js). Rows: {t: "same"|"del"|"add", a, b, ia, ib} (1-based line numbers).
-    Past 4,000 differences (two unrelated prompts) every line of A is shown removed and every line of B added. */
+    The identical start and end are trimmed first, so jsdiff only sees the edited middle (fast on a 2,300-line prompt), and the last answer is
+    remembered (a redraw asks for the same diff two or three times). Past 4,000 differences every middle line of A is removed and of B added. */
+let _diffMemo = { a: null, b: null, rows: null };
 function diffRows(a, b) {
-  const A = String(a).split("\n"), B = String(b).split("\n"), parts = Diff.diffArrays(A, B, { maxEditLength: 4000 }), rows = []; let ia = 0, ib = 0;
-  if (!parts) { A.forEach(x => rows.push({ t: "del", a: x, ia: ++ia })); B.forEach(x => rows.push({ t: "add", b: x, ib: ++ib })); return rows; }
-  for (const part of parts) for (const line of part.value) {
+  a = String(a); b = String(b);
+  if (_diffMemo.a === a && _diffMemo.b === b) return _diffMemo.rows;
+  const A = a.split("\n"), B = b.split("\n"), rows = []; let s = 0; while (s < A.length && s < B.length && A[s] === B[s]) s++;
+  let ea = A.length, eb = B.length; while (ea > s && eb > s && A[ea - 1] === B[eb - 1]) { ea--; eb--; }
+  for (let i = 0; i < s; i++) rows.push({ t: "same", a: A[i], b: B[i], ia: i + 1, ib: i + 1 });
+  let ia = s, ib = s; const parts = Diff.diffArrays(A.slice(s, ea), B.slice(s, eb), { maxEditLength: 4000 });
+  if (!parts) { for (let i = s; i < ea; i++) rows.push({ t: "del", a: A[i], ia: ++ia }); for (let j = s; j < eb; j++) rows.push({ t: "add", b: B[j], ib: ++ib }); }
+  else for (const part of parts) for (const line of part.value) {
     if (part.added) rows.push({ t: "add", b: line, ib: ++ib });
     else if (part.removed) rows.push({ t: "del", a: line, ia: ++ia });
     else rows.push({ t: "same", a: line, b: line, ia: ++ia, ib: ++ib });
   }
+  for (let i = ea, j = eb; i < A.length; i++, j++) rows.push({ t: "same", a: A[i], b: B[j], ia: i + 1, ib: j + 1 });
+  _diffMemo = { a, b, rows };
   return rows;
 }
 const diffStats = rows => ({ added: rows.filter(r => r.t === "add").length, removed: rows.filter(r => r.t === "del").length, same: rows.every(r => r.t === "same") });

@@ -58,7 +58,7 @@ Commands and counts at the time of writing:
 
 | Check | Result |
 |---|---|
-| Python: `python -m unittest discover -s tests -q` | 300 tests pass. 5 statistics cross-checks are skipped without statsmodels and gbstats, and pass with them. |
+| Python: `python -m unittest discover -s tests -q` | 304 tests pass. 5 statistics cross-checks are skipped without statsmodels and gbstats, and pass with them. |
 | `tests/browser/autopilot_journey.mjs` | 33 / 33 offline and against the live engine |
 | `new_experiment_e2e` / `new_experiment_live` / `console_brd` / `qa_fixes` / `store_e2e` / `live_flow` | 71/71, 17/17, all, 11/11, 31/31, all |
 

@@ -180,7 +180,10 @@ const dyn = e => (DYN.dyn[e.id] = DYN.dyn[e.id] || { day: e.kind === "simulated"
   rolledBack: false, manualStop: false, learning: "" });
 
 /** Which pre-chained branch of the record the test has taken: a person's click, or the autopilot's own action (d.auto / d.autoRoll). */
-const tailKey = d => d.approval === "approved" ? "approve" : d.approval === "rejected" ? (d.auto ? "auto_reject" : "reject") : d.rolledBack ? (d.autoRoll ? "auto_rollback" : "rollback") : null;
+const tailKey = d => d.approval === "approved" ? (d.rolledBack ? "approve_rollback" : "approve") : d.approval === "rejected" ? (d.auto ? "auto_reject" : "reject") : d.rolledBack ? (d.autoRoll ? "auto_rollback" : "rollback") : null;
+
+/** The record's entries for that branch. A test saved before a branch existed falls back to the closest one it has. */
+const tailOf = (rec, d) => { const t = (rec && rec.tails) || {}, k = tailKey(d); return (k && (t[k] || (k === "approve_rollback" ? t.approve : null))) || []; };
 
 /** Day-by-day rows of a record: the last look of each day. */
 function dayRows(rec) { const m = new Map(); rec.looks.forEach(r => m.set(r.day, r)); return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([day, row]) => ({ day, row })); }
@@ -297,7 +300,7 @@ function promotedExperiments() {
 const EV_TYPES = ["Saved", "Started", "Harm alert", "Split alert", "Stopped", "Promoted", "Approved", "Rejected", "Rolled back", "Held", "Inconclusive", "Holdback", "Paused", "Resumed"];
 function eventsFor(e) {
   const v = view(e), rec = e.record, out = [], name = rec.config.name, id = e.id;
-  const tail = (rec.tails || {})[tailKey(v.d)] || null;
+  const tail = tailOf(rec, v.d);
   const push = (ts, type, text, hash) => out.push({ ts, type, text, hash: hash ? hash.slice(0, 10) : "", exp: name, id });
   const visibleUntilDay = v.day;
   for (const ent of rec.ledger) {
@@ -610,15 +613,24 @@ function promptVars(text) {
 /** Every variable of A must still be in B, and B must not use a variable the bot does not supply. */
 function varCheck(a, b) { const A = promptVars(a), B = promptVars(b); const missing = A.filter(v => !B.includes(v)), added = B.filter(v => !A.includes(v)); return { ok: !missing.length && !added.length, missing, added, n: A.length }; }
 /** Line diff of A and B by jsdiff (npm "diff", vendored in 02-vendor-diff.js). Rows: {t: "same"|"del"|"add", a, b, ia, ib} (1-based line numbers).
-    Past 4,000 differences (two unrelated prompts) every line of A is shown removed and every line of B added. */
+    The identical start and end are trimmed first, so jsdiff only sees the edited middle (fast on a 2,300-line prompt), and the last answer is
+    remembered (a redraw asks for the same diff two or three times). Past 4,000 differences every middle line of A is removed and of B added. */
+let _diffMemo = { a: null, b: null, rows: null };
 function diffRows(a, b) {
-  const A = String(a).split("\n"), B = String(b).split("\n"), parts = Diff.diffArrays(A, B, { maxEditLength: 4000 }), rows = []; let ia = 0, ib = 0;
-  if (!parts) { A.forEach(x => rows.push({ t: "del", a: x, ia: ++ia })); B.forEach(x => rows.push({ t: "add", b: x, ib: ++ib })); return rows; }
-  for (const part of parts) for (const line of part.value) {
+  a = String(a); b = String(b);
+  if (_diffMemo.a === a && _diffMemo.b === b) return _diffMemo.rows;
+  const A = a.split("\n"), B = b.split("\n"), rows = []; let s = 0; while (s < A.length && s < B.length && A[s] === B[s]) s++;
+  let ea = A.length, eb = B.length; while (ea > s && eb > s && A[ea - 1] === B[eb - 1]) { ea--; eb--; }
+  for (let i = 0; i < s; i++) rows.push({ t: "same", a: A[i], b: B[i], ia: i + 1, ib: i + 1 });
+  let ia = s, ib = s; const parts = Diff.diffArrays(A.slice(s, ea), B.slice(s, eb), { maxEditLength: 4000 });
+  if (!parts) { for (let i = s; i < ea; i++) rows.push({ t: "del", a: A[i], ia: ++ia }); for (let j = s; j < eb; j++) rows.push({ t: "add", b: B[j], ib: ++ib }); }
+  else for (const part of parts) for (const line of part.value) {
     if (part.added) rows.push({ t: "add", b: line, ib: ++ib });
     else if (part.removed) rows.push({ t: "del", a: line, ia: ++ia });
     else rows.push({ t: "same", a: line, b: line, ia: ++ia, ib: ++ib });
   }
+  for (let i = ea, j = eb; i < A.length; i++, j++) rows.push({ t: "same", a: A[i], b: B[j], ia: i + 1, ib: j + 1 });
+  _diffMemo = { a, b, rows };
   return rows;
 }
 const diffStats = rows => ({ added: rows.filter(r => r.t === "add").length, removed: rows.filter(r => r.t === "del").length, same: rows.every(r => r.t === "same") });
@@ -709,7 +721,7 @@ function plainSummary(e) {
   const k = v.kind;
   const verdict = { PROMOTE: "Decision: promote B to all traffic. The evidence is strong enough that luck is an unlikely explanation and the guardrail holds.", STOP_HARM: "Decision: stop B early and send its leads back to A. B is clearly worse.", LOSS: "Decision: keep A. At the final call B is significantly worse than A, so it is logged as a loss and nothing ships.", STOP_GUARDRAIL: "Decision: stop B. It breaks a guardrail even if the goal improved.",
     HOLD_FOR_APPROVAL: "Decision: hold for a person. B wins on the goal but a guardrail is not proven. Nothing has changed for callers.", INCONCLUSIVE: "Decision: inconclusive, keep A. The test found no evidence of a difference; that is not proof of none.", HALT_SRM: "Decision: halted. The test itself is broken (the split or the log), so nothing can be trusted.",
-    REJECTED: "Decision: a person rejected the held change. A stays live.", ROLLED_BACK: "Decision: B was promoted and then rolled back by a person.", STOPPED_MANUAL: "Decision: a person stopped the test early." }[k] || "No decision yet.";
+    REJECTED: v.d.auto ? `Decision: nobody answered the held change within ${heldDays()} days, so the autopilot kept A. A stays live.` : "Decision: a person rejected the held change. A stays live.", ROLLED_BACK: v.d.autoRoll ? "Decision: B was promoted, then the holdback week caught it slipping and the autopilot rolled it back." : "Decision: B was promoted and then rolled back by a person.", STOPPED_MANUAL: "Decision: a person stopped the test early." }[k] || "No decision yet.";
   const more = k === "INCONCLUSIVE" && r.more_leads && r.more_leads.options ? " " + r.more_leads.options.map(o => o.enough_already ? `There was already enough data to detect ${liftWords(o)}, so any real lift is smaller.` : `Detecting ${liftWords(o)} would take about ${nf(o.more_leads)} more leads (about ${o.more_days} days).`).slice(0, 2).join(" ") : "";
   return `${verdict} ${nums}${g}${more}${src}`;
 }
@@ -726,13 +738,16 @@ const info = text => `<span class="info" tabindex="0" title="${esc(text)}" aria-
 const AUTOPILOT_BY = "Picky autopilot";                                         // the engine's AUTOPILOT: the "by" of its ledger entries
 const heldDays = () => (C.autopilot || {}).held_timeout_days || 2;
 const AP = () => ({ rollback: true, held: true, ...((DYN.settings || {}).autopilot || {}) });
+/** May the autopilot act on this test? Only when its switch is on and the engine pre-chained the entry (a test saved before this has none). */
+const canAutoKeepA = e => AP().held && !!((e.record.tails || {}).auto_reject);
+const canAutoRollback = e => AP().rollback && !!((e.record.tails || {}).auto_rollback);
 
 /** One day of a promoted test's holdback week. On an alert the autopilot rolls B back when its policy allows and the record carries the chained entry;
     otherwise the alert asks a person. Returns {played, msg}. */
 function holdStep(e) {
   const v = view(e), d = dyn(e); if (!v.holdback || v.holdback.done) return { played: false, msg: "" };
   const H = v.holdback.all; d.hold = (d.hold || 0) + 1; const r = H.rows[d.hold - 1], name = e.record.config.name;
-  const auto = r.alert && AP().rollback && !!(e.record.tails || {}).auto_rollback;
+  const auto = r.alert && d.hold === H.alert_day && canAutoRollback(e);
   logAction(e, r.alert ? "Harm alert" : "Holdback", r.alert ? `Holdback day ${d.hold}: B is clearly below the held-back A (z=${r.z.toFixed(2)}, alert line −${r.bar.toFixed(2)}). ${auto ? "The autopilot rolls B back." : "Consider a rollback."}`
     : `Holdback day ${d.hold} of ${H.days}: B ${pct(r.rateB, 1)} against A ${pct(r.rateA, 1)} (${pts(r.diff, 1)}); no sign of loss.`);
   if (auto) { d.rolledBack = true; d.autoRoll = true; return { played: true, msg: `${name}: B slipped after rollout, so the autopilot rolled it back` }; }
@@ -748,8 +763,9 @@ function nextDay() {
     if (v.scheduled || d.paused || d.manualStop) return;
     if (v.running) { d.day = Math.min(v.ld, d.day + 1); const a = view(e); if (a.decided) out.push(`${name}: ${KIND_LABEL[a.kind] || a.kind}`); return; }
     if (v.kind === "HOLD_FOR_APPROVAL" && !d.approval) {
+      if (!canAutoKeepA(e)) return;                                            // the answer window runs only while the autopilot may close it
       d.waited = (d.waited || 0) + 1;
-      if (AP().held && d.waited >= heldDays() && (e.record.tails || {}).auto_reject) { d.approval = "rejected"; d.auto = true; out.push(`${name}: nobody answered in ${heldDays()} days, so the autopilot kept A`); }
+      if (d.waited >= heldDays()) { d.approval = "rejected"; d.auto = true; out.push(`${name}: nobody answered in ${heldDays()} days, so the autopilot kept A`); }
       return;
     }
     if (v.holdback && !v.holdback.done) { const r = holdStep(e); if (r.msg) out.push(r.msg); }
@@ -757,7 +773,7 @@ function nextDay() {
   saveDyn(); return out;
 }
 /** Is there anything left for the clock to move? */
-const pending = () => EXPS().filter(e => !isPast(e)).some(e => { const v = view(e), d = v.d; return (v.running && !d.paused) || (v.kind === "HOLD_FOR_APPROVAL" && !d.approval && AP().held) || (v.holdback && !v.holdback.done); });
+const pending = () => EXPS().filter(e => !isPast(e)).some(e => { const v = view(e), d = v.d; return (v.running && !d.paused) || (v.kind === "HOLD_FOR_APPROVAL" && !d.approval && canAutoKeepA(e)) || (v.holdback && !v.holdback.done); });
 let PLAYER = null;
 /** Redraw the current screen without jumping to the top. */
 function refresh() { const y = scrollY; render(); scrollTo(0, y); }
@@ -855,12 +871,12 @@ function runningCard(e) {
 function attention() {
   const items = [], L = (e, txt) => `<a href="#/live/${encodeURIComponent(e.id)}">${esc(e.record.config.name)}</a> ${txt}`;
   EXPS().filter(isDemoWorld).forEach(e => { const v = view(e);
-    if (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval) items.push(["Approval pending", "warn", L(e, `won on the goal but needs a yes.${AP().held ? ` If nobody answers within ${heldDays()} days, the autopilot keeps A.` : ""}`)]);
+    if (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval) items.push(["Approval pending", "warn", L(e, `won on the goal but needs a yes.${canAutoKeepA(e) ? ` If nobody answers within ${heldDays()} days, the autopilot keeps A.` : ""}`)]);
     else if (["STOP_HARM", "STOP_GUARDRAIL"].includes(v.kind)) items.push(["Harm alert", "neg", L(e, "was stopped: " + (v.kind === "STOP_HARM" ? "B was clearly worse." : "a guardrail was broken.") + " Its leads are back on A.")]);
     else if (v.kind === "HALT_SRM") items.push(["Split alert", "neg", L(e, "was halted: the split or the log is broken, so nothing can be trusted.")]);
     else if (v.running && v.day >= v.win - 1 && v.day < v.win) items.push(["Ending soon", "run", L(e, `reaches its final call on day ${v.win}.`)]);
     else if (v.running && v.cur && v.cur.z <= -1.96) items.push(["Watch", "warn", L(e, "looks worse so far. It stops only if it crosses the strict daily harm bar.")]);
-    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, "fell clearly below the held-back A after the promotion. Roll it back from Live Experiments (the autopilot's rollback is off).")]);
+    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, `fell clearly below the held-back A after the promotion. Roll it back from Live Experiments (${(e.record.tails || {}).auto_rollback ? "the autopilot's rollback is off" : "a person approved this win, so a person rolls it back"}).`)]);
     else if (v.holdback && !v.holdback.done) items.push(["Holdback", "run", L(e, `is promoted; ${pct(v.holdback.all.share, 0)} of leads stay on A: day ${v.holdback.day} of ${v.holdback.all.days}.`)]);
   });
   DYN.drafts.forEach(d => items.push(["Draft", "plain", `<a href="#/new" data-open-draft="${esc(d.id)}">${esc(d.name)}</a> was saved but not launched.`]));
@@ -994,7 +1010,7 @@ function holdbackCard(e, v) {
   const h = v.holdback, all = h.all, shown = h.rows;
   const dots = Array.from({ length: all.days }, (_, i) => { const r = shown[i]; return `<span class="ds ${!r ? "fut" : r.alert ? "neg" : "pos"}" title="${r ? `Day ${r.day}: B ${pct(r.rateB, 1)} against A ${pct(r.rateA, 1)}` : `Day ${i + 1}: to come`}">${i + 1}</span>`; }).join("");
   const verdict = !h.done ? "" : all.alert_day ? `<div class="banner neg" style="margin:12px 0 0"><div><b>Holdback alert on day ${all.alert_day}.</b> B fell clearly below the held-back A. Consider rolling back.</div></div>` : `<div class="banner pos" style="margin:12px 0 0"><div><b>Holdback finished: no sign of loss.</b> ${all.verdict === "ahead" ? "B is still ahead of A." : "B is not below A."}</div></div>`;
-  return `<div class="card" style="margin-bottom:16px"><div class="sec-row"><div><h2>After the win: holdback</h2><div class="sub">${pct(all.share, 0)} of leads stay on A for ${all.days} days to catch a B that turns clearly worse. Day ${h.day} of ${all.days}. ${info(`A slice this small only catches a drop of about ${all.detectable_drop_pp} points or more (80% chance); it cannot re-prove the gain. With the autopilot on, an alert rolls B back automatically.`)}</div></div>
+  return `<div class="card" style="margin-bottom:16px"><div class="sec-row"><div><h2>After the win: holdback</h2><div class="sub">${pct(all.share, 0)} of leads stay on A for ${all.days} days to catch a B that turns clearly worse. Day ${h.day} of ${all.days}. ${info(`A slice this small only catches a drop of about ${all.detectable_drop_pp} points or more (80% chance); it cannot re-prove the gain. ${canAutoRollback(e) ? "With the autopilot on, an alert rolls B back automatically." : (e.record.tails || {}).auto_rollback ? "The autopilot's rollback is off: a person rolls back." : "A person rolls back on an alert (this win was approved by a person, or the record predates the autopilot)."}`)}</div></div>
     <div class="actions">${h.done ? "" : `<button class="btn" id="a-hold">Play holdback day ${h.day + 1}</button><button class="btn" id="a-hold-all">Play all</button>`}</div></div>
     <div class="dstrip" style="margin-top:12px">${dots}</div>${verdict}
     ${shown.length ? fold("Holdback by day", `<div class="tbl-wrap"><table><thead><tr><th>Day</th><th class="num">A (held back)</th><th class="num">B (production)</th><th class="num">B minus A</th><th class="num">z / alert line</th><th>Status</th></tr></thead><tbody>${shown.map(r => `<tr><td>Day ${r.day}</td><td class="num">${nf(r.nA)} · ${pct(r.rateA, 1)}</td><td class="num">${nf(r.nB)} · ${pct(r.rateB, 1)}</td><td class="num">${pts(r.diff, 1)}</td><td class="num">${r.z.toFixed(2)} / −${r.bar.toFixed(2)}</td><td>${r.alert ? pill("✕ B clearly worse", "neg") : pill("✓ No sign of loss", "pos")}</td></tr>`).join("")}</tbody></table></div>`) : ""}</div>`;
@@ -1031,7 +1047,7 @@ ROUTES.live = (el, arg) => {
     const extra = v.kind === "PROMOTE" && !d.rolledBack ? (segRules(c.segment).length ? ` Production prompt now points at B for ${esc(segDescribe(c.segment))} only; every other lead keeps today's prompt.` : " Production prompt now points at B.")
       : v.kind === "ROLLED_BACK" && d.autoRoll ? " The holdback week raised an alert, so the autopilot rolled B back without waiting for a person."
       : v.kind === "REJECTED" && d.auto ? ` Nobody answered within ${heldDays()} days, so the autopilot kept A.`
-      : v.kind === "HOLD_FOR_APPROVAL" && AP().held ? ` If nobody answers within ${heldDays()} days, the autopilot keeps A.` : "";
+      : v.kind === "HOLD_FOR_APPROVAL" && canAutoKeepA(pick) ? ` If nobody answers within ${heldDays()} days (${Math.max(0, heldDays() - (d.waited || 0))} left), the autopilot keeps A.` : "";
     banner = `<div class="banner ${cls}" role="status"><div><b>${esc(KIND_LABEL[v.kind] || v.kind)}.</b> ${esc(v.kind === "STOPPED_MANUAL" ? "A person stopped the test." : v.res.reason)}${extra}</div></div>`;
   } else banner = `<div class="banner" role="status"><div><b>Too early to call.</b> ${c.rule_set === "final_look" ? `Winner call on day ${v.win}; a clearly worse B is stopped on any day.` : `The engine decides on the day the evidence crosses a line, by day ${v.win}.`} Do not act on early numbers.</div></div>`;
   const pageActs = `${clockButtons()}${v.running ? `<button class="btn" id="a-adv">Advance this test 1 day</button><button class="btn" id="a-end">Skip to the end</button>` : v.ended ? `<a class="btn primary" href="#/report/${encodeURIComponent(pick.id)}">View final report</a>` : ""}`;
@@ -1084,7 +1100,7 @@ function wireLive(el, e) {
   a("#a-roll", () => { d.rolledBack = true; d.autoRoll = false; saveDyn(); toast("Rolled back. The click is added to the record."); route(); });
   a("#a-csv", () => download(`${e.id}_daily.csv`, primaryDef(v.config).type === "average" ? toCsv(["day", "leads_A", "counted_A", "leads_B", "counted_B", "mean_A", "mean_B", "lift_" + (metricUnit(primaryDef(v.config)) || "units"), "z", "stop_line"], v.rows.map(({ day, row }) => [day, row.nA, row.dA, row.nB, row.dB, row.rateA.toFixed(3), row.rateB.toFixed(3), row.diff.toFixed(3), row.z.toFixed(3), (-row.harm).toFixed(3)]))
     : toCsv(["day", "leads_A", "goal_A", "leads_B", "goal_B", "rate_A", "rate_B", "lift_pp", "z", "stop_line"], v.rows.map(({ day, row }) => [day, row.nA, row.xA, row.nB, row.xB, row.rateA.toFixed(4), row.rateB.toFixed(4), (row.diff * 100).toFixed(2), row.z.toFixed(3), (-row.harm).toFixed(3)]))));
-  a("#a-verify", async () => { const tailK = tailKey(d), ents = e.record.ledger.concat(tailK && e.record.tails ? e.record.tails[tailK] || [] : []); let ok; try { ok = await chainOk(ents); } catch (err) { $1("#verify-out").textContent = String(err.message || err); return; } $1("#verify-out").innerHTML = ok ? `<span style="color:#167a70;font-weight:600">✓ Chain intact</span>: ${ents.length} entries re-hashed just now, head <span class="mono">${esc(ents[ents.length - 1].hash.slice(0, 12))}</span>.` : `<span style="color:#b23b3b;font-weight:600">✕ Record BROKEN</span>: an entry was changed.`; });
+  a("#a-verify", async () => { const ents = e.record.ledger.concat(tailOf(e.record, d)); let ok; try { ok = await chainOk(ents); } catch (err) { $1("#verify-out").textContent = String(err.message || err); return; } $1("#verify-out").innerHTML = ok ? `<span style="color:#167a70;font-weight:600">✓ Chain intact</span>: ${ents.length} entries re-hashed just now, head <span class="mono">${esc(ents[ents.length - 1].hash.slice(0, 12))}</span>.` : `<span style="color:#b23b3b;font-weight:600">✕ Record BROKEN</span>: an entry was changed.`; });
 }
 
 /* New Experiment: six steps on one page with the "At a glance" panel on the right: Hypothesis, Prompt B, Audience, Goals, Duration, Review.
@@ -1598,7 +1614,7 @@ ROUTES.report = (el, id) => {
   const v = view(e), c = v.config, rec = e.record, cur = v.cur;
   if (!v.ended || !cur) { el.innerHTML = head(c.name, "The final report is written when the test ends.") + `<div class="empty">This test has not ended yet (${esc(v.status[0])}). <a href="#/live/${encodeURIComponent(e.id)}">Open it in Live Experiments</a>.</div>`; return; }
   const ciA = armCI(cur, "A", c), ciB = armCI(cur, "B", c), lr = liftRange(cur, c), gl = guardList(v), goal = goalName(c), sec = secondaryList(v), pr = promptsOf(e), avg = primaryDef(c).type === "average";
-  const tailK = tailKey(v.d), ents = rec.ledger.concat(tailK && rec.tails ? rec.tails[tailK] || [] : []);
+  const ents = rec.ledger.concat(tailOf(rec, v.d));
   const sugg = ["slot options work", "longer intro hurts", "small effect: needs more leads", "call length is the catch", "broken tracking: rerun"];
   el.innerHTML = head("Final report", "A frozen, one-page record of this test.", `<a class="btn" href="#/history">Back to History</a><button class="btn" id="r-clone">Clone and re-run</button><button class="btn" id="r-csv">Export CSV</button><button class="btn primary" onclick="print()">Print</button>`) +
     `<div class="report card"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:20px">${esc(c.name)}</h2>${pill(KIND_LABEL[v.kind] || v.kind, KIND_CLASS[v.kind])}</div>
@@ -2081,15 +2097,17 @@ init();
     const g = T.grading || {}, s = g.summary, rs = x => x == null ? "-" : Math.round(x * 100) + "%";
     const head2 = `<div class="sec-row"><h2>Sarvam checks the calls</h2>${s ? pill(`agrees on ${s.goal_agree} of ${s.n}`, s.goal_rate >= 0.8 ? "pos" : "warn") : pill("optional", "plain")}</div>`;
     const why = info("Sarvam's chat model reads each call's transcript with the same tagger the project uses on the real VANI recordings, and says whether the goal was reached and whether anything was fatal. It never changes the verdict: your signals decide. This is the deck's 'accuracy of auto-disposition against labelled calls'.");
-    const run = g.to_grade ? `<div class="lc-row" style="margin-top:12px"><button class="btn primary" data-lc="grade">Grade ${g.to_grade} call${g.to_grade === 1 ? "" : "s"} with Sarvam (about ₹${g.est_inr})</button><span class="note">uses the model key in .env; capped at ₹${g.budget_inr}</span></div>` : "";
-    const err = g.error ? banner(esc(g.error), "warn") : "", noTr = g.without_transcript ? `<p class="note">${g.without_transcript} call${g.without_transcript === 1 ? " has" : "s have"} no transcript (logged by hand), so ${g.without_transcript === 1 ? "it is" : "they are"} not graded.</p>` : "";
+    const run = g.to_grade ? `<div class="lc-row" style="margin-top:12px"><button class="btn primary" data-lc="grade" ${g.left_inr > 0 ? "" : "disabled"}>Grade ${g.to_grade} call${g.to_grade === 1 ? "" : "s"} with Sarvam (at most ₹${g.est_inr})</button><span class="note">model key from .env · ₹${g.spent_inr} of the ₹${g.budget_inr} cap used for this test</span></div>` : "";
+    const err = (g.error ? banner(esc(g.error), "warn") : "") + (g.capped ? banner(`Stopped at the ₹${g.budget_inr} cap for this test; ${g.to_grade} call(s) not graded.`, "warn") : ""),
+      noTr = (g.without_transcript ? `<p class="note">${g.without_transcript} call${g.without_transcript === 1 ? " has" : "s have"} no transcript (logged by hand), so ${g.without_transcript === 1 ? "it is" : "they are"} not graded.</p>` : "")
+        + (g.unreadable ? `<p class="note">${g.unreadable} call${g.unreadable === 1 ? "'s" : "s'"} reply from Sarvam could not be read; ${g.unreadable === 1 ? "it is" : "they are"} left out (paid once, not retried).</p>` : "");
     if (!s) return `<div class="card" id="lc-grade">${head2}<p class="sub">Let Sarvam tag every call and see how often it agrees with you. ${why}</p>${err}${run}${noTr}</div>`;
     const t = s.table;
     return `<div class="card" id="lc-grade">${head2}
       <div class="grid g3" style="margin-top:12px"><div><div class="lc-big">${rs(s.goal_rate)}</div><div class="muted">agree on "${esc(T.config.goal_name)}" (${s.goal_agree} of ${s.n} calls) ${why}</div></div>
         <div><div class="lc-big">${rs(s.fatal_rate)}</div><div class="muted">agree on a fatal problem (${s.fatal_agree} of ${s.n})</div></div>
         <div><table class="mini"><thead><tr><th></th><th>Sarvam: yes</th><th>Sarvam: no</th></tr></thead><tbody><tr><th>You: yes</th><td>${t.yes_yes}</td><td>${t.yes_no}</td></tr><tr><th>You: no</th><td>${t.no_yes}</td><td>${t.no_no}</td></tr></tbody></table></div></div>
-      ${err}${run}${noTr}${g.spent_inr != null ? `<p class="note">Spent ₹${g.spent_inr} on this test's grading.</p>` : ""}</div>`;
+      ${err}${run}${noTr}<p class="note">Spent ₹${g.spent_inr} of the ₹${g.budget_inr} cap on this test's grading.</p></div>`;
   }
 
   // ------------------------------------------------------------------------------------------ the voice call (Sarvam browser SDK)
@@ -2181,8 +2199,8 @@ init();
         const reason = prompt("Why are you abandoning this test? No result will be shown.", ""); if (!reason) return;
         await api(`/api/live/test/${T.id}/abandon`, { reason }); T = null; await load(); }),
       "grade": guard(async () => {
-        const g = T.grading || {}; if (!confirm(`Grade ${g.to_grade} call(s) with Sarvam's chat model? About ₹${g.est_inr}, capped at ₹${g.budget_inr}, from the shared credits.`)) return;
-        const r = await api(`/api/live/test/${T.id}/grade`, { yes: true }); T = r.test; redraw(); say(r.error ? "Graded part of the calls" : `Graded ${r.graded_now} call(s) for ₹${r.spent_inr}`); }),
+        const g = T.grading || {}; if (!confirm(`Grade ${g.to_grade} call(s) with Sarvam's chat model? At most ₹${g.est_inr} (usually much less), within the ₹${g.budget_inr} cap for this test, from the shared credits.`)) return;
+        const r = await api(`/api/live/test/${T.id}/grade`, { yes: true }); T = r.test; redraw(); say(r.error || r.capped ? "Graded part of the calls" : `Graded ${r.graded_now} call(s) for ₹${r.spent_now_inr}`); }),
       "tr": () => { const el = document.getElementById("lc-tr-" + b.dataset.id); if (el) el.hidden = !el.hidden; },
       "rec": () => {
         const box = document.getElementById("lc-rec-" + b.dataset.id), tr = document.getElementById("lc-tr-" + b.dataset.id); if (tr) tr.hidden = false;

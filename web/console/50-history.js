@@ -70,7 +70,7 @@ ROUTES.report = (el, id) => {
   const v = view(e), c = v.config, rec = e.record, cur = v.cur;
   if (!v.ended || !cur) { el.innerHTML = head(c.name, "The final report is written when the test ends.") + `<div class="empty">This test has not ended yet (${esc(v.status[0])}). <a href="#/live/${encodeURIComponent(e.id)}">Open it in Live Experiments</a>.</div>`; return; }
   const ciA = armCI(cur, "A", c), ciB = armCI(cur, "B", c), lr = liftRange(cur, c), gl = guardList(v), goal = goalName(c), sec = secondaryList(v), pr = promptsOf(e), avg = primaryDef(c).type === "average";
-  const tailK = tailKey(v.d), ents = rec.ledger.concat(tailK && rec.tails ? rec.tails[tailK] || [] : []);
+  const ents = rec.ledger.concat(tailOf(rec, v.d));
   const sugg = ["slot options work", "longer intro hurts", "small effect: needs more leads", "call length is the catch", "broken tracking: rerun"];
   el.innerHTML = head("Final report", "A frozen, one-page record of this test.", `<a class="btn" href="#/history">Back to History</a><button class="btn" id="r-clone">Clone and re-run</button><button class="btn" id="r-csv">Export CSV</button><button class="btn primary" onclick="print()">Print</button>`) +
     `<div class="report card"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:20px">${esc(c.name)}</h2>${pill(KIND_LABEL[v.kind] || v.kind, KIND_CLASS[v.kind])}</div>

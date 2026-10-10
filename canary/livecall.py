@@ -372,7 +372,7 @@ def public(t: dict) -> dict:
         out["result"] = t["result"]
         out["reveal"] = {"labels": labels, "sequence": t["secret"]["sequence"], "salt": t["secret"]["salt"]}
         out["ledger"]["entries_full"] = t["ledger"]
-        out["grading"] = t.get("grading") or grade_plan_of(t)
+        out["grading"] = {**(t.get("grading") or {}), **grade_plan_of(t)}         # the last run's outcome, with today's estimate and totals
     return out
 
 
@@ -517,19 +517,34 @@ def _release(t: dict) -> None:
 # ---------------------------------------------------------------------------- Sarvam grades the calls (the deck's "auto-disposition vs labelled calls")
 
 GRADE_GOAL = "buylead_created"           # the tagger's disposition that counts as the goal (the BRD's BuyLead created)
-GRADE_EST_INR = 0.25                     # planning estimate per call; the real cost comes from Sarvam's token counts
-GRADE_BUDGET_INR = 10.0                  # hard cap per test
+GRADE_BUDGET_INR = 10.0                  # hard cap per test, across every press
+GRADE_MAX_CHARS = 12000                  # the longest transcript sent for one call (bounds what one call can cost)
+_GRADING: set = set()                    # tests being graded right now (kept in memory, so a crash cannot leave a test stuck)
+
+
+def _grade_text(c: dict) -> str:
+    return "\n".join(f"{'VANI' if m['role'] == 'bot' else 'Buyer'}: {m['content']}" for m in c["transcript"])[:GRADE_MAX_CHARS]
+
+
+def _grade_cost(text: str) -> float:
+    """An upper estimate for one call: the tagger prompt plus the transcript in (1.5 characters a token, generous for Hindi), 900 tokens out
+    (the reply's cap). The real cost comes from Sarvam's token counts and is lower; the cap is checked against this before each call."""
+    from . import sarvam_pipe as sp
+    from .evaluator import build_prompt
+    return sp.llm_cost(int(len(build_prompt(text)) / 1.5), 900)
 
 
 def _graded(t: dict) -> list[dict]:
     return [c for c in t["calls"] if c["status"] == "done" and (c.get("auto") or {}).get("valid")]
 
 
-def grade_plan_of(t: dict) -> dict:
+def grade_plan_of(t: dict, budget: float = GRADE_BUDGET_INR) -> dict:
     todo = [c for c in t["calls"] if c["status"] == "done" and c.get("transcript") and not c.get("auto")]
     no_tr = sum(1 for c in t["calls"] if c["status"] == "done" and not c.get("transcript"))
-    return {"done": False, "to_grade": len(todo), "without_transcript": no_tr, "est_inr": round(len(todo) * GRADE_EST_INR, 2), "budget_inr": GRADE_BUDGET_INR,
-            "summary": grade_summary(t) if _graded(t) else None}
+    spent = float(t.get("grading_spent_inr") or 0.0)
+    return {"done": False, "to_grade": len(todo), "without_transcript": no_tr, "est_inr": round(sum(_grade_cost(_grade_text(c)) for c in todo), 2),
+            "budget_inr": budget, "spent_inr": round(spent, 2), "left_inr": round(max(0.0, budget - spent), 2),
+            "unreadable": sum(1 for c in t["calls"] if c.get("auto") and not c["auto"].get("valid")), "summary": grade_summary(t) if _graded(t) else None}
 
 
 def grade_summary(t: dict) -> dict:
@@ -548,42 +563,62 @@ def grade_summary(t: dict) -> dict:
 def grade_calls(tid: str, yes: bool = False, budget: float = GRADE_BUDGET_INR, client=None) -> dict:
     """After the result is released, Sarvam's chat model reads each finished call's transcript with the same tagger the project uses for the
     real VANI recordings (canary/sarvam_pipe.py, data/evaluator_prompt.md) and the tag is compared with the listener's signal. It never changes
-    the verdict (the signals decide). Paid (about Rs 0.2 a call): without yes=True it only returns the estimate; it stops before the budget."""
+    the verdict (the signals decide). Paid: without yes=True it only returns the estimate. The budget is a hard cap for the test across every
+    press: before each call the worst-case cost is checked against what is left. A reply that cannot be read marks that call unreadable (paid
+    once, not retried); a network or service error stops the run and keeps what was graded. Sarvam is called outside the lock."""
+    from . import sarvam_pipe as sp
     with LOCK:
         t = _load(tid)
         if t["state"] != "released":
             raise LiveError("calls are graded after the result is released, so the grades cannot sway the listeners")
-        plan = grade_plan_of(t)
+        plan = grade_plan_of(t, budget)
         if not yes or not plan["to_grade"]:
             return {**plan, "test": public(t)}
-        from . import sarvam_pipe as sp
+        if tid in _GRADING:
+            raise LiveError("this test is being graded right now")
         if client is None and not sp.load_key():
             raise LiveError("no Sarvam model key: put SARVAM_API_KEY in .env (the dashboard.sarvam.ai key), then press again")
+        todo = [(c["id"], _grade_text(c)) for c in t["calls"] if c["status"] == "done" and c.get("transcript") and not c.get("auto")]
+        spent0 = float(t.get("grading_spent_inr") or 0.0)
+        _GRADING.add(tid)
+    spent, results, error, capped = {"inr": 0.0}, {}, None, False
+    try:
         pipe = sp.Pipe(client=client)
-        spent, error = {"inr": 0.0}, None
 
         def led(kind, inr, **info):
             spent["inr"] += inr
             sp._add_spend(kind, inr, source="live_call_grading", test=tid, **info)
-        graded = 0
-        for c in [c for c in t["calls"] if c["status"] == "done" and c.get("transcript") and not c.get("auto")]:
-            if spent["inr"] + GRADE_EST_INR > budget:
+        for cid, text in todo:
+            if spent0 + spent["inr"] + _grade_cost(text) > budget:
+                capped = True
                 break
-            text = "\n".join(f"{'VANI' if m['role'] == 'bot' else 'Buyer'}: {m['content']}" for m in c["transcript"])
             try:
-                tag = pipe.tag_text(text, idx=c["id"], ledger=led)
-            except Exception as e:                      # keep what was graded; say why it stopped
-                error = f"Sarvam stopped answering after {graded} call(s): {str(e)[:160]}"
+                tag = pipe.tag_text(text, idx=cid, ledger=led)
+            except ValueError:                            # the reply could not be read: paid once, marked, not retried
+                results[cid] = {"label": "other", "goal_hit": False, "fatal": False, "fatal_kind": "none", "overall_call": None, "evidence": "", "valid": False}
+                continue
+            except Exception as e:                        # the service did not answer: keep what was graded, say why it stopped
+                error = f"Sarvam stopped answering after {len(results)} call(s): {str(e)[:160]}"
                 break
-            c["auto"] = {"label": tag["label"], "goal_hit": tag["label"] == GRADE_GOAL, "fatal": tag["fatal"] != "none", "fatal_kind": tag["fatal"],
-                         "overall_call": tag["overall_call"], "evidence": tag["evidence"], "valid": tag["valid"]}
-            graded += 1
-        summ = grade_summary(t)
-        t["grading"] = {**grade_plan_of(t), "done": True, "graded_now": graded, "spent_inr": round(spent["inr"], 2), "summary": summ, "error": error}
-        _log(t, "calls_graded", {"by": "Sarvam chat model (" + sp.LLM_MODEL + ")", "graded": graded, "spent_inr": round(spent["inr"], 2),
-                                 "agreement": {k: summ[k] for k in ("n", "goal_agree", "fatal_agree")}})
-        _save(t)
-        return {**t["grading"], "test": public(t)}
+            results[cid] = {"label": tag["label"], "goal_hit": tag["label"] == GRADE_GOAL, "fatal": tag["fatal"] != "none", "fatal_kind": tag["fatal"],
+                            "overall_call": tag["overall_call"], "evidence": tag["evidence"], "valid": tag["valid"]}
+    finally:
+        with LOCK:
+            _GRADING.discard(tid)
+            t = _load(tid)
+            for c in t["calls"]:
+                if c["id"] in results:
+                    c["auto"] = results[c["id"]]
+            t["grading_spent_inr"] = round(spent0 + spent["inr"], 4)
+            summ = grade_summary(t)
+            graded = sum(1 for r in results.values() if r["valid"])
+            t["grading"] = {**grade_plan_of(t, budget), "done": True, "graded_now": graded, "unreadable_now": len(results) - graded,
+                            "spent_now_inr": round(spent["inr"], 2), "capped": capped, "summary": summ, "error": error}
+            if results:
+                _log(t, "calls_graded", {"by": "Sarvam chat model (" + sp.LLM_MODEL + ")", "graded": graded, "unreadable": len(results) - graded,
+                                         "spent_inr": round(spent["inr"], 4), "agreement": {k: summ[k] for k in ("n", "goal_agree", "fatal_agree")}})
+            _save(t)
+    return {**t["grading"], "test": public(t)}
 
 
 def abandon(tid: str, reason: str) -> dict:

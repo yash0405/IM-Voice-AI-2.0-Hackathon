@@ -214,6 +214,34 @@ class Clicks(StoreBase):
         self.assertTrue(any("holdback alert" in r[0] for r in self.q("SELECT reason FROM decision_log WHERE experiment_id = 'demo_fade'")))
         self.assertIn("autopilot_rollback", [r[0] for r in self.q("SELECT action FROM actions ORDER BY id")])
 
+    def test_a_database_from_before_the_autopilot_gets_its_entries_on_the_next_start(self):
+        """Same ledger head, new pre-chained branches: the stored record is replaced, so the autopilot's entry is what gets logged."""
+        import copy, os
+        old = copy.deepcopy(B)
+        for e in old["demo"]:
+            for k in ("auto_reject", "auto_rollback", "approve_rollback"):
+                e["record"].get("tails", {}).pop(k, None)
+        db = os.path.join(self.td.name, "old.db")
+        store.seed(old, db)
+        self.assertGreaterEqual(store.seed(B, db)["replaced"], 2)                   # demo_hold and demo_fade get their new branches
+        self.assertEqual(store.seed(B, db), {"added": 0, "replaced": 0})          # and a third start writes nothing again
+        self.db, self.revs = db, {}
+        self.epoch = store.load(db)["epoch"]
+        self.put(state={"demo_hold": st(7)})
+        self.put(state={"demo_hold": st(7, approval="rejected", auto=True, waited=2)})
+        self.assertTrue(any('"by":"Picky autopilot"' in r[0] for r in self.q("SELECT body FROM decision_log WHERE experiment_id = 'demo_hold'")))
+
+    def test_approve_then_roll_back_reaches_the_record(self):
+        self.put(state={"demo_hold": st(7)})
+        self.put(state={"demo_hold": st(7, approval="approved")})
+        self.put(state={"demo_hold": st(7, approval="approved", rolledBack=True)})
+        self.assertEqual(self.status("demo_hold")[:2], ("Completed", "Promoted, then rolled back"))
+        self.log_ok("demo_hold")
+        types = [r[0] for r in self.q("SELECT type FROM decision_log WHERE experiment_id = 'demo_hold' ORDER BY seq")]
+        self.assertEqual(types[-2:], ["rollback", "routing_changed"])                # the rollback is chained after the approval
+        self.assertIn("approval", types)
+        self.assertIn("rollback", types)
+
     def test_a_harmful_b_shows_stopped_and_a_person_can_stop_a_test(self):
         self.put(state={"demo_worse": st(9999)})
         self.assertEqual(self.status("demo_worse")[0], "Stopped")

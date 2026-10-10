@@ -179,7 +179,10 @@ const dyn = e => (DYN.dyn[e.id] = DYN.dyn[e.id] || { day: e.kind === "simulated"
   rolledBack: false, manualStop: false, learning: "" });
 
 /** Which pre-chained branch of the record the test has taken: a person's click, or the autopilot's own action (d.auto / d.autoRoll). */
-const tailKey = d => d.approval === "approved" ? "approve" : d.approval === "rejected" ? (d.auto ? "auto_reject" : "reject") : d.rolledBack ? (d.autoRoll ? "auto_rollback" : "rollback") : null;
+const tailKey = d => d.approval === "approved" ? (d.rolledBack ? "approve_rollback" : "approve") : d.approval === "rejected" ? (d.auto ? "auto_reject" : "reject") : d.rolledBack ? (d.autoRoll ? "auto_rollback" : "rollback") : null;
+
+/** The record's entries for that branch. A test saved before a branch existed falls back to the closest one it has. */
+const tailOf = (rec, d) => { const t = (rec && rec.tails) || {}, k = tailKey(d); return (k && (t[k] || (k === "approve_rollback" ? t.approve : null))) || []; };
 
 /** Day-by-day rows of a record: the last look of each day. */
 function dayRows(rec) { const m = new Map(); rec.looks.forEach(r => m.set(r.day, r)); return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([day, row]) => ({ day, row })); }
@@ -296,7 +299,7 @@ function promotedExperiments() {
 const EV_TYPES = ["Saved", "Started", "Harm alert", "Split alert", "Stopped", "Promoted", "Approved", "Rejected", "Rolled back", "Held", "Inconclusive", "Holdback", "Paused", "Resumed"];
 function eventsFor(e) {
   const v = view(e), rec = e.record, out = [], name = rec.config.name, id = e.id;
-  const tail = (rec.tails || {})[tailKey(v.d)] || null;
+  const tail = tailOf(rec, v.d);
   const push = (ts, type, text, hash) => out.push({ ts, type, text, hash: hash ? hash.slice(0, 10) : "", exp: name, id });
   const visibleUntilDay = v.day;
   for (const ent of rec.ledger) {

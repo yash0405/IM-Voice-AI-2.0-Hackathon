@@ -941,6 +941,10 @@ def decision_tails(entries: list, kind: str, hold_cause, base_hash: str, b_hash:
                                ("routing_changed", {**promoted_routing(holdback), "reason": "approved: " + promoted_reason(holdback, holdback_days, scope_rule)})], 2),
             "reject": branch([("approval", {**who, "action": "rejected", "candidate": b_hash}),
                               ("routing_changed", {"A": 1.0, "B": 0.0, "reason": "rejected: all traffic back to control A"})], 2)}
+        # a held win a person approved can later be rolled back by a person: that rollback is chained after the approval
+        out["approve_rollback"] = out["approve"] + _branch(entries + out["approve"], when, [
+            ("rollback", {**who, "from": b_hash, "to": base_hash, "reason": "one-click rollback of the approved prompt"}),
+            ("routing_changed", {"A": 1.0, "B": 0.0, "reason": "rolled back: all traffic on the previous prompt"})], 26)
         if autopilot:
             out["auto_reject"] = branch([("approval", {"by": AUTOPILOT, "simulated": demo, "action": "rejected", "candidate": b_hash,
                                                        "policy": f"no answer within {HELD_TIMEOUT_DAYS} days: the safe default keeps A"}),

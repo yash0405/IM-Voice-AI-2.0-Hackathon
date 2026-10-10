@@ -287,9 +287,9 @@ def view(doc: dict, st: dict) -> dict:
 def _tail(rec: dict, st: dict) -> list:
     """The decision-record entries a person's click adds (pre-chained by the engine: canary/engine.decision_tails)."""
     tails = rec.get("tails") or {}
-    key = ("approve" if st.get("approval") == "approved" else ("auto_reject" if st.get("auto") else "reject") if st.get("approval") == "rejected"
+    key = (("approve_rollback" if st.get("rolledBack") else "approve") if st.get("approval") == "approved" else ("auto_reject" if st.get("auto") else "reject") if st.get("approval") == "rejected"
            else ("auto_rollback" if st.get("autoRoll") else "rollback") if st.get("rolledBack") else None)
-    return list(tails.get(key) or []) if key else []
+    return list(tails.get(key) or (tails.get("approve") if key == "approve_rollback" else None) or []) if key else []
 
 
 def actions_between(old: dict, new: dict) -> list[tuple[str, dict]]:
@@ -385,6 +385,14 @@ def _doc_of(con, exp_id: str):
     return {"origin": row["origin"], "doc": _unpack(json.loads(row["doc"]), _texts(con, row["doc"])), "ledger_head": row["ledger_head"]}
 
 
+def _same_extras(con, doc: dict) -> bool:
+    """The pre-chained branches (a person's clicks, the autopilot's actions) and the holdback week can change while the ledger head does not
+    (new branches are added on top of the same record). A stored record without them would log the wrong branch, so they count as a change too."""
+    old = (_doc_of(con, doc["id"]) or {}).get("doc") or {}
+    o, n = old.get("record") or {}, doc["record"]
+    return _canon(o.get("tails") or {}) == _canon(n.get("tails") or {}) and _canon(o.get("holdback")) == _canon(n.get("holdback"))
+
+
 def _state_of(con, exp_id: str):
     row = con.execute("SELECT state FROM test_state WHERE experiment_id = ?", (exp_id,)).fetchone()
     return json.loads(row["state"]) if row else None
@@ -411,7 +419,7 @@ def seed(bundle: dict, db=None) -> dict:
                 for doc in docs:
                     _check_doc(doc)
                     row = con.execute("SELECT origin, ledger_head FROM experiments WHERE id = ?", (doc["id"],)).fetchone()
-                    if row and row["ledger_head"] == doc["record"]["ledger_head"]:
+                    if row and row["ledger_head"] == doc["record"]["ledger_head"] and _same_extras(con, doc):
                         continue
                     st = _state_of(con, doc["id"])
                     old_rev = (con.execute("SELECT rev FROM test_state WHERE experiment_id = ?", (doc["id"],)).fetchone() or [0])[0]

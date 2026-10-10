@@ -76,12 +76,12 @@ function runningCard(e) {
 function attention() {
   const items = [], L = (e, txt) => `<a href="#/live/${encodeURIComponent(e.id)}">${esc(e.record.config.name)}</a> ${txt}`;
   EXPS().filter(isDemoWorld).forEach(e => { const v = view(e);
-    if (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval) items.push(["Approval pending", "warn", L(e, `won on the goal but needs a yes.${AP().held ? ` If nobody answers within ${heldDays()} days, the autopilot keeps A.` : ""}`)]);
+    if (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval) items.push(["Approval pending", "warn", L(e, `won on the goal but needs a yes.${canAutoKeepA(e) ? ` If nobody answers within ${heldDays()} days, the autopilot keeps A.` : ""}`)]);
     else if (["STOP_HARM", "STOP_GUARDRAIL"].includes(v.kind)) items.push(["Harm alert", "neg", L(e, "was stopped: " + (v.kind === "STOP_HARM" ? "B was clearly worse." : "a guardrail was broken.") + " Its leads are back on A.")]);
     else if (v.kind === "HALT_SRM") items.push(["Split alert", "neg", L(e, "was halted: the split or the log is broken, so nothing can be trusted.")]);
     else if (v.running && v.day >= v.win - 1 && v.day < v.win) items.push(["Ending soon", "run", L(e, `reaches its final call on day ${v.win}.`)]);
     else if (v.running && v.cur && v.cur.z <= -1.96) items.push(["Watch", "warn", L(e, "looks worse so far. It stops only if it crosses the strict daily harm bar.")]);
-    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, "fell clearly below the held-back A after the promotion. Roll it back from Live Experiments (the autopilot's rollback is off).")]);
+    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, `fell clearly below the held-back A after the promotion. Roll it back from Live Experiments (${(e.record.tails || {}).auto_rollback ? "the autopilot's rollback is off" : "a person approved this win, so a person rolls it back"}).`)]);
     else if (v.holdback && !v.holdback.done) items.push(["Holdback", "run", L(e, `is promoted; ${pct(v.holdback.all.share, 0)} of leads stay on A: day ${v.holdback.day} of ${v.holdback.all.days}.`)]);
   });
   DYN.drafts.forEach(d => items.push(["Draft", "plain", `<a href="#/new" data-open-draft="${esc(d.id)}">${esc(d.name)}</a> was saved but not launched.`]));

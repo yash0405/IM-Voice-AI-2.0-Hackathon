@@ -24,7 +24,9 @@ class AutopilotTails(unittest.TestCase):
     def test_held_test_gets_a_safe_default(self):
         rec = self.demo["demo_hold"]["record"]
         self.assertEqual(rec["result"]["kind"], "HOLD_FOR_APPROVAL")
-        self.assertEqual(set(rec["tails"]), {"approve", "reject", "auto_reject"})
+        self.assertEqual(set(rec["tails"]), {"approve", "reject", "auto_reject", "approve_rollback"})
+        self.assertTrue(self.chain_ok(rec, "approve_rollback"))                    # approved by a person, later rolled back by a person: one chain
+        self.assertEqual([body(x)["type"] for x in rec["tails"]["approve_rollback"]][-2:], ["rollback", "routing_changed"])
         first = body(rec["tails"]["auto_reject"][0])
         self.assertEqual(first["payload"]["by"], engine.AUTOPILOT)
         self.assertEqual(first["payload"]["action"], "rejected")                 # the safe default keeps A: nothing ships without a yes

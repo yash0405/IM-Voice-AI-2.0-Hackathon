@@ -476,7 +476,9 @@ class Grading(Env):
         c = self.Fake()
         r = livecall.grade_calls(tid, yes=False, client=c)
         self.assertEqual(r["to_grade"], 6)
-        self.assertAlmostEqual(r["est_inr"], 6 * livecall.GRADE_EST_INR)
+        t = livecall._load(tid)
+        self.assertAlmostEqual(r["est_inr"], round(sum(livecall._grade_cost(livecall._grade_text(x)) for x in t["calls"] if x["status"] == "done"), 2))
+        self.assertGreater(r["est_inr"], 0)
         self.assertEqual(c.chat_calls, 0)
         self.assertFalse(self.sp.SPEND.exists())
 
@@ -499,11 +501,40 @@ class Grading(Env):
         again = livecall.grade_calls(tid, yes=True, client=c)                  # nothing left to grade: no second charge
         self.assertEqual((again["to_grade"], c.chat_calls), (0, 6))
 
-    def test_the_budget_is_a_hard_cap(self):
+    def test_the_budget_is_a_hard_cap_for_the_test_across_presses(self):
         tid = self.released()
-        r = livecall.grade_calls(tid, yes=True, budget=0.3, client=self.Fake())
-        self.assertLess(r["graded_now"], 6)
-        self.assertLessEqual(r["spent_inr"], 0.3)
+        worst = livecall._grade_cost(livecall._grade_text(livecall._load(tid)["calls"][0]))
+        real = self.sp.llm_cost(1000, 100)                                     # what one fake reply really costs (its token counts)
+        cap = worst + 2 * real                                                 # after 3 calls the worst case of a 4th no longer fits
+        first = livecall.grade_calls(tid, yes=True, budget=cap, client=self.Fake())
+        second = livecall.grade_calls(tid, yes=True, budget=cap, client=self.Fake())
+        total = json.loads(self.sp.SPEND.read_text())["inr"]
+        self.assertTrue(first["capped"])
+        self.assertEqual((first["graded_now"], second["graded_now"]), (3, 0))
+        self.assertLessEqual(total, cap)                                       # the ledger never goes past the cap, however often it is pressed
+        self.assertAlmostEqual(livecall._load(tid)["grading_spent_inr"], total, places=4)
+        self.assertEqual(second["spent_inr"], round(total, 2))                 # the page shows the running total, not the last press
+        self.assertGreater(second["to_grade"], 0)
+
+    def test_an_unreadable_reply_is_paid_once_and_not_retried(self):
+        tid = self.released()
+        ok = '{"label":"no_requirement","fatal":"none","confidence":0.8,"evidence":"x"}'
+        c = self.Fake(replies=[ok, '{"label": "buylead_created", broken', ok, ok, ok, ok])
+        r = livecall.grade_calls(tid, yes=True, client=c)
+        self.assertEqual((r["graded_now"], r["unreadable_now"], r["to_grade"]), (5, 1, 0))
+        self.assertIsNone(r["error"])
+        again = livecall.grade_calls(tid, yes=True, client=c)
+        self.assertEqual(c.chat_calls, 6)                                      # nothing was asked again
+        self.assertEqual(again["unreadable"], 1)
+
+    def test_a_second_run_at_the_same_time_is_refused(self):
+        tid = self.released()
+        livecall._GRADING.add(tid)
+        try:
+            with self.assertRaises(livecall.LiveError):
+                livecall.grade_calls(tid, yes=True, client=self.Fake())
+        finally:
+            livecall._GRADING.discard(tid)
 
     def test_a_sarvam_error_keeps_what_was_graded(self):
         tid = self.released()

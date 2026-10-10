@@ -254,15 +254,17 @@
     const g = T.grading || {}, s = g.summary, rs = x => x == null ? "-" : Math.round(x * 100) + "%";
     const head2 = `<div class="sec-row"><h2>Sarvam checks the calls</h2>${s ? pill(`agrees on ${s.goal_agree} of ${s.n}`, s.goal_rate >= 0.8 ? "pos" : "warn") : pill("optional", "plain")}</div>`;
     const why = info("Sarvam's chat model reads each call's transcript with the same tagger the project uses on the real VANI recordings, and says whether the goal was reached and whether anything was fatal. It never changes the verdict: your signals decide. This is the deck's 'accuracy of auto-disposition against labelled calls'.");
-    const run = g.to_grade ? `<div class="lc-row" style="margin-top:12px"><button class="btn primary" data-lc="grade">Grade ${g.to_grade} call${g.to_grade === 1 ? "" : "s"} with Sarvam (about ₹${g.est_inr})</button><span class="note">uses the model key in .env; capped at ₹${g.budget_inr}</span></div>` : "";
-    const err = g.error ? banner(esc(g.error), "warn") : "", noTr = g.without_transcript ? `<p class="note">${g.without_transcript} call${g.without_transcript === 1 ? " has" : "s have"} no transcript (logged by hand), so ${g.without_transcript === 1 ? "it is" : "they are"} not graded.</p>` : "";
+    const run = g.to_grade ? `<div class="lc-row" style="margin-top:12px"><button class="btn primary" data-lc="grade" ${g.left_inr > 0 ? "" : "disabled"}>Grade ${g.to_grade} call${g.to_grade === 1 ? "" : "s"} with Sarvam (at most ₹${g.est_inr})</button><span class="note">model key from .env · ₹${g.spent_inr} of the ₹${g.budget_inr} cap used for this test</span></div>` : "";
+    const err = (g.error ? banner(esc(g.error), "warn") : "") + (g.capped ? banner(`Stopped at the ₹${g.budget_inr} cap for this test; ${g.to_grade} call(s) not graded.`, "warn") : ""),
+      noTr = (g.without_transcript ? `<p class="note">${g.without_transcript} call${g.without_transcript === 1 ? " has" : "s have"} no transcript (logged by hand), so ${g.without_transcript === 1 ? "it is" : "they are"} not graded.</p>` : "")
+        + (g.unreadable ? `<p class="note">${g.unreadable} call${g.unreadable === 1 ? "'s" : "s'"} reply from Sarvam could not be read; ${g.unreadable === 1 ? "it is" : "they are"} left out (paid once, not retried).</p>` : "");
     if (!s) return `<div class="card" id="lc-grade">${head2}<p class="sub">Let Sarvam tag every call and see how often it agrees with you. ${why}</p>${err}${run}${noTr}</div>`;
     const t = s.table;
     return `<div class="card" id="lc-grade">${head2}
       <div class="grid g3" style="margin-top:12px"><div><div class="lc-big">${rs(s.goal_rate)}</div><div class="muted">agree on "${esc(T.config.goal_name)}" (${s.goal_agree} of ${s.n} calls) ${why}</div></div>
         <div><div class="lc-big">${rs(s.fatal_rate)}</div><div class="muted">agree on a fatal problem (${s.fatal_agree} of ${s.n})</div></div>
         <div><table class="mini"><thead><tr><th></th><th>Sarvam: yes</th><th>Sarvam: no</th></tr></thead><tbody><tr><th>You: yes</th><td>${t.yes_yes}</td><td>${t.yes_no}</td></tr><tr><th>You: no</th><td>${t.no_yes}</td><td>${t.no_no}</td></tr></tbody></table></div></div>
-      ${err}${run}${noTr}${g.spent_inr != null ? `<p class="note">Spent ₹${g.spent_inr} on this test's grading.</p>` : ""}</div>`;
+      ${err}${run}${noTr}<p class="note">Spent ₹${g.spent_inr} of the ₹${g.budget_inr} cap on this test's grading.</p></div>`;
   }
 
   // ------------------------------------------------------------------------------------------ the voice call (Sarvam browser SDK)
@@ -354,8 +356,8 @@
         const reason = prompt("Why are you abandoning this test? No result will be shown.", ""); if (!reason) return;
         await api(`/api/live/test/${T.id}/abandon`, { reason }); T = null; await load(); }),
       "grade": guard(async () => {
-        const g = T.grading || {}; if (!confirm(`Grade ${g.to_grade} call(s) with Sarvam's chat model? About ₹${g.est_inr}, capped at ₹${g.budget_inr}, from the shared credits.`)) return;
-        const r = await api(`/api/live/test/${T.id}/grade`, { yes: true }); T = r.test; redraw(); say(r.error ? "Graded part of the calls" : `Graded ${r.graded_now} call(s) for ₹${r.spent_inr}`); }),
+        const g = T.grading || {}; if (!confirm(`Grade ${g.to_grade} call(s) with Sarvam's chat model? At most ₹${g.est_inr} (usually much less), within the ₹${g.budget_inr} cap for this test, from the shared credits.`)) return;
+        const r = await api(`/api/live/test/${T.id}/grade`, { yes: true }); T = r.test; redraw(); say(r.error || r.capped ? "Graded part of the calls" : `Graded ${r.graded_now} call(s) for ₹${r.spent_now_inr}`); }),
       "tr": () => { const el = document.getElementById("lc-tr-" + b.dataset.id); if (el) el.hidden = !el.hidden; },
       "rec": () => {
         const box = document.getElementById("lc-rec-" + b.dataset.id), tr = document.getElementById("lc-tr-" + b.dataset.id); if (tr) tr.hidden = false;
