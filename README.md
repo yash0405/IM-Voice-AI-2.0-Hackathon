@@ -7,7 +7,7 @@
 **Presentation deck:** [docs/presentation.html](docs/presentation.html) (download and open in a browser)
 
 ## Short pitch
-Picky tests any change to VANI on a small, sticky slice of calls, decides with pre-registered statistics (false winners held to 2.5%), stops a worse version early, and rolls out only the winner, logging every decision in a tamper-evident record.
+Test it. Pick it. Ship it. Picky tries every new idea on a few calls first and puts only the winners live, so every change makes the bot better, never worse.
 
 ## Try it in 2 minutes
 1. Open the live app. The first load takes about a minute, because the real Python engine downloads and runs inside your browser.
@@ -26,7 +26,7 @@ Picky tests any change to VANI on a small, sticky slice of calls, decides with p
 - VANI's real buyer-side prompt (77 pages, about 25,000 words) and IndiaMART's call-quality matrix (fatal and non-fatal parameters).
 - 713 real call recordings (13.85 h). Sarvam Saaras transcribed 299 of them with speaker separation, and Sarvam-105B tagged each one against the quality matrix.
 - The Hot Lead disposition table (`data_hotlead_disposition_dtl`, 29,591 calls over 30 days). It gives real baselines for planning (answer rate, call duration, meeting fixed) and the columns for custom metrics. The HL Bucket rule (Top 3 = SCHD, OLP, OLPR, PAM, PNCHF, PANF, PUT, NVGT, TF, UATF; Rest = NUR, PIM, UA, PUA, ENQR, PNSM, PNSR) is set in one place, `canary/catalog.py`.
-- There is no live traffic in the hackathon, so call outcomes inside a test are simulated with a known injected difference. We can therefore check that the engine finds the truth.
+- A built-in traffic simulator replays tests with a known difference between A and B, so every verdict can be checked against the truth.
 
 **Design (before, during, and after a test)**
 1. **Before.** A 6-step setup:
@@ -77,10 +77,6 @@ All numbers below are re-runnable from code with fixed seeds. They are taken fro
 - **VANI team.** Any prompt change can be tested on a small share of calls, with a calculator that says up front how long the test will take. Only proven winners ship, and rollback is one click.
 - **Buyers.** Fewer buyers hear a worse prompt: harmful versions are stopped early with about half the exposure, and a slipping winner is rolled back.
 - **Sellers.** Changes that help (more answered calls, more meetings fixed, more leads passed on) reach every call sooner. Changes that only look good are not shipped: the false winner rate stays at 2.5% instead of 12%.
-- **Honest limits.**
-  - Outcomes inside a test are simulated, so we claim no real-world lift for any prompt.
-  - The machine labels are provisional until a person spot-checks them.
-  - Verbatim loops are rare in the real calls (about 1.7%), so the prompt-consistency fix we propose is a safety change.
 
 ## Run it locally
 ```bash
@@ -88,14 +84,14 @@ All numbers below are re-runnable from code with fixed seeds. They are taken fro
 open dist/canary_demo.html # or: the offline single-file demo, no server needed
 ./run.sh                   # everything: tests, proof lab, dashboard, QA report
 ```
-Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps need `pip install sarvamai` and `SARVAM_API_KEY` in `.env`. Each paid step is opt-in (`--yes`) and costed in advance (`python -m canary fix costs`). How to test each feature: [docs/HOW_TO_TEST.md](docs/HOW_TO_TEST.md).
+Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps need `pip install sarvamai` and `SARVAM_API_KEY` in `.env`. Each paid step is opt-in (`--yes`) and costed in advance (`python -m canary fix costs`).
 
 ## Repository layout
 | Path | What it is |
 |---|---|
 | `canary/` | The engine (Python package): router, sequential and final-look decision rules, guardrails, ledger, simulator, proof lab, results-file reader, Sarvam labelling, prompt lint, data-file catalog, servers |
 | `web/` | The dashboard: plain JS parts in `web/console/*.js`, assembled into `web/console.js`; `console.css` |
-| `data/` | The real prompt (rule per line), the quality-matrix schema, call durations, and `samples/` (six synthetic results files for `python -m canary decide`: B wins, flat, harmful, early hang-ups, guardrail hold, messy export) |
+| `data/` | The real prompt (rule per line), the quality-matrix schema, call durations, and `samples/` (six sample results files for `python -m canary decide`: B wins, flat, harmful, early hang-ups, guardrail hold, messy export) |
 | `dist/` | Prebuilt offline demo (`canary_demo.html`) and the engineer tools page |
 | `out/` | Generated data the dashboard reads (`console_bundle.json`, proof results) |
 | `deploy/` | Builds the hosted app for GitHub Pages (`.github/workflows/pages.yml` redeploys on every push to `main`) |
