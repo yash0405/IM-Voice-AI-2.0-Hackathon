@@ -49,17 +49,17 @@ const pending = () => EXPS().filter(e => !isPast(e)).some(e => { const v = view(
 let PLAYER = null;
 /** Redraw the current screen without jumping to the top. */
 function refresh() { const y = scrollY; render(); scrollTo(0, y); }
-function tick() {
-  const notes = nextDay();
-  if (notes.length) toast(notes.join(" · "), 4500);
+function tick(lead = "") {
+  const notes = nextDay(), msg = [lead, ...notes].filter(Boolean);
+  if (msg.length) toast(msg.join(" · "), 4500);
   if (!pending()) { clearInterval(PLAYER); PLAYER = null; toast("Every test has settled.", 3500); }
   refresh();
 }
 function togglePlay() { if (PLAYER) { clearInterval(PLAYER); PLAYER = null; refresh(); return; } if (!pending()) { toast("Nothing left to play: every test has settled."); return; } PLAYER = setInterval(tick, 1200); tick(); }
-/** The demo clock's two buttons (they appear in the page header of Overview and Live Experiments). */
+/** The demo clock's two buttons (they appear in the page header of Overview and All experiments). */
 const clockButtons = () => `<button class="btn" id="clk-next" ${pending() ? "" : "disabled"} title="Every running test plays its next day; held wins and holdback weeks move on too (demo)">Next day</button><button class="btn" id="clk-play" ${pending() || PLAYER ? "" : "disabled"} title="Play day after day until every test has settled (demo)">${PLAYER ? "❚❚ Pause" : "▶ Play"}</button>`;
 function bindClock(el) {
-  const n = $("#clk-next", el); if (n) n.onclick = () => { if (PLAYER) { clearInterval(PLAYER); PLAYER = null; } tick(); };
+  const n = $("#clk-next", el); if (n) n.onclick = () => { if (PLAYER) { clearInterval(PLAYER); PLAYER = null; } const k = EXPS().filter(e => !isPast(e) && view(e).running).length; tick(`Day advanced for ${k} running test${k === 1 ? "" : "s"}.`); };
   const p = $("#clk-play", el); if (p) p.onclick = togglePlay;
 }
 /** One line that says what the autopilot does, with its two switches one click away (Settings). */

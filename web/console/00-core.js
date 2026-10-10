@@ -329,18 +329,20 @@ const allEvents = () => EXPS().flatMap(eventsFor).concat((DYN.libLog || []).map(
 const nowTs = e => { const v = view(e); return (v.cur && v.cur.time) || e.record.config.start; };
 
 /* ------------------------------------------------------------------ routing and shell */
-const NAV = [["overview", "Overview"], ["new", "New Experiment"], ["live", "Live Experiments"], ["history", "History"], ["suggest", "Suggest A/B Tests"], ["library", "Prompt Library"], ["log", "Decision Log"], ["settings", "Settings"]];
+const NAV = [["overview", "Overview"], ["new", "New Experiment"], ["experiments", "All experiments"], ["suggest", "Suggest A/B Tests"], ["library", "Prompt Library"], ["log", "Decision Log"], ["settings", "Settings"]];
 const ROUTES = {};
 let CUR = { name: "overview", arg: null };
 function route() {
-  const h = (location.hash || "#/overview").replace(/^#\/?/, "").split("/");
-  const name = ROUTES[h[0]] ? h[0] : "overview"; CUR = { name, arg: h[1] ? decodeURIComponent(h[1]) : null };
+  const raw = (location.hash || "#/overview").replace(/^#\/?/, ""), qi = raw.indexOf("?"), h = (qi < 0 ? raw : raw.slice(0, qi)).split("/");
+  if (h[0] === "live") { location.replace(h[1] ? "#/experiments/" + h[1] : "#/experiments?status=running"); return; }      // the old Live Experiments and History pages
+  if (h[0] === "history") { location.replace("#/experiments?status=finished"); return; }
+  const name = ROUTES[h[0]] ? h[0] : "overview"; CUR = { name, arg: h[1] ? decodeURIComponent(h[1]) : null, query: new URLSearchParams(qi < 0 ? "" : raw.slice(qi + 1)) };
   render();
 }
 const go = (name, arg) => { location.hash = "#/" + name + (arg ? "/" + encodeURIComponent(arg) : ""); };
 function render() {
-  const run = EXPS().filter(e => view(e).running || view(e).kind === "HOLD_FOR_APPROVAL" && !view(e).d.approval).length;
-  $("#nav").innerHTML = NAV.map(([k, n]) => `<a href="#/${k}" ${CUR.name === k || (k === "history" && CUR.name === "report") ? 'aria-current="page"' : ""}><span>${n}</span>${k === "live" ? `<span class="count" title="Tests running or waiting for a person">${run}</span>` : ""}</a>`).join("");
+  const run = EXPS().filter(e => view(e).running).length;
+  $("#nav").innerHTML = NAV.map(([k, n]) => `<a href="#/${k}" ${CUR.name === k || (k === "experiments" && CUR.name === "report") ? 'aria-current="page"' : ""}><span>${n}</span>${k === "experiments" ? `<span class="count" title="Running tests">${run}</span>` : ""}</a>`).join("");
   const fn = ROUTES[CUR.name]; $("#page").innerHTML = ""; fn($("#page"), CUR.arg);
   scrollTo(0, 0); document.title = `Picky - ${(NAV.find(n => n[0] === CUR.name) || ["", "Report"])[1]}`;
 }

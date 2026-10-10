@@ -51,7 +51,7 @@ function trafficRow(e) { const c = e.record.config, s = segShare(c.segment); ret
 function trafficMap(list) {
   if (!list.length) return `<div class="empty">No test is running, so all traffic hears today's prompt.</div>`;
   const bar = r => { const seg = (cls, w, label) => `<span class="tm ${cls}" style="flex:${Math.max(w, 0.0001)}" title="${esc(label)}: ${pct(w, 1)}">${w >= 0.11 ? `${esc(label)} ${pct(w, 0)}` : ""}</span>`;
-    return `<div class="tmrow"><div class="tmname"><a href="#/live/${encodeURIComponent(r.e.id)}">${esc(r.name)}</a> ${segChips(r.seg)}</div><div class="tmap" role="img" aria-label="${esc(r.name)}: ${pct(r.out, 0)} outside the test, ${pct(r.a, 0)} A, ${pct(r.b, 0)} B">${seg("out", r.out, "outside")}${seg("a", r.a, "A")}${seg("b", r.b, "B")}</div></div>`; };
+    return `<div class="tmrow"><div class="tmname"><a href="#/experiments/${encodeURIComponent(r.e.id)}">${esc(r.name)}</a> ${segChips(r.seg)}</div><div class="tmap" role="img" aria-label="${esc(r.name)}: ${pct(r.out, 0)} outside the test, ${pct(r.a, 0)} A, ${pct(r.b, 0)} B">${seg("out", r.out, "outside")}${seg("a", r.a, "A")}${seg("b", r.b, "B")}</div></div>`; };
   const main = list.filter(r => r.e.world === "main"), clash = main.flatMap((x, i) => main.slice(i + 1).filter(y => segsOverlap(x.seg || {}, y.seg || {})).map(y => [x, y]));
   return `<div class="legend" style="margin-bottom:8px"><span><i class="sw out"></i>outside the test (today's prompt)</span><span><i class="sw a"></i>A inside the test</span><span><i class="sw b"></i>B inside the test</span></div>${list.map(bar).join("")}
     ${clash.length ? `<div class="banner neg" style="margin-top:12px"><div><b>Overlap.</b> ${clash.map(([x, y]) => `${esc(x.name)} and ${esc(y.name)}`).join("; ")} include some of the same leads, so their results interfere. Finish one first.</div></div>` : `<p class="note" style="margin-top:8px">Each test replays the same history on its own, so each bar shows how that test splits its own traffic. Launches from New Experiment are checked for overlap: two tests may not include the same leads at once.</p>`}`;
@@ -65,23 +65,23 @@ function abBars(v) {
   return `<div class="ab" title="${v.decided ? `${goalName(c)}: the engine's final numbers` : `${goalName(c)} so far. Grey until the engine decides: do not act on early numbers.`}">${bar("A")}${bar("B")}</div>`;
 }
 function runningCard(e) {
-  const v = view(e), c = v.config, link = `#/live/${encodeURIComponent(e.id)}`, held = v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval;
+  const v = view(e), c = v.config, link = `#/experiments/${encodeURIComponent(e.id)}`, held = v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval;
   return `<div class="card rcard"><div class="rc-top"><a href="${link}">${esc(c.name)}</a>${statusPill(v)}</div>
     ${segRules(c.segment).length ? `<div>${segChips(c.segment)}</div>` : ""}
     <div><div class="rc-day"><span>Day <b>${v.day}</b> of ${v.win}</span><span class="note">${v.scheduled ? "scheduled" : held ? "waiting for a yes" : `final call on day ${v.win}`}</span></div><div class="bar"><i style="width:${Math.min(100, v.day / v.win * 100)}%"></i></div></div>
     ${abBars(v)}
-    <div class="actions">${held ? `<a class="btn sm primary" href="${link}">Decide</a>` : `<a class="btn sm" href="${link}">Open</a>`}${v.running ? `<button class="btn sm" data-adv="${esc(e.id)}">Advance 1 day</button>` : ""}${v.scheduled ? `<a class="btn sm primary" href="${link}">Scheduled</a>` : ""}</div></div>`;
+    <div class="actions">${held ? `<a class="btn sm primary" href="${link}">Decide</a>` : `<a class="btn sm" href="${link}">Open</a>`}${v.scheduled ? `<a class="btn sm primary" href="${link}">Scheduled</a>` : ""}</div></div>`;
 }
 
 function attention() {
-  const items = [], L = (e, txt) => `<a href="#/live/${encodeURIComponent(e.id)}">${esc(e.record.config.name)}</a> ${txt}`;
+  const items = [], L = (e, txt) => `<a href="#/experiments/${encodeURIComponent(e.id)}">${esc(e.record.config.name)}</a> ${txt}`;
   EXPS().filter(isDemoWorld).forEach(e => { const v = view(e);
     if (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval) items.push(["Approval pending", "warn", L(e, `won on the goal but needs a yes.${canAutoKeepA(e) ? ` If nobody answers within ${heldDays()} days, the autopilot keeps A.` : ""}`)]);
     else if (["STOP_HARM", "STOP_GUARDRAIL"].includes(v.kind)) items.push(["Harm alert", "neg", L(e, "was stopped: " + (v.kind === "STOP_HARM" ? "B was clearly worse." : "a guardrail was broken.") + " Its leads are back on A.")]);
     else if (v.kind === "HALT_SRM") items.push(["Split alert", "neg", L(e, "was halted: the split or the log is broken, so nothing can be trusted.")]);
     else if (v.running && v.day >= v.win - 1 && v.day < v.win) items.push(["Ending soon", "run", L(e, `reaches its final call on day ${v.win}.`)]);
     else if (v.running && v.cur && v.cur.z <= -1.96) items.push(["Watch", "warn", L(e, "looks worse so far. It stops only if it crosses the strict daily harm bar.")]);
-    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, `fell clearly below the held-back A after the promotion. Roll it back from Live Experiments (${(e.record.tails || {}).auto_rollback ? "the autopilot's rollback is off" : "a person approved this win, so a person rolls it back"}).`)]);
+    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, `fell clearly below the held-back A after the promotion. Roll it back from its page (${(e.record.tails || {}).auto_rollback ? "the autopilot's rollback is off" : "a person approved this win, so a person rolls it back"}).`)]);
     else if (v.holdback && !v.holdback.done) items.push(["Holdback", "run", L(e, `is promoted; ${pct(v.holdback.all.share, 0)} of leads stay on A: day ${v.holdback.day} of ${v.holdback.all.days}.`)]);
   });
   DYN.drafts.forEach(d => items.push(["Draft", "plain", `<a href="#/new" data-open-draft="${esc(d.id)}">${esc(d.name)}</a> was saved but not launched.`]));
@@ -102,12 +102,12 @@ ROUTES.overview = (el) => {
   const sugg = (C.suggestions || []).filter(c => !c.disabled && !c.from_history && c.expected_pp).sort((a, b) => (!!b.variant - !!a.variant) || priority(b).score - priority(a).score)[0];   // an idea with a ready prompt edit starts in one click
   const scoreN = t.win + t.stop + t.inc + t.halted + t.held;
   el.innerHTML = head("Overview", "What is running, what needs you, and what Picky decided.", `${clockButtons()}<a class="btn" href="#/import">Import results</a><a class="btn primary" href="#/new">New experiment</a>`) + autopilotStrip() +
-    `<div class="grid g4 tiles">${tile("Running tests", t.running, "live now")}${tile("Waiting for approval", t.held, t.held ? "needs a yes" : "nothing waiting", t.held ? "warn" : "")}${tile("Harm alerts", t.alerts, "stopped or halted", t.alerts ? "neg" : "")}${tile("Completed this month", t.month, "in this demo")}</div>
+    `<div class="grid g3 tiles">${tile("Running tests", t.running, "live now")}${tile("Harm alerts", t.alerts, "stopped or halted", t.alerts ? "neg" : "")}${tile("Completed this month", t.month, "in this demo")}</div>
     ${att.length ? `<div class="card attn"><h2>Needs attention</h2><div class="attn-list">${att.map(([k, c, txt]) => `<div class="attn-row"><span>${pill(k, c)}</span><span>${txt}</span></div>`).join("")}</div></div>` : ""}
     <h2 class="sec-title">Running tests</h2>
     ${live.length ? `<div class="grid g3">${live.map(runningCard).join("")}</div>` : `<div class="empty">No tests are running. <a href="#/new">Start a new experiment</a> or pick an idea from <a href="#/suggest">Suggest A/B Tests</a>.</div>`}
     <div class="grid g2" style="margin-top:16px">
-      <div class="card"><div class="card-k">Live prompt</div><div class="lp"><span class="ver">${esc(prod.live.id)}</span><div><b>${esc(prod.live.name)}</b><div class="note">${prod.live.time ? "since " + esc(fdate(prod.live.time)) : "as received"}${prod.live.expId ? ` · from <a href="#/report/${encodeURIComponent(prod.live.expId)}">${esc(prod.live.from)}</a>` : ""} ${info("Fingerprint " + prod.live.hash)}</div></div></div>
+      <div class="card"><div class="card-k">Live prompt</div><div class="lp"><span class="ver">${esc(prod.live.id)}</span><div><b>${esc(prod.live.name)}</b><div class="note">${prod.live.time ? "since " + esc(fdate(prod.live.time)) : "as received"}${prod.live.expId ? ` · from <a href="#/experiments/${encodeURIComponent(prod.live.expId)}">${esc(prod.live.from)}</a>` : ""} ${info("Fingerprint " + prod.live.hash)}</div></div></div>
         ${impact ? `<div class="impact"><span class="impact-v" style="color:${impact.rel > 0 ? "#167a70" : "var(--navy)"}">${sgn(impact.rel * 100, 1)}%</span><span>${esc(impact.goal)}${impact.lower ? " (lower is better)" : ""}<br><span class="note">at least ${sgn(impact.low * 100, 0)}% at the low end of the range ${info("Simulated, with a known injected effect; winners' lifts tend to run high. Gains of different tests are not added: each test compared its B with the base prompt.")}</span></span></div>` : `<p class="note" style="margin-top:12px">Business impact appears here once a winner is promoted.</p>`}
         <div class="actions" style="margin-top:12px"><a class="btn sm" href="#/library">Prompt Library</a></div></div>
       <div class="card"><div class="card-k">Scorecard <span class="note">${scoreN} decided tests (${nPast} are history samples)</span></div>${scoreBar(t)}<p class="note" style="margin-top:8px">Only tests played in this demo change the live prompt.</p></div></div>
@@ -118,7 +118,6 @@ ROUTES.overview = (el) => {
       <div>${fold("Traffic split today", trafficMap(mapList), `${mapList.length} running`)}${fold("Recent decisions", ev.length ? `<div class="ledger">${ev.map(x => `<div class="e"><span class="note">${esc(fdt(x.ts))}</span><span><b>${esc(x.type)}</b> · ${esc(x.exp)}<br><span class="muted">${esc(x.text.length > 140 ? x.text.slice(0, 137) + "..." : x.text)}</span></span></div>`).join("")}</div><div class="actions" style="margin-top:8px"><a class="btn sm" href="#/log">Open Decision Log</a></div>` : `<p class="note">No decisions yet in this demo. Press Next day or Play.</p>`, ev.length ? `${ev.length} latest` : "")}</div>
       ${sugg ? `<div class="card sugg1"><div class="card-k">Top suggestion</div><p><b>${esc(sugg.title)}</b></p><p class="note">${esc(sugg.hypothesis.length > 150 ? sugg.hypothesis.slice(0, 147) + "..." : sugg.hypothesis)}</p><div class="actions" style="margin-top:8px"><button class="btn primary sm" id="top-create">Create experiment</button><a class="btn sm" href="#/suggest">All ideas</a></div></div>` : ""}</div>`;
   bindClock(el);
-  $$("[data-adv]", el).forEach(b => b.onclick = () => { const e = byId(b.dataset.adv); if (advance(e)) refresh(); });
   $$("[data-open-draft]", el).forEach(a => a.onclick = () => { const d = DYN.drafts.find(x => x.id === a.dataset.openDraft); if (d) WZ = { ...wzDefaults(), ...JSON.parse(JSON.stringify(d.w)) }; });
   const tc = $("#top-create"); if (tc) tc.onclick = () => createFrom(sugg);
   if (pr) aaChart($("#aa-chart"), pr.final_look, pr.naive);

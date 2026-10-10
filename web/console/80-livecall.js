@@ -5,7 +5,7 @@
    (canary/livecall.py, canary/livestats.py); this screen only shows them. The Sarvam browser SDK is loaded the first time a call starts. */
 (() => {
   if (!window.CANARY_LIVECALL) return;
-  NAV.splice(3, 0, ["livecall", "Live call test"]);                       // right after Live Experiments
+  NAV.splice(3, 0, ["livecall", "Live call test"]);                       // right after All experiments
 
   const mmss = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
   const lcPts = x => (x >= 0 ? "+" : "−") + Math.abs(Math.round(x * 100)) + " points";

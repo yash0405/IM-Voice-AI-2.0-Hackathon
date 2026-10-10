@@ -74,7 +74,7 @@ ROUTES.import = (el) => {
     try {
       const r = await fetch("/api/decide", { method: "POST", body: JSON.stringify({ files, opts }) }), j = await r.json(); if (j.error) throw new Error(j.error);
       const id = "files-" + Date.now(); const exp = { id, kind: "files", preset: "Results files", hypothesis: `Results supplied as ${IM.files.map(f => f.name).join(", ")}.`, truth: null, record: j.record, start_day: 9999 };
-      DYN.launched.unshift(exp); DYN.dyn[id] = { day: 9999, paused: false, approval: null, rolledBack: false, manualStop: false, learning: "" }; saveDyn(); toast(`Decision: ${KIND_LABEL[j.record.result.kind] || j.record.result.kind}`); go("report", id);
+      DYN.launched.unshift(exp); DYN.dyn[id] = { day: 9999, paused: false, approval: null, rolledBack: false, manualStop: false, learning: "" }; saveDyn(); toast(`Decision: ${KIND_LABEL[j.record.result.kind] || j.record.result.kind}`); go("experiments", id);
     } catch (e) { err.textContent = String(e.message || e); $("#i-go").disabled = false; $("#i-go").textContent = "Decide"; }
   };
 };

@@ -1,19 +1,5 @@
-/* History: every finished test with its frozen report. Report: the one-page final report for a test. */
+/* The one-page final report of a test (print view), and Clone. The list of tests is All experiments (35-experiments.js). */
 
-const HFILT = DYN.ui.hist || { q: "", dec: "all", metric: "all", seg: "all", sort: "start", dir: -1, page: 0 };
-const PAGE = 8;
-function guardWord(v) { const g = guardOverall(v); return [g.short, g.cls]; }
-const DEC_GROUP = { PROMOTE: "promoted", ROLLED_BACK: "promoted", STOP_HARM: "stopped", LOSS: "stopped", STOP_GUARDRAIL: "stopped", STOPPED_MANUAL: "stopped", INCONCLUSIVE: "inconclusive", REJECTED: "inconclusive", HOLD_FOR_APPROVAL: "held", HALT_SRM: "halted" };
-function histRows() {
-  return EXPS().map(e => ({ e, v: view(e) })).filter(({ v }) => v.ended).filter(({ e, v }) => {
-    const q = HFILT.q.trim().toLowerCase();
-    if (q && !(e.record.config.name + " " + (e.hypothesis || "") + " " + (dyn(e).learning || "") + " " + (e.preset || "")).toLowerCase().includes(q)) return false;
-    if (HFILT.dec !== "all" && DEC_GROUP[v.kind] !== HFILT.dec) return false;
-    if (HFILT.metric !== "all" && e.record.config.primary_goal !== HFILT.metric) return false;
-    if (HFILT.seg !== "all" && segDescribe(e.record.config.segment) !== HFILT.seg) return false;
-    return true;
-  });
-}
 /** Prompt A and prompt B of a test in full, where they are known (a results file carries no prompts). */
 function promptsOf(e) {
   if (e.kind === "files") return null;
@@ -35,44 +21,14 @@ function cloneOf(e) {
     preset: e.truth && e.truth.effect_rel != null ? (e.truth.effect_rel > 0 ? "win" : e.truth.effect_rel < 0 ? "worse" : "flat") : "win" });
 }
 
-ROUTES.history = (el) => {
-  const all = histRows(), key = { start: x => x.e.record.config.start, lift: x => x.v.cur ? x.v.cur.diff : 0, name: x => x.e.record.config.name, dec: x => x.v.kind };
-  all.sort((a, b) => { const A = key[HFILT.sort](a), B = key[HFILT.sort](b); return (A < B ? -1 : A > B ? 1 : 0) * HFILT.dir; });
-  const pages = Math.max(1, Math.ceil(all.length / PAGE)); HFILT.page = Math.min(HFILT.page, pages - 1);
-  const rows = all.slice(HFILT.page * PAGE, HFILT.page * PAGE + PAGE), metrics = [...new Set(EXPS().map(e => e.record.config.primary_goal))];
-  const th = (k, label, cls = "") => `<th class="${cls}" aria-sort="${HFILT.sort === k ? (HFILT.dir > 0 ? "ascending" : "descending") : "none"}"><button data-sort="${k}">${label}${HFILT.sort === k ? (HFILT.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`;
-  el.innerHTML = head("History", "Every finished test, with its frozen report.", `<button class="btn" id="h-csv">Export CSV</button>`) +
-    `<div class="filters"><div class="field grow"><label for="h-q">Search</label><input type="search" id="h-q" value="${esc(HFILT.q)}" placeholder="Name, change or learning"></div>
-      <div class="field"><label for="h-dec">Decision</label><select id="h-dec">${[["all", "All decisions"], ["promoted", "Promoted"], ["stopped", "Stopped"], ["inconclusive", "Inconclusive"], ["held", "Held for approval"], ["halted", "Halted (broken test)"]].map(([k, n]) => `<option value="${k}" ${HFILT.dec === k ? "selected" : ""}>${n}</option>`).join("")}</select></div>
-      <details class="more-f" ${HFILT.metric !== "all" || HFILT.seg !== "all" ? "open" : ""}><summary>More filters</summary><div class="more-f-body"><div class="field"><label for="h-met">Metric</label><select id="h-met"><option value="all">All metrics</option>${metrics.map(m => `<option value="${esc(m)}" ${HFILT.metric === m ? "selected" : ""}>${esc(goalName(EXPS().find(e => e.record.config.primary_goal === m).record.config))}</option>`).join("")}</select></div>
-      <div class="field"><label for="h-seg">Segment</label><select id="h-seg"><option value="all">All segments</option>${[...new Set(EXPS().map(e => segDescribe(e.record.config.segment)))].map(x => `<option value="${esc(x)}" ${HFILT.seg === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div></div></details></div>
-    ${rows.length ? `<div class="tbl-wrap"><table><thead><tr>${th("name", "Test")}${th("start", "Dates")}${th("lift", "Primary lift (range)", "num")}${th("dec", "Decision")}<th>Guardrail</th>${rows.some(x => dyn(x.e).learning) ? "<th>Learning</th>" : ""}<th></th></tr></thead><tbody>${rows.map(({ e, v }) => { const c = v.config, g = guardWord(v), cur = v.cur, lr = cur && liftRange(cur, c), change = e.kind === "files" ? "Results from " + ((e.record.source && e.record.source.files) || []).join(", ") : ((e.record.variants.B || {}).name) || "";
-      return `<tr class="click" data-rep="${esc(e.id)}"><td title="${esc(change)}"><b><a href="#/report/${encodeURIComponent(e.id)}">${esc(c.name)}</a></b> <span class="tag">${esc(e.kind === "files" ? "file" : "simulated")}</span>${segRules(c.segment).length ? `<div style="margin-top:2px">${segChips(c.segment)}</div>` : ""}</td><td style="white-space:nowrap">${fdate(c.start)}<div class="note">${v.ld} day${v.ld === 1 ? "" : "s"}</div></td>
-        <td class="num">${cur ? `<b>${fmtD(cur.diff, c)}</b><div class="note">${c.metrics ? rangeD(lr.lo, lr.hi, c) : `${sgn(lr.lo * 100, 1)} to ${sgn(lr.hi * 100, 1)}`}${lr.interim ? " (interim)" : ""}</div>` : "-"}</td>
-        <td>${pill(KIND_LABEL[v.kind] || v.kind, KIND_CLASS[v.kind])}</td><td>${pill(g[0], g[1])}</td>${rows.some(x => dyn(x.e).learning) ? `<td class="note" style="max-width:160px">${esc(dyn(e).learning || "")}</td>` : ""}<td><button class="btn sm" data-clone="${esc(e.id)}">Clone</button></td></tr>`; }).join("")}</tbody></table></div>
-      <div class="pager"><span>${all.length} test${all.length === 1 ? "" : "s"}${HFILT.q || HFILT.dec !== "all" || HFILT.metric !== "all" || HFILT.seg !== "all" ? " match" : ""}</span><span><button class="btn sm" id="h-prev" ${HFILT.page ? "" : "disabled"}>Previous</button> Page ${HFILT.page + 1} of ${pages} <button class="btn sm" id="h-next" ${HFILT.page < pages - 1 ? "" : "disabled"}>Next</button></span></div>`
-      : `<div class="empty">No finished tests match. Clear the filters, or advance a running test to its last day.</div>`}`;
-  const save = () => { DYN.ui.hist = HFILT; saveDyn(); };
-  $("#h-q").oninput = ev => { HFILT.q = ev.target.value; HFILT.page = 0; save(); clearTimeout(window.__hq); window.__hq = setTimeout(() => { const pos = ev.target.selectionStart; route(); const n = $("#h-q"); n.focus(); n.setSelectionRange(pos, pos); }, 250); };
-  $("#h-dec").onchange = ev => { HFILT.dec = ev.target.value; HFILT.page = 0; save(); route(); };
-  $("#h-met").onchange = ev => { HFILT.metric = ev.target.value; HFILT.page = 0; save(); route(); };
-  $("#h-seg").onchange = ev => { HFILT.seg = ev.target.value; HFILT.page = 0; save(); route(); };
-  $$("[data-sort]", el).forEach(b => b.onclick = () => { const k = b.dataset.sort; HFILT.dir = HFILT.sort === k ? -HFILT.dir : (k === "name" ? 1 : -1); HFILT.sort = k; save(); route(); });
-  $$("[data-clone]", el).forEach(b => b.onclick = ev => { ev.stopPropagation(); cloneOf(byId(b.dataset.clone)); });
-  $$("tr[data-rep]", el).forEach(r => r.onclick = ev => { if (!ev.target.closest("a,button")) go("report", r.dataset.rep); });
-  const pv = $("#h-prev"), nx = $("#h-next"); if (pv) pv.onclick = () => { HFILT.page--; save(); route(); }; if (nx) nx.onclick = () => { HFILT.page++; save(); route(); };
-  const isAvg = v => primaryDef(v.config).type === "average";          // an average's lift is in its own unit, in the last two columns
-  $("#h-csv").onclick = () => download("canary_history.csv", toCsv(["name", "segment", "start", "days", "source", "change", "lift_pp", "range_low_pp", "range_high_pp", "decision", "guardrail", "learning", "lift_average", "average_unit"], all.map(({ e, v }) => [v.config.name, segDescribe(v.config.segment), v.config.start.slice(0, 10), v.ld, e.kind, (e.record.variants.B || {}).name, v.cur && !isAvg(v) ? (v.cur.diff * 100).toFixed(2) : "", v.cur && !isAvg(v) ? (liftRange(v.cur, v.config).lo * 100).toFixed(2) : "", v.cur && !isAvg(v) ? (liftRange(v.cur, v.config).hi * 100).toFixed(2) : "", KIND_LABEL[v.kind] || v.kind, guardWord(v)[0], dyn(e).learning || "", v.cur && isAvg(v) ? v.cur.diff.toFixed(3) : "", isAvg(v) ? metricUnit(primaryDef(v.config)) : ""])));
-};
-
 ROUTES.report = (el, id) => {
-  const e = byId(id); if (!e) { el.innerHTML = head("Report", "") + `<div class="empty">That test was not found. <a href="#/history">Back to History</a>.</div>`; return; }
+  const e = byId(id); if (!e) { el.innerHTML = head("Report", "") + `<div class="empty">That test was not found. <a href="#/experiments">See all experiments</a>.</div>`; return; }
   const v = view(e), c = v.config, rec = e.record, cur = v.cur;
-  if (!v.ended || !cur) { el.innerHTML = head(c.name, "The final report is written when the test ends.") + `<div class="empty">This test has not ended yet (${esc(v.status[0])}). <a href="#/live/${encodeURIComponent(e.id)}">Open it in Live Experiments</a>.</div>`; return; }
+  if (!v.ended || !cur) { el.innerHTML = head(c.name, "The final report is written when the test ends.") + `<div class="empty">This test has not ended yet (${esc(v.status[0])}). <a href="#/experiments/${encodeURIComponent(e.id)}">Open its page</a>.</div>`; return; }
   const ciA = armCI(cur, "A", c), ciB = armCI(cur, "B", c), lr = liftRange(cur, c), gl = guardList(v), goal = goalName(c), sec = secondaryList(v), pr = promptsOf(e), avg = primaryDef(c).type === "average";
   const ents = rec.ledger.concat(tailOf(rec, v.d));
   const sugg = ["slot options work", "longer intro hurts", "small effect: needs more leads", "call length is the catch", "broken tracking: rerun"];
-  el.innerHTML = head("Final report", "A frozen, one-page record of this test.", `<a class="btn" href="#/history">Back to History</a><button class="btn" id="r-clone">Clone and re-run</button><button class="btn" id="r-csv">Export CSV</button><button class="btn primary" onclick="print()">Print</button>`) +
+  el.innerHTML = head("Final report", "A frozen, one-page record of this test.", `<a class="btn" href="#/experiments/${encodeURIComponent(e.id)}">← Back to the test</a><button class="btn" id="r-clone">Clone and re-run</button><button class="btn" id="r-csv">Export CSV</button><button class="btn primary" onclick="print()">Print</button>`) +
     `<div class="report card"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:20px">${esc(c.name)}</h2>${pill(KIND_LABEL[v.kind] || v.kind, KIND_CLASS[v.kind])}</div>
       <p class="note">${fdate(c.start)} · ${v.ld} day${v.ld === 1 ? "" : "s"} · config v${c.version || 1} ${info("Locked config " + rec.config_hash)} · ${esc(e.kind === "files" ? "results supplied as files" : "simulated results")}</p>
       ${e.hypothesis ? `<p>${esc(e.hypothesis)}</p>` : ""}

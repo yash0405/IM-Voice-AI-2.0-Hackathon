@@ -1,4 +1,4 @@
-/* Live Experiments: results up to yesterday, day by day, then the engine's call. Follows the spec's "Live Experiment page" table. */
+/* A test's page (#/experiments/<id>): results up to yesterday, day by day, then the engine's call. Follows the spec's "Live Experiment page" table. */
 
 const DECISION_ROWS = [
   { k: ["PROMOTE"], goal: "B significantly better", guard: "OK", dec: "Promote B to 100%" },
@@ -9,6 +9,8 @@ const DECISION_ROWS = [
   { k: ["STOP_GUARDRAIL"], goal: "Any", guard: "Clearly broken", dec: "Stop B" },
   { k: ["HALT_SRM"], goal: "Test itself is broken", guard: "-", dec: "Halt: fix the split or the log, rerun" }];
 
+/** The top of a test's page: back to the list, and the page's actions (the demo clock, Skip to the end). */
+const backHead = acts => `<div class="page-head"><div><a class="backlink" href="#/experiments">← All experiments</a></div><div class="actions">${acts}</div></div>`;
 function logAction(e, type, text) { const d = dyn(e); d.console = d.console || []; d.console.push({ ts: nowTs(e), type, text }); }
 
 function guardTile(item) {
@@ -77,15 +79,10 @@ function dayStrip(v) {
     <div class="dstrip-legend"><span><i class="pos"></i>no harm</span><span><i class="warn"></i>looks worse</span><span><i class="neg"></i>clearly worse: stopped</span><span><i class="fut"></i>to come</span><span>⚑ ${c.rule_set === "final_look" ? "final call" : "last day"} on day ${v.win}</span></div>`;
 }
 
-ROUTES.live = (el, arg) => {
-  const exps = EXPS(), vs = exps.map(e => [e, view(e)]);
-  const order = [...vs.filter(([e, v]) => v.running || v.scheduled), ...vs.filter(([e, v]) => v.d.paused && !v.ended), ...vs.filter(([e, v]) => v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval), ...vs.filter(([e, v]) => v.ended)];
-  const uniq = [...new Map(order.map(x => [x[0].id, x])).values()];
-  const pick = arg ? byId(arg) : (uniq[0] || [])[0];
-  if (!pick) { el.innerHTML = head("Live Experiments", "Results up to yesterday, and the day-by-day decision.") + `<div class="empty">Nothing here yet. <a href="#/new">Start a new experiment</a>.</div>`; return; }
+function expDetail(el, arg) {
+  const pick = byId(arg);
+  if (!pick) { el.innerHTML = backHead("") + `<div class="empty">That test was not found. <a href="#/experiments">See all experiments</a>.</div>`; return; }
   const v = view(pick), c = v.config, rec = pick.record, cur = v.cur, d = v.d;
-  const groups = [["Running", uniq.filter(([e, x]) => x.running || x.scheduled || x.d.paused && !x.ended)], ["Waiting for a person", uniq.filter(([e, x]) => x.kind === "HOLD_FOR_APPROVAL" && !x.d.approval)], ["Finished", uniq.filter(([e, x]) => x.ended && !(x.kind === "HOLD_FOR_APPROVAL" && !x.d.approval))]];
-  const sel = `<select id="live-pick" aria-label="Choose an experiment">${groups.map(([g, list]) => list.length ? `<optgroup label="${g}">${list.map(([e, x]) => `<option value="${esc(e.id)}" ${e.id === pick.id ? "selected" : ""}>${esc(e.record.config.name)} — ${esc(x.status[0])}</option>`).join("")}</optgroup>` : "").join("")}</select>`;
   const canApprove = v.kind === "HOLD_FOR_APPROVAL" && !d.approval, canRoll = v.kind === "PROMOTE" && !d.rolledBack && v.decided;
   const segBits = rec.result.segment_check ? ` · ${pct(rec.result.segment_check.share_of_traffic, 0)} of traffic ${info(segMatchLine(rec))}` : "";
   const meta = `${v.scheduled ? `Scheduled for ${fdate(pick.sched_date || c.start)}` : v.ended ? `${KIND_LABEL[v.kind] || v.kind} on day ${v.ld}` : d.paused ? `Paused on day ${v.day}` : `Day ${v.day} of ${v.win}`} · ${pct(c.share_b, 0)} to B · ${esc(segRules(c.segment).length ? segDescribe(c.segment) : "all leads")}${segBits} · config v${c.version || 1} ${info(`Locked config ${rec.config_hash}; started ${fdate(c.start)}; ${c.rule_set === "final_look" ? "one winner call at the end, strict daily harm check" : "early promote and early stop"}`)}`;
@@ -102,8 +99,8 @@ ROUTES.live = (el, arg) => {
       : v.kind === "HOLD_FOR_APPROVAL" && canAutoKeepA(pick) ? ` If nobody answers within ${heldDays()} days (${Math.max(0, heldDays() - (d.waited || 0))} left), the autopilot keeps A.` : "";
     banner = `<div class="banner ${cls}" role="status"><div><b>${esc(KIND_LABEL[v.kind] || v.kind)}.</b> ${esc(v.kind === "STOPPED_MANUAL" ? "A person stopped the test." : v.res.reason)}${extra}</div></div>`;
   } else banner = `<div class="banner" role="status"><div><b>Too early to call.</b> ${c.rule_set === "final_look" ? `Winner call on day ${v.win}; a clearly worse B is stopped on any day.` : `The engine decides on the day the evidence crosses a line, by day ${v.win}.`} Do not act on early numbers.</div></div>`;
-  const pageActs = `${clockButtons()}${v.running ? `<button class="btn" id="a-adv">Advance this test 1 day</button><button class="btn" id="a-end">Skip to the end</button>` : v.ended ? `<a class="btn primary" href="#/report/${encodeURIComponent(pick.id)}">View final report</a>` : ""}`;
-  if (!cur) { el.innerHTML = head("Live Experiments", "Results up to yesterday, and the day-by-day decision.", pageActs) + `<div class="filters"><div class="field grow"><label for="live-pick">Experiment</label>${sel}</div></div>` + replayNote + hdr + (v.scheduled ? `<div class="banner"><div><b>Scheduled.</b> The setup is locked (version ${c.version || 1}). Nothing runs until ${esc(fdate(pick.sched_date || c.start))}. In this demo press Start now to play it.</div></div>` : banner) + `<div class="empty">${v.scheduled ? "No results yet: the test has not started." : 'No results yet. Press "Next day".'}</div>`; bindClock(el); wireLive(el, pick); return; }
+  const pageActs = `${clockButtons()}${v.running ? `<button class="btn" id="a-end">Skip to the end</button>` : ""}`;
+  if (!cur) { el.innerHTML = backHead(pageActs) + replayNote + hdr + (v.scheduled ? `<div class="banner"><div><b>Scheduled.</b> The setup is locked (version ${c.version || 1}). Nothing runs until ${esc(fdate(pick.sched_date || c.start))}. In this demo press Start now to play it.</div></div>` : banner) + `<div class="empty">${v.scheduled ? "No results yet: the test has not started." : 'No results yet. Press "Next day".'}</div>`; bindClock(el); wireLive(el, pick); return; }
   const ciA = armCI(cur, "A", c), ciB = armCI(cur, "B", c), goal = goalName(c), sec = secondaryList(v), lr = liftRange(cur, c), gl = guardList(v);
   const liftCol = !v.decided || fmtD(cur.diff, c) === fmtD(0, c) ? "var(--off)" : isBetter(cur.diff, c) ? "#167a70" : "#b23b3b";
   const tiles = `<div class="grid g4" style="margin-bottom:16px">
@@ -119,8 +116,7 @@ ROUTES.live = (el, arg) => {
   const evs = eventsFor(pick).sort((a, b) => a.ts < b.ts ? -1 : 1);
   const ledger = `<div class="card" id="record"><div class="sec-row"><div><h2>Decision record</h2><div class="sub">${evs.length} events with time, reason and numbers; hash-chained, so an edited entry is detected.</div></div><button class="btn sm" id="a-verify">Verify record in this browser</button></div><div id="verify-out" class="note" style="margin-top:8px"></div>
     ${fold("Show the events", `<div class="ledger">${evs.map(x => `<div class="e"><span class="note">${esc(fdt(x.ts))}</span><span><b>${esc(x.type)}</b>${x.hash ? ` <span class="mono muted">${esc(x.hash)}</span>` : ""}<br><span class="muted">${esc(x.text)}</span></span></div>`).join("")}</div>`)}</div>`;
-  el.innerHTML = head("Live Experiments", "Results up to yesterday, and the day-by-day decision.", pageActs) +
-    `<div class="filters"><div class="field grow"><label for="live-pick">Experiment</label>${sel}</div></div>` + replayNote + hdr + banner +
+  el.innerHTML = backHead(pageActs) + replayNote + hdr + (v.ended ? finalReportCard(pick, v) : banner) +
     `<div class="card" style="margin-bottom:16px"><div class="sec-row"><h2>Day by day</h2><span class="note">${v.ended ? `decided on day ${v.ld}` : `${nf(needed)} more leads needed for the planned lift`} ${info(`Leads needed: ${nf(needN)} (the ${v.win}-day window holds ${nf(rec.design.n_max)}); ${nf(cur.n)} so far. Planned to detect ${c.metrics ? `${fmtD(c.primary_direction === "lower" ? -c.mde : c.mde, c)} from ${fmtP(c.baseline, c)}` : `a ${+(c.mde * 100).toFixed(1)}-point lift from ${pct(c.baseline, 0)}`} with at least ${pct(c.power, 0)} chance.`)}</span></div>${dayStrip(v)}</div>` + tiles +
     `<div class="card" style="margin-bottom:16px"><div class="sec-row"><div><h2 title="Cumulative goal rate for A and B by day. Shaded bands are 95% ranges.">Daily trend</h2><div class="sub">${esc(goal)}${c.metrics ? "" : " rate"}, A against B, with shaded 95% ranges</div></div><button class="btn sm" id="a-csv">Export CSV</button></div>
       <div class="legend"><span><i style="border-color:var(--a)"></i>A (today's prompt)</span><span><i style="border-color:var(--b)"></i>B (new prompt)</span><span><i class="band" style="background:var(--ink-2)"></i>95% range</span></div><div id="trend"></div></div>
@@ -133,17 +129,16 @@ ROUTES.live = (el, arg) => {
   const draw = () => trendChart($("#trend"), v.rows, v.win, { finalDay: fd, c });
   draw(); window.__redraw = draw;
   bindClock(el); wireLive(el, pick);
-};
-window.addEventListener("resize", () => { if (CUR.name === "live" && window.__redraw) window.__redraw(); });
+}
+window.addEventListener("resize", () => { if (CUR.name === "experiments" && CUR.arg && window.__redraw) window.__redraw(); });
 
 function wireLive(el, e) {
   const v = view(e), d = dyn(e), $1 = s => $(s, el);
-  const pickEl = $1("#live-pick"); if (pickEl) pickEl.onchange = () => go("live", pickEl.value);
+  const cl = $1("#a-clone"); if (cl) cl.onclick = () => cloneOf(e);
   const a = (id, fn) => { const b = $1(id); if (b) b.onclick = fn; };
   a("#a-start", () => { d.started = true; logAction(e, "Started", `Started on the scheduled date (a console action: in this demo a person pressed Start now).`); saveDyn(); route(); });
   const playHold = (all) => { const H = (view(e).holdback || {}).all; if (!H) return; do { const r = holdStep(e); if (!r.played) break; if (r.msg) toast(r.msg); } while (all && !dyn(e).rolledBack && (d.hold || 0) < H.days && !H.rows[d.hold - 1].alert); saveDyn(); refresh(); };
   a("#a-hold", () => playHold(false)); a("#a-hold-all", () => playHold(true));
-  a("#a-adv", () => { advance(e); route(); });
   a("#a-end", () => { d.day = view(e).ld; saveDyn(); toast(`${e.record.config.name}: ${KIND_LABEL[view(e).kind] || view(e).kind}`); route(); });
   a("#a-pause", () => { d.paused = !d.paused; logAction(e, d.paused ? "Paused" : "Resumed", `${d.paused ? "Paused" : "Resumed"} by a person on day ${v.day} (a console action; the engine is not involved).`); saveDyn(); route(); });
   a("#a-stop", () => { if (!confirm("Stop this test now? B's leads go back to A and the test ends.")) return; d.manualStop = true; logAction(e, "Stopped", `Stopped by a person on day ${v.day}. B's leads go back to A (a console action).`); saveDyn(); route(); });
