@@ -66,7 +66,7 @@ def _upstream(url: str, headers: dict, timeout: float = 20.0):
 def signed_url_request(org: str, ws: str, app: str, query: dict) -> tuple[int, str, bytes]:
     key = livecall.voice_api_key()
     if not key:
-        return 503, "application/json", json.dumps({"error": "SARVAM_VOICE_API_KEY is not set (see LIVE_CALL_TEST.md)"}).encode()
+        return 503, "application/json", json.dumps({"error": "SARVAM_VOICE_API_KEY is not set (see README.md)"}).encode()
     q = urllib.parse.urlencode({k: v for k, v in query.items() if k in ("interaction_type", "version") and v})
     url = f"{RUNTIME_BASE}orgs/{org}/workspaces/{ws}/apps/{app}/url" + (f"?{q}" if q else "")
     return _upstream(url, {"X-API-Key": key})
@@ -136,7 +136,7 @@ class H(console_server.H):
         pw = SHARE["password"]
         path = self.path.split("?")[0]
         if not pw:
-            self._send(403, "text/plain", b"this server only answers requests addressed to localhost. To share it with the team, start it with CANARY_PASSWORD set (see LIVE_CALL_TEST.md).")
+            self._send(403, "text/plain", b"this server only answers requests addressed to localhost. To share it with the team, start it with CANARY_PASSWORD set (see README.md).")
             return False
         if path == "/healthz":
             self._json({"ok": True})
@@ -334,7 +334,7 @@ def serve(port: int = DEFAULT_PORT, host: str = "127.0.0.1"):
     threading.Thread(target=console_server.console_live, daemon=True).start()      # warm the console data
     con = livecall.connection()
     print(f"Picky (console + live call test) on http://{host}:{port}   (Ctrl+C to stop)")
-    print(f"  Sarvam Voice Agents key: {'set' if con['key_set'] else 'NOT set (add SARVAM_VOICE_API_KEY to .env; see LIVE_CALL_TEST.md)'}")
+    print(f"  Sarvam Voice Agents key: {'set' if con['key_set'] else 'NOT set (add SARVAM_VOICE_API_KEY to .env; see README.md)'}")
     if pw:
         print("  Team access ON: visitors through a tunnel or a host name need the password (any user name); Label Lab, audio and transcripts stay on this computer.")
         print("  Anyone with the password can start billable Sarvam calls through this server. Stop it when the session is over.")

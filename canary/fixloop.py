@@ -9,7 +9,7 @@
   3. pre-check prescreen.py      paid, opt-in: simulated buyers hear prompt A and B
   4. prove     the A/B engine decides. Mining proposes, the engine disposes.
 
-What changed when the real prompt arrived (all stated on the page and in QA_REPORT.md):
+What changed when the real prompt arrived (all stated on the page and in docs/QA_REPORT.md):
   * Our earlier stand-in prompt was wrong about VANI: the call is INBOUND (the buyer called a seller, the call was redirected), it collects
     quantity, specification, name and city/state (no timeline), and it FORBIDS reading values back (No-Echo rule).
   * So "did not read the details back", our most common machine-labelled issue, is not a failure. It is retired from the ranking.

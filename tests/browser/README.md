@@ -1,17 +1,14 @@
 # Browser tests (optional)
 
-They drive the real dashboard in headless Chrome: every screen, the spec's demo plan (advance each test day by day, approve a held one, roll back), the wizard, the file import and phone widths.
+They drive the real dashboard in headless Chrome. Chrome is expected at `/usr/bin/google-chrome`; install the driver once with `npm install puppeteer-core`.
 
 ```bash
-npm install puppeteer-core                     # once; Chrome is expected at /usr/bin/google-chrome
-node tests/browser/console_flow.mjs  "file://$PWD/dist/canary_demo.html"     # offline page
-node tests/browser/console_mobile.mjs "file://$PWD/dist/canary_demo.html"
-./start.sh                                                                  # then, with the live server on port 8801: python -m canary serve --port 8801
-node tests/browser/console_live.mjs                                          # new experiment, pasted prompt, file import
-node tests/browser/store_e2e.mjs "$(command -v python3)"                       # history database: two browsers, a restart, a reset (starts its own server on port 8797, throw-away database)
+node tests/browser/autopilot_journey.mjs "file://$PWD/dist/canary_demo.html"   # Play, autopilot, record, wizard, phone widths
+node tests/browser/all_experiments.mjs  "file://$PWD/dist/canary_demo.html"   # All experiments list, filters, a test's page, drafts
+node tests/browser/console_mobile.mjs   "file://$PWD/dist/canary_demo.html"   # phone widths
+node tests/browser/new_experiment_e2e.mjs "file://$PWD/dist/canary_demo.html" /tmp/shots # the 6-step New Experiment wizard
+node tests/browser/plan_units.cjs                                               # duration and metric maths (no browser)
+node tests/browser/store_e2e.mjs "$(command -v python3)"                        # history database: two browsers, a restart, a reset (own server, port 8797)
+python -m canary serve --port 8853 & node tests/browser/file_metrics.mjs http://127.0.0.1:8853/   # custom metrics from the data file's columns
 ```
-Screenshots go to `/tmp/canary_shots`. The Python tests (`python -m unittest discover -s tests`) do not need any of this.
-
-`live_flow.mjs` tests the "Live call test" screen inside the console (port chosen automatically) against `mock_sarvam.mjs`, a stand-in for Sarvam's voice runtime that follows the SDK source: `npm install puppeteer-core ws; PY=/path/to/python node tests/browser/live_flow.mjs`. Screenshots go to `$SHOTS` (default `/tmp/canary_live_shots`).
-
-`AS_TEAM_VISITOR=1 node tests/browser/live_flow.mjs` runs the same flow as a teammate behind a tunnel (team password on, requests treated as remote). `TUNNEL_URL=https://... TUNNEL_PASSWORD=... node tests/browser/tunnel_access.mjs` checks a running public link: password wall, every screen, Label Lab/audio/transcripts not reachable.
+The Python tests (`python -m unittest discover -s tests`) do not need any of this.

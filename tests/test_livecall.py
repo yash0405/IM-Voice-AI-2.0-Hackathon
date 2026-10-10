@@ -468,14 +468,14 @@ class Server(Env):
         self.assertTrue(res["all_ok"], res)
         self.assertTrue(all(s["path"].endswith("/url?interaction_type=call&version=1") or s["path"].endswith("/url?interaction_type=call&version=2") for s in self.seen))
 
-    def test_the_live_server_is_the_console_plus_one_screen(self):
+    def test_the_live_server_is_the_console(self):
         code, page = self.req("/")
         self.assertEqual(code, 200)
         self.assertIn(b"window.CANARY_LIVECALL=true", page)                          # the screen and its menu entry switch on only here
         self.assertIn(b'<script src="console.js">', page)                            # it is the normal console page
         code, js = self.req("/console.js")
         self.assertEqual(code, 200)
-        self.assertIn(b"ROUTES.livecall", js)
+        self.assertNotIn(b"ROUTES.livecall", js)                                     # the Live call screen is off the menu and the routes
         self.assertIn(b"ROUTES.overview", js)                                        # main's screens are all still there
         code, body = self.req("/api/console")                                        # and main's own data endpoint answers
         self.assertEqual(code, 200)

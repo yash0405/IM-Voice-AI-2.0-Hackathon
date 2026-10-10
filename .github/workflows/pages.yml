@@ -1,12 +1,11 @@
 name: Deploy app
 
-# Every push to any branch rebuilds the app and publishes it on GitHub Pages:
-#   https://<owner>.github.io/<repo>/            the branch pushed most recently
-#   https://<owner>.github.io/<repo>/<branch>/   each branch
-# The page is a password gate; the app (Python engine, data, UI) is AES-encrypted with the CANARY_PASSWORD secret and runs in the browser.
+# Every push to main rebuilds the app and publishes it on GitHub Pages: https://<owner>.github.io/<repo>/
+# The page is open to everyone (no password); the app (Python engine, data, UI) runs in the browser with Pyodide.
 on:
   push:
-    branches-ignore: [gh-pages]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -23,10 +22,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -q cryptography
-      - name: Build the encrypted app
+      - name: Build the app
         env:
-          CANARY_PASSWORD: ${{ secrets.CANARY_PASSWORD }}
           BRANCH: ${{ github.ref_name }}
         run: |
           slug="$(printf '%s' "$BRANCH" | tr '/' '-' | tr -cd 'A-Za-z0-9._-')"

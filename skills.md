@@ -27,7 +27,7 @@
 Python 3 (numpy, scipy, jinja2, sqlite3, standard-library HTTP server); plain JavaScript with two vendored libraries (Chart.js 4.4.4 for charts, jsdiff 5.2.0 for the prompt diff) and the browser's Web Crypto for the record check, all inlined so the page works offline; Sarvam Saaras (speech-to-text), Sarvam-105B (call tagging), Bulbul (voice), Sarvam Voice Agents and its browser SDK (live calls); Pyodide + GitHub Pages for the hosted copy; poppler `pdftotext` to extract the prompt; Chrome headless + puppeteer-core for browser tests; `unittest` (304 tests, a fake Sarvam client, no credits); statsmodels and GrowthBook `gbstats` as an outside referee for the statistics.
 
 ## Reproduce
-`./run.sh`. Everything in `QA_REPORT.md` is regenerated from code with fixed seeds.
+`./run.sh`. Everything in `docs/QA_REPORT.md` is regenerated from code with fixed seeds.
 
 ## Skill evaluation (what we measured)
 `skill/ab-test-decision/` was tested the way skills should be: realistic requests, run twice by independent assistants (with the skill, without it), each answer graded against fixed statements (`evals/evals.json`, results in `evals/results.json`).

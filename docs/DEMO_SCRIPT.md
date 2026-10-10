@@ -1,6 +1,6 @@
 # Picky - Test it, pick it, ship it: 5-minute demo script and hard questions
 
-Run `./live.sh` and open http://127.0.0.1:8790 (the whole console plus **Live call test**). `dist/canary_demo.html` works offline for everything except the voice screen. One slide: `dist/one_slide.html`.
+Open the live app, https://yash0405.github.io/IM-Voice-AI-2.0-Hackathon/ (open to everyone), or run `./start.sh`. `dist/canary_demo.html` works offline. One slide: `dist/one_slide.html`.
 
 **One sentence.** Picky tries a change to VANI's prompt on a small, fair share of real calls, decides with statistics that peeking cannot fool, and ships or rolls back by itself, so a person only steps in when a business trade-off needs a yes.
 
@@ -8,7 +8,7 @@ Run `./live.sh` and open http://127.0.0.1:8790 (the whole console plus **Live ca
 
 ## The 5 to 6 minutes
 
-Before recording: **Settings → Reset the demo** (six tests on day 2). In Sarvam, have the agent with version 1 (prompt A) and version 2 (prompt B) open in a second tab.
+Before recording: **Settings → Reset the demo** (six tests on day 2).
 
 **0:00 - The problem (30 s).** **Overview**. "A prompt edit can quietly cut leads, and a good edit can never be proven. Picky splits callers fairly between today's prompt (A) and the new one (B) and decides once, by rules locked before the test." Point at the **Autopilot** line: stops a worse B the same day, ships a winner with a 5% double-check, rolls back if B slips, keeps A if a held win gets no answer.
 
@@ -18,13 +18,12 @@ Before recording: **Settings → Reset the demo** (six tests on day 2). In Sarva
 
 **3:00 - The autopilot (45 s).** *Promise the seller's details right after the call*: "it won the test, then slipped after rollout; the 5% holdback caught it and the autopilot rolled it back with no person involved." Press **Verify record**: chain intact. *WhatsApp details earlier*: "a win with 12% longer calls needs a yes; nobody answered in 2 days, so the autopilot kept A, the safe choice." **Decision Log**: both actions, signed "Picky autopilot".
 
-**3:45 - Hear it (60 s).** **Live call test**: the patch, the threshold fixed before call 1 ("5 per prompt: catches a big gap; a false winner 1.1% of the time"), **Lock**. Make one call (in this page, or in Sarvam's test panel and logged here with "Talk somewhere else, log it here"), give the signal: "the result stays locked until every prompt has its 5 calls, so nobody stops on a lucky streak." Show a released result: the winner or "no clear winner", the reveal of which line was which prompt, and **Grade calls with Sarvam**: how often Sarvam's own tag agrees with ours (the deck's auto-disposition accuracy).
 
-**4:45 - Why trust it (40 s).** **Overview**, the chart: "with B secretly identical to A, Picky wrongly ships 2.5%; checking p < 0.05 every day ships 8.3%." Press **Run 1,000 A vs A tests now**: the same in your browser, in a second. Our statistics match statsmodels and GrowthBook's engine; the charts, the diff and the record check use standard tools (Chart.js, jsdiff, Web Crypto).
+**3:45 - Why trust it (60 s).** Show `docs/QA_REPORT.md`: "with B secretly identical to A, Picky wrongly ships 2.5% of 12,000 tests; checking p < 0.05 every day ships 12%. A B that is 10 points worse is stopped in 96% of runs with half the exposure, and the split stays within 0.1 point of the target." Our statistics match statsmodels and GrowthBook's engine; the charts, the diff and the record check use standard tools (Chart.js, jsdiff, Web Crypto).
 
-**5:25 - Close (20 s).** "Locked setup, tamper-evident record, and every result simulated with a known answer: it shows the engine decides correctly, not that a real prompt is better. What it needs to go live on Sarvam: one API call to switch the deployment's version."
+**4:45 - Close (20 s).** "Locked setup, tamper-evident record, and every result simulated with a known answer: it shows the engine decides correctly, not that a real prompt is better. What it needs to go live on Sarvam: one API call to switch the deployment's version."
 
-Technical judges: every number is re-runnable (`python -m unittest discover -s tests`, 304 tests; browser suites in `tests/browser/`); `python -m canary export-db` writes every test to one SQLite file.
+Technical judges: every number is re-runnable (`python -m unittest discover -s tests`, 331 tests; browser suites in `tests/browser/`); `python -m canary export-db` writes every test to one SQLite file.
 
 ## What the PM suggested, and what we did
 
