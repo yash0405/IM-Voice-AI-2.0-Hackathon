@@ -8,5 +8,10 @@
   "branch": "feature/hosted-render",
   "commit": "3bbe597",
   "at": "2026-10-09 13:33 UTC"
+ },
+ "feature-declutter": {
+  "branch": "feature/declutter",
+  "commit": "38855ca",
+  "at": "2026-10-10 10:08 UTC"
  }
 }
