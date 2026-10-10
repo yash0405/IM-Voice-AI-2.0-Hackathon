@@ -61,7 +61,7 @@ Picky tests any change to VANI on a small, sticky slice of calls, decides with p
 - A dashboard: Overview, New Experiment, All experiments, Suggest A/B Tests, Prompt Library, Decision Log and Settings.
 - A results-file path (`python -m canary decide`) for real exports.
 - A proof lab and a QA report regenerated from code.
-- A reusable skill (`skill/ab-test-decision/SKILL.md`).
+- A reusable skill (`.github/skills/ab-test-decision/SKILL.md`): the decision method for any assistant, with scripts, references and tests.
 
 ## Impact on success metrics
 All numbers below are re-runnable from code with fixed seeds. They are taken from [docs/QA_REPORT.md](docs/QA_REPORT.md).
@@ -86,7 +86,7 @@ All numbers below are re-runnable from code with fixed seeds. They are taken fro
 ```bash
 ./start.sh                 # sets up a venv, then opens http://127.0.0.1:8765 (the full app; history saved in data/history.db)
 open dist/canary_demo.html # or: the offline single-file demo, no server needed
-./run.sh                   # everything: tests, proof lab, dashboard, QA report, one-slide summary
+./run.sh                   # everything: tests, proof lab, dashboard, QA report
 ```
 Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps need `pip install sarvamai` and `SARVAM_API_KEY` in `.env`. Each paid step is opt-in (`--yes`) and costed in advance (`python -m canary fix costs`). How to test each feature: [docs/HOW_TO_TEST.md](docs/HOW_TO_TEST.md).
 
@@ -95,20 +95,20 @@ Needs Python 3.10+ (`requirements.txt`: numpy, scipy, jinja2). Paid Sarvam steps
 |---|---|
 | `canary/` | The engine (Python package): router, sequential and final-look decision rules, guardrails, ledger, simulator, proof lab, results-file reader, Sarvam labelling, prompt lint, data-file catalog, servers |
 | `web/` | The dashboard: plain JS parts in `web/console/*.js`, assembled into `web/console.js`; `console.css` |
-| `data/` | The real prompt (rule per line), the quality-matrix schema, sample results files, call durations |
-| `dist/` | Prebuilt offline demo (`canary_demo.html`), engineer tools, the one-slide summary |
+| `data/` | The real prompt (rule per line), the quality-matrix schema, call durations, and `samples/` (six synthetic results files for `python -m canary decide`: B wins, flat, harmful, early hang-ups, guardrail hold, messy export) |
+| `dist/` | Prebuilt offline demo (`canary_demo.html`) and the engineer tools page |
 | `out/` | Generated data the dashboard reads (`console_bundle.json`, proof results) |
 | `deploy/` | Builds the hosted app for GitHub Pages (`.github/workflows/pages.yml` redeploys on every push to `main`) |
-| `tests/` | Python unit tests (`python -m unittest discover -s tests`) and browser tests (`tests/browser/`) |
-| `docs/` | The demo deck (`presentation.html`), QA report, how to test, integration notes, labelling guide, leaders' Q&A |
-| `skill/`, `skills.md` | The reusable A/B decision skill, and how the project was built |
+| `tests/` | Python unit tests (`python -m unittest discover -s tests`, 300+ tests) and headless-Chrome browser tests in `tests/browser/` (`npm install puppeteer-core`, Chrome at `/usr/bin/google-chrome`; run e.g. `node tests/browser/autopilot_journey.mjs "file://$PWD/dist/canary_demo.html"`) |
+| `docs/` | The demo deck (`presentation.html`) and the QA report that backs every number above |
+| `.github/skills/ab-test-decision/` | The reusable A/B decision skill (`SKILL.md`, scripts, references, evals) |
 
 ## Commands
 | Command | What it does | Spends credits? |
 |---|---|---|
 | `python -m canary decide FILE --goal ... --share-b 0.3 --baseline ... --window-days ...` | Decide from a results file: ship, stop, hold for a person, or keep A | no |
 | `python -m canary proof` / `qa` | Proof lab (thousands of simulated tests) / write `docs/QA_REPORT.md` | no |
-| `python -m canary build` / `serve` / `live --port 8790` | Build the dashboards / local server on 8765 / the team server on 8790 | no |
+| `python -m canary build` / `serve [--port N]` | Build the dashboards / run the local server (default port 8765) | no |
 | `python -m canary fix lint` / `loops` / `candidate` / `costs` | Prompt contradictions / repeats in real calls / free candidate edit / cost of each paid step | no |
 | `python -m canary fix propose --yes` / `prescreen --yes` | A Sarvam-drafted edit / simulated buyers hear A and B | yes, capped |
 | `python -m canary autolabel run --yes` | Sarvam transcription and tagging | yes, capped |

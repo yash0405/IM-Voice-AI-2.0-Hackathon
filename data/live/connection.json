@@ -1,0 +1,14 @@
+{
+ "org_id": "01a11064-5647-7ac6-b1f7-d7a1be9c3901",
+ "workspace_id": "01a11064-564d-79cc-9fad-7d3be02915a9",
+ "arms": {
+  "A": {
+   "app_id": "",
+   "version": "1"
+  },
+  "B": {
+   "app_id": "",
+   "version": "2"
+  }
+ }
+}

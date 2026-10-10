@@ -382,22 +382,3 @@ def bundle() -> dict:
     except Exception:
         pass
     return out
-
-
-def write_agent_prompts() -> str:
-    """Write the two prompts to paste into Sarvam voice agents (a dashboard step). Rendered for a demo call, so the Jinja tags are resolved."""
-    from . import realprompt as rp
-    f = DATA / "sarvam_agent_prompt.md"
-    base, b = load_base(), make_variant("fix_candidate")
-    ctx = dict(product_name="stainless steel pipes", buyer_name="", ast_seller_pns="9100000000", ast_flow_live="true", ast_seller_company="a verified seller", ast_seller_city="Delhi")
-    for arm, text in (("A", base["text"]), ("B", b["text"])):
-        (DATA / f"sarvam_agent_{arm}.md").write_text(rp.render(rp.flows(text)["inbound_redirect"], **ctx))
-    f.write_text("# Ready-to-paste text for the Sarvam voice agents (submission item: Agent ID / live link)\n\n"
-                 "Where: **indus.sarvam.ai -> Build -> Agents -> Create from Scratch**. There is no documented API to create an agent.\n\n"
-                 "1. Create TWO agents: **VANI - prompt A (today)** and **VANI - prompt B (candidate)**.\n"
-                 "2. Paste `data/sarvam_agent_A.md` into agent A's Instructions and `data/sarvam_agent_B.md` into agent B's. These are the REAL VANI inbound-redirect prompt, "
-                 "rendered for a demo call (a live seller available, product 'stainless steel pipes'); B differs by the lines shown in the dashboard diff.\n"
-                 "3. Greeting (an assumption: the real `initial_message` is filled in by IndiaMART's system): *Namaste, kya aap stainless steel pipes ke liye call kar rahe hain?*\n"
-                 "4. Settings: language Hindi (Hinglish), a Bulbul voice. Talk to each agent in the test panel, then note the **Agent ID / link**.\n\n"
-                 f"Candidate B: **{b['name']}** (origin: {b['origin']}).\n")
-    return str(f)

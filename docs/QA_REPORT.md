@@ -318,17 +318,3 @@ python -m canary build                  # dist/canary_demo.html (offline)
 python -m canary qa                     # this report
 python -m canary serve                  # live engine + Label Lab
 ```
-
-
-## Oct 10: simpler screens, the autopilot, voice (branch feature/declutter)
-
-| Check | Result |
-|---|---|
-| Python suite (`python -m unittest discover -s tests -q`) | 304 pass; the 5 statistics cross-checks against statsmodels and GrowthBook `gbstats` pass when those are installed |
-| Autopilot end to end (`tests/browser/autopilot_journey.mjs`) | 33/33 offline and against the live engine: Play settles all six demo tests; keep-A and rollback verify in the hash-chained record; with the rollback switched off the alert goes to a person |
-| Existing browser suites | new_experiment_e2e 71/71, new_experiment_live 17/17, console_brd all, qa_fixes 11/11, store_e2e 31/31, live_flow (voice, mock Sarvam) all, console_flow / mobile / fixes / visible_words pass |
-| Hosted copy (encrypted static build, Pyodide) | unlocks, loads, Play settles all six tests, no page errors |
-| Independent review | 12 findings: 10 fixed (record and history database agree in every autopilot state; grading cap per test; faster diff), 2 documented limits (record check needs a secure page; blind mode can be read from browser developer tools) |
-| Not verified | real voice calls on Sarvam's servers (the Voice Agents key is not available; tested against a mock) |
-
-Words on screen, same demo state: Overview 815 to 365, Live Experiments 1,259 to 480, review step 1,584 to 282, final report 1,778 to 296, Settings 970 to 338. Evidence: `docs/evidence/declutter/`, `docs/WHATS_NEW.md`.

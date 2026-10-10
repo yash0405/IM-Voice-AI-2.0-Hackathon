@@ -8,7 +8,7 @@ touched the platform yet. Each hook is a tiny interface the rest of the system a
                    LLMEvaluator(complete=my_sarvam_chat_fn).classify(transcript)
                    Prompt template: data/evaluator_prompt.md. Mind the rate limits (tens of requests/min).
 3. CallRunner    - replace TrafficSim.observe(arm, call) with a function that places or simulates a call
-                   with the arm's prompt on a Sarvam voice agent, then tags it. Same (logged, converted,
+                   with the arm's prompt on the voice agent, then tags it. Same (logged, converted,
                    duration) return shape, so the engine, ledger and dashboard are unchanged.
 Promotion today flips a local production-prompt pointer (production_before/after in the ledger). Making it
 update a real agent needs the platform's agent-update API; ask the Sarvam team whether one exists.

@@ -4,11 +4,9 @@
   proof     run the Monte Carlo proof lab (writes out/proof.json)
   build     bundle the dashboard into dist/canary_demo.html and the technical tools into dist/canary_tools.html (both work offline)
   serve     live dashboard + Label Lab on http://127.0.0.1:8765
-  live      live call test on its own port (default 8790): talk to prompt A and B on Sarvam voice agents, give signals, release the result at a fixed number of calls
   qa        write docs/QA_REPORT.md from out/proof.json
   export-db export every test, version, assignment, call and decision to one SQLite file (out/canary.db)
   history   the history database the live server writes (data/history.db): every test, its status and the latest clicks
-  slide     write dist/one_slide.html (the one-slide deliverable)
   eval      score a tagger on labelled calls (synthetic benchmark, or real labels + transcripts dir)
   arena     voice arena: Sarvam LLM + Bulbul voices play a buyer against prompt A and B (plan | run --yes --budget N)
   autolabel Sarvam speech-to-text + chat model auto-labelling, budget-capped (plan | run | retag | status | queue | report | issues)
@@ -23,7 +21,7 @@ import sys
 
 def main():
     ap = argparse.ArgumentParser(prog="canary", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "slide", "all", "autolabel", "arena", "fix", "decide", "samples", "export-db", "history", "live"])
+    ap.add_argument("cmd", choices=["demo", "proof", "build", "serve", "qa", "eval", "all", "autolabel", "arena", "fix", "decide", "samples", "export-db", "history"])
     ap.add_argument("action", nargs="?", default="plan", help="for autolabel: plan | run | status | queue | report | issues")
     ap.add_argument("--n", type=int, default=5, help="autolabel: how many calls (first N of a fixed random order)")
     ap.add_argument("--budget", type=float, default=10.0, help="autolabel: hard cap in rupees for everything spent so far")
@@ -121,9 +119,6 @@ def main():
     elif a.cmd == "serve":
         from .server import serve
         serve(a.port, a.host, hosted=a.hosted)
-    elif a.cmd == "live":
-        from .liveserver import serve as serve_live, DEFAULT_PORT
-        serve_live(a.port if a.port != 8765 else DEFAULT_PORT, a.host)
     elif a.cmd == "qa":
         from .report import write_report
         print("wrote", write_report())
@@ -178,8 +173,6 @@ def main():
                     print("DRY RUN: nothing spent. Add --yes to spend credits.")
             else:
                 print(json.dumps(prescreen.run(a.budget, n=a.personas)))
-        elif a.action == "agent":
-            print("wrote", fixloop.write_agent_prompts())
         elif a.action == "candidate":
             c = fixloop.lint_candidate(force=True)
             print(json.dumps({k: c[k] for k in ("name", "origin", "why", "risk", "evidence")}, indent=1))
@@ -195,9 +188,6 @@ def main():
         elif a.action == "status":
             from . import prescreen
             print(json.dumps(prescreen.summary(), indent=1))
-    elif a.cmd == "slide":
-        from .slide import build_slide
-        print("wrote", build_slide())
     elif a.cmd == "eval":
         from .evalreal import run
         print(json.dumps(run(a.transcripts), indent=1))
