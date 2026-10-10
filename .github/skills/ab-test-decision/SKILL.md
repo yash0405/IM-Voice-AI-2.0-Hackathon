@@ -2,7 +2,7 @@
 name: ab-test-decision
 description: Decides whether to ship, stop, hold or keep a change after an A/B test, and plans tests that can actually finish. Use it whenever someone has results for a control (A) and a candidate (B) - a new bot or agent prompt, voice or chat flow, model, message, feature or setting - and asks "did B win?", "is it safe to roll out?", "is this significant?", "can we stop early?", "how long should the test run?", "how much traffic does B need?", or shares a results file or dashboard numbers from a split test. Also use it when a manager wants to act on early numbers, when a test looks too good or too flat, or when someone wants a plain-language verdict on a test. Reads messy per-call or per-day result files, counts each lead once, checks the split and the data, applies pre-registered sequential rules with guardrails such as call length, and writes an honest verdict with ranges. Never runs the test itself and never decides from a plan read off the results.
 license: MIT
-compatibility: Python 3.10+. check_results.py and plan_test.py use only the standard library. decide.py needs numpy and scipy and the Picky engine (the repository root this skill lives in, or the folder named by CANARY_HOME).
+compatibility: Python 3.10+. check_results.py and plan_test.py use only the standard library. decide.py needs numpy and scipy and the Picky engine (the repository root, or the folder named by CANARY_HOME).
 metadata:
   version: "1.1"
   domain: experimentation
@@ -14,7 +14,7 @@ metadata:
 Turn "here are the results of A and B" into a verdict a non-statistician can act on: **ship**, **stop**, **hold for a person**, **keep A**, or **keep waiting**. The test itself ran somewhere else; this skill judges its results and, before a test, checks that it can finish.
 
 ## Quick start
-Planning a test: `scripts/plan_test.py`. Checking a results file: `scripts/check_results.py`. Deciding: `scripts/decide.py` (needs the plan: goal, baseline, share to B, window). Then write the verdict in the report shape below. The rest of this file says how to do each step well.
+Planning a test: `skill/scripts/plan_test.py`. Checking a results file: `skill/scripts/check_results.py`. Deciding: `skill/scripts/decide.py` (needs the plan: goal, baseline, share to B, window). Then write the verdict in the report shape below. The rest of this file says how to do each step well.
 
 ## Why the process matters (read once)
 
@@ -29,7 +29,7 @@ A verdict is also a claim about the world. State how sure you are, give ranges i
 
 ## Workflow
 
-Paths below are relative to this skill's folder. Copy this checklist and tick it off:
+The scripts and reference files live in the repository's `skill/` folder; paths below are relative to the repository root. Copy this checklist and tick it off:
 
 ```
 - [ ] 1. Pin down the plan (ask for what is missing, never infer it from results)
@@ -54,18 +54,18 @@ Get these five things from the user. They fix the decision boundaries, so they m
 Also ask which way is better for the goal, and any **guardrail** (a metric that must not get worse: call length, early hang-ups, fatal-call share) with its tolerated change. Default for call length: not more than 15% longer.
 
 ### 2. Plan check
-Run `scripts/plan_test.py` (standard library only):
+Run `skill/scripts/plan_test.py` (standard library only):
 
 ```
-python scripts/plan_test.py --baseline 0.40 --mde 0.03 --share-b 0.5 --per-day 800 --days 14
+python skill/scripts/plan_test.py --baseline 0.40 --mde 0.03 --share-b 0.5 --per-day 800 --days 14
 ```
 Give the answer both as leads and as days. If the window cannot reach the needed leads, say so before anyone waits two weeks, and offer the three fixes: run longer, send B more traffic (up to 50%), or aim for a bigger lift. A 10% slice needs about 2.8 times the leads of a 50/50 split.
 
 ### 3. Data check
-Run `scripts/check_results.py` on the file (see `references/file-formats.md` for accepted layouts):
+Run `skill/scripts/check_results.py` on the file (see `skill/references/file-formats.md` for accepted layouts):
 
 ```
-python scripts/check_results.py results.csv --goal buylead_created --share-b 0.3 --window-days 14
+python skill/scripts/check_results.py results.csv --goal buylead_created --share-b 0.3 --window-days 14
 ```
 Resolve problems before deciding: split mismatch (stop: the test is broken), leads served both prompts, repeated call ids, missing outcomes, unknown variant names. Report what was left out; never repair data silently. The single-look comparison it prints is for orientation only.
 
@@ -75,13 +75,13 @@ It prints the date range, flags dates that look wrong (later than today, or call
 Run the engine, with the plan flags (required):
 
 ```
-python scripts/decide.py results.csv --goal buylead_created --share-b 0.3 --baseline 0.45 --mde 0.05 --window-days 14
+python skill/scripts/decide.py results.csv --goal buylead_created --share-b 0.3 --baseline 0.45 --mde 0.05 --window-days 14
 ```
 Useful variants: `--leads-per-day N` if the test's expected volume is known (otherwise it is estimated from the file), `--through-day N` for a test still running (results up to day N), `--a A.csv --b B.csv` for separate files, `--guard-name early_hangup --guard-below-s 15` for a rate guardrail, `--rule final_look` for one winner call at the end plus a strict daily harm check. If the engine is not installed, say so; do not improvise a "p < 0.05" verdict for a running test. At the planned end of a finished test a single-look comparison (`check_results.py`) is acceptable, labelled as single-look.
 
 If the engine stops early (for example PROMOTE on day 8 of 14) and you have the whole period, also read the full window: `--rule final_look` or `check_results.py`. Report both.
 
-Outcomes and what to do (details in `references/decision-rules.md`):
+Outcomes and what to do (details in `skill/references/decision-rules.md`):
 
 | Outcome | Meaning | Action |
 |---|---|---|
@@ -94,7 +94,7 @@ Outcomes and what to do (details in `references/decision-rules.md`):
 | HALT_SRM | The test is broken (split or logging) | Fix tracking, rerun; trust nothing |
 
 ### 5. Report
-Lead with the verdict in one sentence, then the evidence, in plain words. Use this shape (`references/reporting.md` has worked examples):
+Lead with the verdict in one sentence, then the evidence, in plain words. Use this shape (`skill/references/reporting.md` has worked examples):
 
 ```
 **Verdict:** <ship / stop / hold / keep A / keep waiting> - <one-line reason>
@@ -120,7 +120,7 @@ Lead with the verdict in one sentence, then the evidence, in plain words. Use th
 - Judges results; never changes live traffic. Shipping, stopping and rollback are done by the team.
 
 ## Common traps
-Read `references/pitfalls.md` when the user shows interim results, when the split is off, when a metric was added or redefined after the test started, when many metrics are being checked at once, or when the data comes from a tagger or a bot's own labels.
+Read `skill/references/pitfalls.md` when the user shows interim results, when the split is off, when a metric was added or redefined after the test started, when many metrics are being checked at once, or when the data comes from a tagger or a bot's own labels.
 
 ## Where this method comes from
 This is the method Picky's engine and dashboard are built on, packaged so any assistant can apply it to a results file without the dashboard. It was built in stages, and each stage is why a rule above exists:
@@ -129,15 +129,15 @@ This is the method Picky's engine and dashboard are built on, packaged so any as
 3. Corrections over defence: when new documents contradicted early assumptions, the work was fixed and the claim withdrawn. The same habit is in the honesty rules above.
 4. Testing found real flaws (a plan read off the data, a win that faded, an unevaluable guardrail), which is why steps 1 and 3 and the guardrail rule are strict.
 
-How well it works, measured, is in `references/validation.md`.
+How well it works, measured, is in `skill/references/validation.md`.
 
 ## Bundled resources
-- `scripts/plan_test.py`: sample size, days, smallest detectable lift (stdlib).
-- `scripts/check_results.py`: data check plus single-look comparison (stdlib).
-- `scripts/decide.py`: the sequential engine verdict (numpy, scipy, Picky).
-- `references/decision-rules.md`: the rules in plain words, defaults, rule sets.
-- `references/file-formats.md`: accepted columns and layouts, what gets dropped.
-- `references/pitfalls.md`: the traps above, with how to explain them.
-- `references/reporting.md`: report templates and example wording for managers.
-- `references/validation.md`: how the skill was tested against an assistant without it, and what the runs taught us.
-- `evals/`: the test requests (`evals.json`), their sample files, graded results, and the trigger tests for the description.
+- `skill/scripts/plan_test.py`: sample size, days, smallest detectable lift (stdlib).
+- `skill/scripts/check_results.py`: data check plus single-look comparison (stdlib).
+- `skill/scripts/decide.py`: the sequential engine verdict (numpy, scipy, Picky).
+- `skill/references/decision-rules.md`: the rules in plain words, defaults, rule sets.
+- `skill/references/file-formats.md`: accepted columns and layouts, what gets dropped.
+- `skill/references/pitfalls.md`: the traps above, with how to explain them.
+- `skill/references/reporting.md`: report templates and example wording for managers.
+- `skill/references/validation.md`: how the skill was tested against an assistant without it, and what the runs taught us.
+- `skill/evals/`: the test requests (`evals.json`), their sample files, graded results, and the trigger tests for the description.
