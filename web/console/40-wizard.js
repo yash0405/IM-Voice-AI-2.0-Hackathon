@@ -7,7 +7,7 @@ let WZ = null;
 DYN.drafts = DYN.drafts || [];
 const wzDefaults = () => { const s = SET(); return { step: 1, name: "", change: "", why: "", effect: "", promptB: null,
   segRows: [], audienceSet: false,
-  primary: null, guards: [{ key: "duration_s", direction: "lower", limit: { value: Math.round((s.duration_margin || 0.1) * 100), kind: "rel" } }], secondary: [], localMetrics: [],
+  primary: REF_METRIC, guards: [{ key: "duration_s", direction: "lower", limit: { value: Math.round((s.duration_margin || 0.1) * 100), kind: "rel" } }], secondary: [], localMetrics: [],
   share: s.share_b, lenMode: "rec", size: "medium", customDays: null, customLpd: null, customD: null,
   confidence: s.confidence, minLeads: s.min_leads_per_arm, rule: s.rule_set, harm: s.harm_bar, approval: s.approval, assignment: s.assignment || "stratified",
   startDate: TODAY, source: "sim", preset: "win", effectRel: 15, seed: 7, durExtra: 0, hangExtra: 0, draftId: null, panel: null, cm: null, ui: {} }; };

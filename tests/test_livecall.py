@@ -10,6 +10,7 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from canary import livecall, livestats, liveserver
 from canary.ledger import verify
@@ -430,3 +431,95 @@ class Server(Env):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Grading(Env):
+    """Sarvam grades the finished calls after the release (the deck's auto-disposition against labelled calls). Fake client: no network, no spend."""
+    def setUp(self):
+        super().setUp()
+        from canary import sarvam_pipe as sp
+        from tests.test_sarvam_pipe import FakeClient
+        self.sp, self.Fake = sp, FakeClient
+        self.old_sp = {k: getattr(sp, k) for k in ("TR", "AL", "RAW", "SPEND")}
+        d = Path(self.tmp.name)
+        sp.TR, sp.AL, sp.RAW, sp.SPEND = d / "tr", d / "al", d / "raw", d / "spend.json"
+
+    def tearDown(self):
+        for k, v in self.old_sp.items():
+            setattr(self.sp, k, v)
+        super().tearDown()
+
+    def released(self, n=3):
+        t = self.make(n=n)
+        tid = t["id"]
+        while True:
+            try:
+                r = livecall.next_call(tid, "manual")
+            except livecall.LiveError:
+                break
+            cid = r["call"]["id"]
+            arm = livecall._load(tid)["calls"][-1]["arm"]
+            livecall.start_call(tid, cid)
+            livecall.end_call(tid, cid, {"duration_s": 40, "transcript": [{"role": "bot", "content": "Namaste, aapko kitni quantity chahiye?"}, {"role": "user", "content": "500 pieces"}]})
+            out = livecall.signal(tid, cid, {"good": arm == "B", "fatal": False})
+            if out["released"]:
+                return tid
+        return tid
+
+    def test_grading_waits_for_the_release(self):
+        t = self.make(n=3)
+        with self.assertRaises(livecall.LiveError):
+            livecall.grade_calls(t["id"], yes=True, client=self.Fake())
+
+    def test_without_yes_it_only_estimates_and_spends_nothing(self):
+        tid = self.released()
+        c = self.Fake()
+        r = livecall.grade_calls(tid, yes=False, client=c)
+        self.assertEqual(r["to_grade"], 6)
+        self.assertAlmostEqual(r["est_inr"], 6 * livecall.GRADE_EST_INR)
+        self.assertEqual(c.chat_calls, 0)
+        self.assertFalse(self.sp.SPEND.exists())
+
+    def test_every_call_is_graded_and_compared_with_the_signal(self):
+        tid = self.released()
+        before = livecall._load(tid)["result"]
+        c = self.Fake(replies=['{"label":"buylead_created","fatal":"none","confidence":0.9,"evidence":"500 pieces"}'])
+        r = livecall.grade_calls(tid, yes=True, client=c)
+        self.assertEqual((r["graded_now"], c.chat_calls), (6, 6))
+        s = r["summary"]
+        self.assertEqual(s["n"], 6)
+        self.assertEqual(s["goal_agree"], 3)                                  # Sarvam said "goal" every time; only the 3 B calls were good
+        self.assertEqual(s["table"], {"yes_yes": 3, "yes_no": 0, "no_yes": 3, "no_no": 0})
+        self.assertEqual(s["fatal_agree"], 6)
+        t = livecall._load(tid)
+        self.assertEqual(t["result"], before)                                 # the signals decide; grades never change the verdict
+        self.assertEqual(t["ledger"][-1]["body"].count("calls_graded"), 1)
+        self.assertTrue(livecall.public(t)["ledger"]["ok"])
+        self.assertGreater(json.loads(self.sp.SPEND.read_text())["inr"], 0)   # the spend is on the project's ledger
+        again = livecall.grade_calls(tid, yes=True, client=c)                  # nothing left to grade: no second charge
+        self.assertEqual((again["to_grade"], c.chat_calls), (0, 6))
+
+    def test_the_budget_is_a_hard_cap(self):
+        tid = self.released()
+        r = livecall.grade_calls(tid, yes=True, budget=0.3, client=self.Fake())
+        self.assertLess(r["graded_now"], 6)
+        self.assertLessEqual(r["spent_inr"], 0.3)
+
+    def test_a_sarvam_error_keeps_what_was_graded(self):
+        tid = self.released()
+        ok = '{"label":"no_requirement","fatal":"none","confidence":0.8,"evidence":"x"}'
+        r = livecall.grade_calls(tid, yes=True, client=self.Fake(replies=[ok, ok, RuntimeError("500 upstream")]))
+        self.assertEqual(r["graded_now"], 2)
+        self.assertIn("stopped answering", r["error"])
+        self.assertEqual(livecall.grade_plan_of(livecall._load(tid))["to_grade"], 4)
+
+    def test_no_key_says_what_to_do(self):
+        tid = self.released()
+        old = self.sp.load_key
+        self.sp.load_key = lambda: None
+        try:
+            with self.assertRaises(livecall.LiveError) as cm:
+                livecall.grade_calls(tid, yes=True)
+            self.assertIn("SARVAM_API_KEY", str(cm.exception))
+        finally:
+            self.sp.load_key = old

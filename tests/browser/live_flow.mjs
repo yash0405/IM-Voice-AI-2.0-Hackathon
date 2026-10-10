@@ -49,7 +49,7 @@ try {
   await p.waitForSelector('#lc-cand'); await sleep(1200);
   ok((await txt('.page-head .pill')).includes('agent ids missing'), 'setup: key set but agent ids missing is shown plainly -> ' + (await txt('.page-head .pill')));
   ok((await p.$$('#lc-pair .lc-change')).length >= 1, 'setup: what the patch changes is listed (' + (await p.$$('#lc-pair .lc-change')).length + ' change(s))');
-  ok((await txt('#lc-plan')).includes('false winner'), 'setup: threshold panel says what N can and cannot detect');
+  ok(/false winner/i.test(await txt('#lc-plan')) && /Catches a gap/.test(await txt('#lc-plan')), 'setup: threshold panel says what N can and cannot detect');
   await p.screenshot({ path: path.join(shots, '1_setup.png'), fullPage: true });
 
   // connection: a wrong agent id is reported plainly, then fix it
@@ -61,7 +61,7 @@ try {
 
   // threshold + lock
   await p.$eval('#lc-n', (e, v) => { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }, String(PER)); await sleep(900);
-  ok((await txt('#lc-plan')).includes(`${PER} finished calls per prompt`), 'plan follows the threshold you type');
+  ok((await txt('#lc-plan')).includes(`${PER} per prompt = ${PER * 2} calls`), 'plan follows the threshold you type');
   await click('[data-lc=lock]'); await p.waitForSelector('#lc-callcard'); await sleep(500);
   ok((await txt('.page-head h1')) === 'Live call test', 'locked: run screen shown');
   ok((await txt('.lc-locked')).includes('Result locked'), 'run: result shown as locked');
@@ -93,6 +93,7 @@ try {
   await p.waitForSelector('.lc-verdict', { timeout: 8000 }); await sleep(300);
   const head = await txt('.lc-verdict h2'); ok(head.length > 0, 'released: verdict shown -> ' + head);
   ok((await txt('.lc-verdict')).includes('Reveal:'), 'released: blind reveal shown');
+  ok(new RegExp(`Grade ${PER * 2} calls with Sarvam \\(about ₹[0-9.]+\\)`).test(await txt('#lc-grade')), 'released: Sarvam grading is offered with its cost, and never runs by itself');
   ok((await txt('body')).includes('chain verified'), 'released: log chain verified');
   await p.screenshot({ path: path.join(shots, '5_result.png'), fullPage: true });
   await p.evaluate(() => { location.hash = '#/history'; }); await sleep(500);

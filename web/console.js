@@ -860,7 +860,8 @@ function attention() {
     else if (v.kind === "HALT_SRM") items.push(["Split alert", "neg", L(e, "was halted: the split or the log is broken, so nothing can be trusted.")]);
     else if (v.running && v.day >= v.win - 1 && v.day < v.win) items.push(["Ending soon", "run", L(e, `reaches its final call on day ${v.win}.`)]);
     else if (v.running && v.cur && v.cur.z <= -1.96) items.push(["Watch", "warn", L(e, "looks worse so far. It stops only if it crosses the strict daily harm bar.")]);
-    if (v.holdback && !v.holdback.done) items.push(["Holdback", "run", L(e, `is promoted; ${pct(v.holdback.all.share, 0)} of leads stay on A: day ${v.holdback.day} of ${v.holdback.all.days}.`)]);
+    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, "fell clearly below the held-back A after the promotion. Roll it back from Live Experiments (the autopilot's rollback is off).")]);
+    else if (v.holdback && !v.holdback.done) items.push(["Holdback", "run", L(e, `is promoted; ${pct(v.holdback.all.share, 0)} of leads stay on A: day ${v.holdback.day} of ${v.holdback.all.days}.`)]);
   });
   DYN.drafts.forEach(d => items.push(["Draft", "plain", `<a href="#/new" data-open-draft="${esc(d.id)}">${esc(d.name)}</a> was saved but not launched.`]));
   return items;
@@ -1038,8 +1039,8 @@ ROUTES.live = (el, arg) => {
   const ciA = armCI(cur, "A", c), ciB = armCI(cur, "B", c), goal = goalName(c), sec = secondaryList(v), lr = liftRange(cur, c), gl = guardList(v);
   const liftCol = !v.decided || fmtD(cur.diff, c) === fmtD(0, c) ? "var(--off)" : isBetter(cur.diff, c) ? "#167a70" : "#b23b3b";
   const tiles = `<div class="grid g4" style="margin-bottom:16px">
-    <div class="card kpi"><div class="k"><span class="dot a"></span>A: today's prompt</div><div class="v">${fmtP(cur.rateA, c)}</div><div class="d">${esc(goal)} · ${nf(cur.nA)} leads ${info(`95% range ${fmtP(ciA[0], c)} to ${fmtP(ciA[1], c)}`)}</div></div>
-    <div class="card kpi"><div class="k"><span class="dot b"></span>B: new prompt</div><div class="v">${fmtP(cur.rateB, c)}</div><div class="d">${esc(goal)} · ${nf(cur.nB)} leads ${info(`95% range ${fmtP(ciB[0], c)} to ${fmtP(ciB[1], c)}`)}</div></div>
+    <div class="card kpi"><div class="k"><span class="dot a"></span>A: ${esc(goal)}</div><div class="v">${fmtP(cur.rateA, c)}</div><div class="d">today's prompt · ${nf(cur.nA)} leads ${info(`95% range ${fmtP(ciA[0], c)} to ${fmtP(ciA[1], c)}`)}</div></div>
+    <div class="card kpi"><div class="k"><span class="dot b"></span>B: ${esc(goal)}</div><div class="v">${fmtP(cur.rateB, c)}</div><div class="d">new prompt · ${nf(cur.nB)} leads ${info(`95% range ${fmtP(ciB[0], c)} to ${fmtP(ciB[1], c)}`)}</div></div>
     <div class="card kpi" title="B minus A. A range that includes 0 means not proven.${c.primary_direction === "lower" ? " Lower is better for this goal." : ""}"><div class="k">Lift of B over A</div><div class="v" style="color:${liftCol}">${cur.diff >= 0 ? "▲ " : "▼ "}${fmtD(cur.diff, c)}</div><div class="d">${v.decided ? "final" : "so far, grey until decided"} ${info(`${confOf(c)}% range ${rangeD(lr.lo, lr.hi, c)}; ${lr.interim ? "interim range, not corrected for repeated looks" : c.rule_set === "final_look" ? "end-of-test range" : "always-valid range: safe to read at any look"}`)}</div></div>
     ${gl.length ? guardTile(gl[0]) : `<div class="card kpi"><div class="k">Guardrails</div><div class="v" style="font-size:26px">-</div><div class="d">none set</div></div>`}</div>
     ${gl.length > 1 ? `<div class="grid g4" style="margin-bottom:16px">${gl.slice(1).map(guardTile).join("")}</div>` : ""}`;
@@ -1095,7 +1096,7 @@ let WZ = null;
 DYN.drafts = DYN.drafts || [];
 const wzDefaults = () => { const s = SET(); return { step: 1, name: "", change: "", why: "", effect: "", promptB: null,
   segRows: [], audienceSet: false,
-  primary: null, guards: [{ key: "duration_s", direction: "lower", limit: { value: Math.round((s.duration_margin || 0.1) * 100), kind: "rel" } }], secondary: [], localMetrics: [],
+  primary: REF_METRIC, guards: [{ key: "duration_s", direction: "lower", limit: { value: Math.round((s.duration_margin || 0.1) * 100), kind: "rel" } }], secondary: [], localMetrics: [],
   share: s.share_b, lenMode: "rec", size: "medium", customDays: null, customLpd: null, customD: null,
   confidence: s.confidence, minLeads: s.min_leads_per_arm, rule: s.rule_set, harm: s.harm_bar, approval: s.approval, assignment: s.assignment || "stratified",
   startDate: TODAY, source: "sim", preset: "win", effectRel: 15, seed: 7, durExtra: 0, hangExtra: 0, draftId: null, panel: null, cm: null, ui: {} }; };
@@ -1749,7 +1750,7 @@ function historyIdeas() {
 /** "Create experiment": the wizard opens with the FULL suggested prompt B (the live prompt A with the suggestion applied). */
 function createFrom(c) {
   const B = c.e && c.e.prompt_b ? c.e.prompt_b : c.variant ? fullPromptB(c.variant) : null;
-  startWizard({ name: c.title, change: c.hypothesis, why: c.caveat || "", effect: c.expected, promptB: B, size: !c.expected_pp ? "medium" : c.expected_pp <= 2 ? "small" : c.expected_pp <= 5 ? "medium" : "large" });
+  startWizard({ name: c.title, change: c.hypothesis, why: c.caveat || "", effect: c.expected, promptB: B, primary: c.metric || REF_METRIC, size: !c.expected_pp ? "medium" : c.expected_pp <= 2 ? "small" : c.expected_pp <= 5 ? "medium" : "large" });
 }
 ROUTES.suggest = (el) => {
   const base = C.suggestions.filter(c => !c.from_history), hi = historyIdeas(), all = [...base, ...hi], sources = [...new Set(all.map(c => c.source))];
@@ -1881,22 +1882,22 @@ init();
   // ------------------------------------------------------------------------------------------ setup
   function setupHtml() {
     const c = S.connection, sel = UI.sel, past = S.tests.filter(t => t.state !== "running");
-    return head("Live call test", "Hear today's prompt (A) and the patched prompt (B) on real Sarvam voice agents. After every call you give one signal. The result is released only when every prompt has the number of finished calls you fix now, so nobody can stop early on a lucky streak.", connPill()) + `<div class="lc-stack">
+    return head("Live call test", `Talk to prompt A and prompt B on Sarvam voice agents and give one signal after each call. The result appears only when the call count you fix now is reached. ${info("So nobody can stop early on a lucky streak: the threshold and a fingerprint of the secret call order are locked in the tamper-evident log before the first call.")}`, connPill()) + `<div class="lc-stack">
     <div class="card"><h2><span class="lc-num">1</span>The patch to test</h2>
       <div class="field" style="margin-top:12px"><label for="lc-cand">Prompt B is today's prompt plus this patch</label>
         <select id="lc-cand">${S.candidates.map(x => `<option value="${esc(x.key)}" ${x.key === sel.candidate ? "selected" : ""}>${esc(x.name)} (${esc(x.origin)})</option>`).join("")}</select></div>
       <div id="lc-pair" style="margin-top:12px">${pairHtml()}</div>
-      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:500">Put the two prompts on Sarvam (about 5 minutes)</summary>
-        <ol class="sub" style="margin:8px 0 0;padding-left:20px;display:grid;gap:4px">
+      <details class="fold"><summary><span>Put the two prompts on Sarvam (once, about 5 minutes)</span></summary><div class="fold-body">
+        <ol class="sub" style="margin:0;padding-left:20px;display:grid;gap:4px">
           <li>Open <a href="https://indus.sarvam.ai/samvaad" target="_blank" rel="noopener">indus.sarvam.ai</a> → Build → Agents → Create from Scratch.</li>
           <li>Make <b>one agent with two committed versions</b> (version 1 = prompt A, version 2 = prompt B), or two agents. Paste the text from the download buttons above into <i>Instructions</i>, and commit each version (a draft cannot be called).</li>
           <li>Same greeting, language (Hindi) and voice on both, so only the prompt differs.</li>
           <li>Settings → API Key: create a key and put it in <span class="mono">.env</span> as <span class="mono">SARVAM_VOICE_API_KEY=...</span>. Copy the organisation id, workspace id and agent id from the dashboard address.</li>
-          <li>Or let Claude do steps 1 to 3 through Sarvam's MCP server: <span class="mono">claude mcp add --transport http sarvam-voice-agents https://mcp.sarvam.ai/voice-agents</span></li></ol></details></div>
+          <li>Or let Claude do steps 1 to 3 through Sarvam's MCP server: <span class="mono">claude mcp add --transport http sarvam-voice-agents https://mcp.sarvam.ai/voice-agents</span></li></ol></div></details></div>
 
     <div class="card"><h2><span class="lc-num">2</span>Connect the two Sarvam agents ${c.ready ? pill("ready", "pos") : pill("not complete", "warn")}</h2>
-      <p class="sub">The key stays on this computer (read from <span class="mono">.env</span>, never sent to the browser). Not set up yet? You can still run the whole test: talk to the agents anywhere (Sarvam's test page, a phone number) and log each call here.</p>
-      <div class="grid g2" style="margin-top:12px">
+      <p class="sub">${c.ready ? `Agents ${esc(c.arms.A.app_id)} (A) and ${esc(c.arms.B.app_id)} (B) in workspace ${esc(c.workspace_id)}.` : "Not set up yet? You can still run the whole test: talk to the agents anywhere and log each call here."} ${info("The Voice Agents key stays on this computer (read from .env, never sent to the browser). Without it, talk to the agents on Sarvam's test page or a phone number and log each call here by hand.")}</p>
+      <details class="fold" ${checkedOk() ? "" : "open"}><summary><span>Agent ids</span><span class="note">${checkedOk() ? "checked: both agents answer" : c.ready ? "saved, not checked yet" : "fill these in"}</span></summary><div class="fold-body"><div class="grid g2">
         <div class="field"><label for="lc-org">Organisation id</label><input type="text" id="lc-org" value="${esc(c.org_id)}" autocomplete="off"></div>
         <div class="field"><label for="lc-ws">Workspace id</label><input type="text" id="lc-ws" value="${esc(c.workspace_id)}" autocomplete="off"></div>
         <div class="field"><label for="lc-appA">Prompt A: agent id</label><input type="text" id="lc-appA" value="${esc(c.arms.A.app_id)}" autocomplete="off"></div>
@@ -1905,7 +1906,7 @@ init();
         <div class="field"><label for="lc-verB">Prompt B: committed version <span class="hint">(blank = latest)</span></label><input type="text" id="lc-verB" value="${esc(c.arms.B.version)}" autocomplete="off"></div></div>
       <div class="lc-row" style="margin-top:12px"><button class="btn" data-lc="save-conn">Save</button><button class="btn" data-lc="check-conn">Check connection (places no call)</button>
         ${c.key_set ? pill("API key found", "pos") : pill("no API key", "warn")}</div>
-      <div id="lc-checkres" style="margin-top:12px">${checkHtml()}</div></div>
+      </div></details><div id="lc-checkres" style="margin-top:12px">${checkHtml()}</div></div>
 
     <div class="card"><h2><span class="lc-num">3</span>Set the threshold before any call</h2>
       <div class="grid g3" style="margin-top:12px">
@@ -1914,11 +1915,11 @@ init();
         <div class="field"><label for="lc-goal">Your signal after each call</label><input type="text" id="lc-goal" maxlength="40" value="${esc(sel.goal)}"><span class="hint note">"Was that a ...?" e.g. Good call, BuyLead-worthy call</span></div></div>
       <div class="lc-row" style="margin-top:12px">${[5, 10, 15, 20, 30].map(k => `<button class="btn sm" data-lc="preset" data-n="${k}">${k} per prompt</button>`).join("")}</div>
       <div id="lc-plan" class="banner" style="margin:12px 0">${planHtml()}</div>
-      <label class="check" style="margin-bottom:12px"><input type="checkbox" id="lc-blind" ${sel.blind ? "checked" : ""}><span><b>Blind test.</b> You hear "Line 1" and "Line 2" and only learn which is the patched prompt when the result is released. Fairer, because nobody hopes for a winner while scoring.</span></label>
+      <label class="check" style="margin-bottom:12px"><input type="checkbox" id="lc-blind" ${sel.blind ? "checked" : ""}><span><b>Blind test:</b> you hear "Line 1" and "Line 2"; which one is the patch is revealed at the end ${info("Fairer, because nobody hopes for a winner while scoring.")}</span></label>
       <div class="field"><label for="lc-tname">Name of this test</label><input type="text" id="lc-tname" maxlength="80" value="${esc(sel.name)}"></div></div>
 
     <div class="card"><h2><span class="lc-num">4</span>Lock it and start</h2>
-      <p class="sub">Locking records the threshold, the confidence, the guardrails and a fingerprint of the secret call order in the tamper-evident log. None of it can be changed afterwards. The result appears on its own after the last call.</p>
+      <p class="sub">Nothing about the plan can change after this. The result appears on its own after the last call.</p>
       <div style="margin-top:12px"><button class="btn primary" data-lc="lock">Lock the test and start calling</button></div></div>
     ${past.length ? `<div class="card"><h2>Earlier live call tests</h2><div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Name</th><th>Status</th><th>Started</th><th></th></tr></thead><tbody>${past.map(t => `<tr><td>${esc(t.name)}</td><td>${esc(t.state)}</td><td>${esc(fdt(t.created))}</td><td><button class="link" data-lc="open" data-id="${esc(t.id)}">open</button></td></tr>`).join("")}</tbody></table></div></div>` : ""}</div>`;
   }
@@ -1926,21 +1927,18 @@ init();
     const p = UI.pair;
     if (!p) return '<p class="muted">Loading the patch...</p>';
     const ch = p.changes.length ? p.changes.map(c => `<div class="lc-change"><div class="old"><span class="tag">TODAY (A)</span> ${segs(c.before)}</div><div class="new"><span class="tag">PATCHED (B)</span> ${segs(c.after)}</div></div>`).join("") : '<p class="muted">No visible difference.</p>';
-    return `<div class="grid g2"><div><b>${esc(p.A.name)}</b><div class="mono muted">fingerprint ${esc(p.A.hash)}</div></div><div><b>${esc(p.B.name)}</b><div class="mono muted">fingerprint ${esc(p.B.hash)}</div></div></div>
-      ${p.why ? `<p class="sub"><b>Why:</b> ${esc(p.why)}</p>` : ""}${p.risk ? `<p class="sub"><b>Risk:</b> ${esc(p.risk)}</p>` : ""}
-      <div style="display:grid;gap:8px;margin-top:12px"><b>What the patch changes</b>${ch}</div>
+    return `<div style="display:grid;gap:8px"><b>What the patch changes</b>${ch}</div>
+      ${p.why || p.risk ? fold("Why this patch, and its risk", `${p.why ? `<p class="sub"><b>Why:</b> ${esc(p.why)}</p>` : ""}${p.risk ? `<p class="sub"><b>Risk:</b> ${esc(p.risk)}</p>` : ""}`) : ""}
       <div class="lc-row" style="margin-top:12px"><a class="btn sm" href="/api/live/prompt/A?candidate=${encodeURIComponent(UI.sel.candidate)}">Download prompt A</a><a class="btn sm" href="/api/live/prompt/B?candidate=${encodeURIComponent(UI.sel.candidate)}">Download prompt B</a>
-      <span class="sub">Ready to paste into Sarvam (the real inbound prompt, filled in for a demo call about stainless steel pipes).</span></div>`;
+      ${info(`Ready to paste into Sarvam: the real inbound prompt, filled in for a demo call about stainless steel pipes. Fingerprints: A ${p.A.hash}, B ${p.B.hash}.`)}</div>`;
   }
+  const checkedOk = () => !!(S.connection.ready && UI.check && Object.values(UI.check.checks).every(r => r.ok));      // fold the ids only once Sarvam confirmed them
   const checkHtml = () => !UI.check ? "" : Object.entries(UI.check.checks).map(([k, r]) => banner(`<b>Prompt ${k}:</b> ${esc(r.detail)}`, r.ok ? "pos" : "warn")).join("");
   function planHtml() {
     const p = UI.plan;
     if (!p) return "<div>Working out what this threshold can show...</div>";
     const g = p.detectable_gap, lo = g != null ? Math.round((0.5 - g / 2) * 100) : null, hi = g != null ? Math.round((0.5 + g / 2) * 100) : null;
-    return `<div><b>${p.calls_per_arm} finished calls per prompt (${p.total} in total).</b><br>
-      ${g == null ? "Even a 90-point gap would not be caught reliably: use more calls." : `If B is truly better, a real gap of about <b>${Math.round(g * 100)} points</b> or more (for example ${lo}% vs ${hi}% good calls) is caught 8 times in 10. A smaller gap will usually end as "no clear winner".`}<br>
-      If the two prompts are really identical, a false winner appears in about <b>${(p.false_win * 100).toFixed(1)}%</b> of tests (computed exactly, worst case over common rates).<br>
-      The result stays locked until all ${p.total} calls are done and signalled.</div>`;
+    return `<div><b>${p.calls_per_arm} per prompt = ${p.total} calls.</b> ${g == null ? "Even a 90-point gap would not be caught reliably: use more calls." : `Catches a gap of about <b>${Math.round(g * 100)} points</b> (e.g. ${lo}% vs ${hi}% good calls).`} False winner if A = B: <b>${(p.false_win * 100).toFixed(1)}%</b>. ${info(`A real gap that big is caught 8 times in 10; a smaller one usually ends as "no clear winner". The false-winner rate is computed exactly, worst case over common rates. The result stays locked until all ${p.total} calls are done and signalled.`)}</div>`;
   }
   function afterSetup() { if (!UI.pair) loadPair(); if (!UI.plan) loadPlan(); }
   async function loadPair() {
@@ -2061,13 +2059,14 @@ init();
           <div><div class="lc-big">${lcPts(r.lo)} to ${lcPts(r.hi)}</div><div class="muted">plausible range at ${Math.round(c.confidence * 100)}% confidence (approximate for small samples)</div></div>
           <div><div class="lc-big">${(r.p_value * 100).toFixed(1)}%</div><div class="muted">chance of a gap this big by luck alone if the prompts were really equal (exact test; a win needs this under ${Math.round(r.alpha * 100)}%)</div></div></div></div>
 
+      ${gradeCard()}
       <div class="card"><h2>Guardrails</h2><div class="tbl-wrap" style="margin:12px 0"><table><thead><tr><th>Check</th><th>Rule fixed before the test</th><th>Result</th><th></th></tr></thead><tbody>${guard}</tbody></table></div>
         <p class="sub">These are plain comparisons of what happened in this small test. They can send a win to a person for approval; they never create a win.</p></div>
 
-      <div class="card"><h2>Hear them again</h2><div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>#</th><th>Prompt</th><th class="n">Length</th><th>Signal</th><th>Fatal</th><th></th></tr></thead><tbody>
-        ${calls.map(x => `<tr><td>${x.n}</td><td>${esc(c.prompt_names[x.arm])} <span class="muted">(${esc(x.label)})</span></td><td class="n">${mmss(x.duration_s)}</td><td>${x.good ? pill("yes", "pos") : pill("no", "neg")}</td><td>${x.fatal ? pill("fatal", "neg") : ""}</td>
+      <div class="card"><h2>Hear them again</h2><div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>#</th><th>Prompt</th><th class="n">Length</th><th>Signal</th><th>Fatal</th>${calls.some(x => x.auto) ? "<th>Sarvam</th>" : ""}<th></th></tr></thead><tbody>
+        ${calls.map(x => `<tr><td>${x.n}</td><td>${esc(c.prompt_names[x.arm])} <span class="muted">(${esc(x.label)})</span></td><td class="n">${mmss(x.duration_s)}</td><td>${x.good ? pill("yes", "pos") : pill("no", "neg")}</td><td>${x.fatal ? pill("fatal", "neg") : ""}</td>${calls.some(y => y.auto) ? `<td>${x.auto ? (x.auto.valid ? `<span title="${esc(x.auto.label + (x.auto.evidence ? ": " + x.auto.evidence : ""))}">${x.auto.goal_hit ? "yes" : "no"}${x.auto.fatal ? " · fatal" : ""} ${(x.auto.goal_hit === !!x.good) ? "✓" : "✕"}</span>` : '<span class="muted">unreadable</span>') : '<span class="muted">-</span>'}</td>` : ""}
           <td><button class="link" data-lc="tr" data-id="${esc(x.id)}">transcript</button>${x.interaction_id ? ` · <button class="link" data-lc="rec" data-id="${esc(x.id)}">listen</button>` : ""}</td></tr>
-          <tr hidden id="lc-tr-${esc(x.id)}"><td colspan="6">${x.note ? `<p><b>Note:</b> ${esc(x.note)}</p>` : ""}${x.interaction_id ? `<p class="mono muted">Sarvam interaction ${esc(x.interaction_id)}</p>` : ""}<div class="lc-transcript" style="max-width:none">${(x.transcript || []).map(trBub).join("") || '<span class="muted">No transcript was captured (logged by hand).</span>'}</div><div id="lc-rec-${esc(x.id)}"></div></td></tr>`).join("")}</tbody></table></div></div>
+          <tr hidden id="lc-tr-${esc(x.id)}"><td colspan="${calls.some(y => y.auto) ? 7 : 6}">${x.note ? `<p><b>Note:</b> ${esc(x.note)}</p>` : ""}${x.interaction_id ? `<p class="mono muted">Sarvam interaction ${esc(x.interaction_id)}</p>` : ""}<div class="lc-transcript" style="max-width:none">${(x.transcript || []).map(trBub).join("") || '<span class="muted">No transcript was captured (logged by hand).</span>'}</div><div id="lc-rec-${esc(x.id)}"></div></td></tr>`).join("")}</tbody></table></div></div>
 
       <div class="card"><h2>Proof this was fair</h2>
         <p class="sub">Before call 1 the log recorded the threshold, the confidence, the guardrails and a fingerprint of the secret call order. The order is revealed now: anyone can re-hash it.</p>
@@ -2075,6 +2074,22 @@ init();
           <div><div class="muted">Log fingerprint (${T.ledger.entries} entries, ${T.ledger.ok ? "chain verified" : "CHAIN BROKEN"})</div><div class="mono">${esc(T.ledger.head)}</div></div></div>
         <div class="lc-row"><a class="btn" href="/api/live/test/${esc(T.id)}/csv">Download the results as CSV</a></div>
         <p class="sub" style="margin-top:12px">This is a listening test: it tells you which prompt your team judged better on ${T.total_planned} calls. Production traffic is judged by Live Experiments and History.</p></div></div>`;
+  }
+
+  /** After the release: Sarvam's model reads each call's transcript (the project's VANI tagger) and we compare its tag with the listener's signal. */
+  function gradeCard() {
+    const g = T.grading || {}, s = g.summary, rs = x => x == null ? "-" : Math.round(x * 100) + "%";
+    const head2 = `<div class="sec-row"><h2>Sarvam checks the calls</h2>${s ? pill(`agrees on ${s.goal_agree} of ${s.n}`, s.goal_rate >= 0.8 ? "pos" : "warn") : pill("optional", "plain")}</div>`;
+    const why = info("Sarvam's chat model reads each call's transcript with the same tagger the project uses on the real VANI recordings, and says whether the goal was reached and whether anything was fatal. It never changes the verdict: your signals decide. This is the deck's 'accuracy of auto-disposition against labelled calls'.");
+    const run = g.to_grade ? `<div class="lc-row" style="margin-top:12px"><button class="btn primary" data-lc="grade">Grade ${g.to_grade} call${g.to_grade === 1 ? "" : "s"} with Sarvam (about ₹${g.est_inr})</button><span class="note">uses the model key in .env; capped at ₹${g.budget_inr}</span></div>` : "";
+    const err = g.error ? banner(esc(g.error), "warn") : "", noTr = g.without_transcript ? `<p class="note">${g.without_transcript} call${g.without_transcript === 1 ? " has" : "s have"} no transcript (logged by hand), so ${g.without_transcript === 1 ? "it is" : "they are"} not graded.</p>` : "";
+    if (!s) return `<div class="card" id="lc-grade">${head2}<p class="sub">Let Sarvam tag every call and see how often it agrees with you. ${why}</p>${err}${run}${noTr}</div>`;
+    const t = s.table;
+    return `<div class="card" id="lc-grade">${head2}
+      <div class="grid g3" style="margin-top:12px"><div><div class="lc-big">${rs(s.goal_rate)}</div><div class="muted">agree on "${esc(T.config.goal_name)}" (${s.goal_agree} of ${s.n} calls) ${why}</div></div>
+        <div><div class="lc-big">${rs(s.fatal_rate)}</div><div class="muted">agree on a fatal problem (${s.fatal_agree} of ${s.n})</div></div>
+        <div><table class="mini"><thead><tr><th></th><th>Sarvam: yes</th><th>Sarvam: no</th></tr></thead><tbody><tr><th>You: yes</th><td>${t.yes_yes}</td><td>${t.yes_no}</td></tr><tr><th>You: no</th><td>${t.no_yes}</td><td>${t.no_no}</td></tr></tbody></table></div></div>
+      ${err}${run}${noTr}${g.spent_inr != null ? `<p class="note">Spent ₹${g.spent_inr} on this test's grading.</p>` : ""}</div>`;
   }
 
   // ------------------------------------------------------------------------------------------ the voice call (Sarvam browser SDK)
@@ -2165,6 +2180,9 @@ init();
       "abandon": guard(async () => {
         const reason = prompt("Why are you abandoning this test? No result will be shown.", ""); if (!reason) return;
         await api(`/api/live/test/${T.id}/abandon`, { reason }); T = null; await load(); }),
+      "grade": guard(async () => {
+        const g = T.grading || {}; if (!confirm(`Grade ${g.to_grade} call(s) with Sarvam's chat model? About ₹${g.est_inr}, capped at ₹${g.budget_inr}, from the shared credits.`)) return;
+        const r = await api(`/api/live/test/${T.id}/grade`, { yes: true }); T = r.test; redraw(); say(r.error ? "Graded part of the calls" : `Graded ${r.graded_now} call(s) for ₹${r.spent_inr}`); }),
       "tr": () => { const el = document.getElementById("lc-tr-" + b.dataset.id); if (el) el.hidden = !el.hidden; },
       "rec": () => {
         const box = document.getElementById("lc-rec-" + b.dataset.id), tr = document.getElementById("lc-tr-" + b.dataset.id); if (tr) tr.hidden = false;

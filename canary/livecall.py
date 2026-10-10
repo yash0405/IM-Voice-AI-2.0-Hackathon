@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import livestats
+from .stats import wilson
 from .ledger import Ledger, verify
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -347,7 +348,7 @@ def _call_view(t: dict, c: dict, reveal: bool) -> dict:
          "app_id": c.get("app_id"), "version": c.get("version")}
     if reveal:
         v.update(arm=c["arm"], good=c.get("good"), fatal=c.get("fatal"), note=c.get("note"), interaction_id=c.get("interaction_id"),
-                 transcript=c.get("transcript") or [], void_reason=c.get("void_reason"))
+                 transcript=c.get("transcript") or [], void_reason=c.get("void_reason"), auto=c.get("auto"))
     return v
 
 
@@ -371,6 +372,7 @@ def public(t: dict) -> dict:
         out["result"] = t["result"]
         out["reveal"] = {"labels": labels, "sequence": t["secret"]["sequence"], "salt": t["secret"]["salt"]}
         out["ledger"]["entries_full"] = t["ledger"]
+        out["grading"] = t.get("grading") or grade_plan_of(t)
     return out
 
 
@@ -510,6 +512,78 @@ def _release(t: dict) -> None:
     t["result"], t["state"] = res, "released"
     _log(t, "result_released", {"verdict": res["verdict"], "call": res["call"], "p_value": round(res["p_value"], 5), "diff": round(res["diff"], 4),
                                 "a": a, "b": b, "guards": res["guards"], "sequence": t["secret"]["sequence"], "labels": t["secret"]["labels"], "salt": t["secret"]["salt"]})
+
+
+# ---------------------------------------------------------------------------- Sarvam grades the calls (the deck's "auto-disposition vs labelled calls")
+
+GRADE_GOAL = "buylead_created"           # the tagger's disposition that counts as the goal (the BRD's BuyLead created)
+GRADE_EST_INR = 0.25                     # planning estimate per call; the real cost comes from Sarvam's token counts
+GRADE_BUDGET_INR = 10.0                  # hard cap per test
+
+
+def _graded(t: dict) -> list[dict]:
+    return [c for c in t["calls"] if c["status"] == "done" and (c.get("auto") or {}).get("valid")]
+
+
+def grade_plan_of(t: dict) -> dict:
+    todo = [c for c in t["calls"] if c["status"] == "done" and c.get("transcript") and not c.get("auto")]
+    no_tr = sum(1 for c in t["calls"] if c["status"] == "done" and not c.get("transcript"))
+    return {"done": False, "to_grade": len(todo), "without_transcript": no_tr, "est_inr": round(len(todo) * GRADE_EST_INR, 2), "budget_inr": GRADE_BUDGET_INR,
+            "summary": grade_summary(t) if _graded(t) else None}
+
+
+def grade_summary(t: dict) -> dict:
+    """How often Sarvam's tag agrees with the listener: on the goal (yes or no) and on a fatal problem. A 2 by 2 table for the goal."""
+    g = _graded(t)
+    n = len(g)
+    agree = sum(1 for c in g if bool(c["good"]) == bool(c["auto"]["goal_hit"]))
+    fatal_agree = sum(1 for c in g if bool(c.get("fatal")) == bool(c["auto"]["fatal"]))
+    lo, hi = wilson(agree, n) if n else (None, None)
+    cell = lambda h, a: sum(1 for c in g if bool(c["good"]) == h and bool(c["auto"]["goal_hit"]) == a)
+    return {"n": n, "goal_agree": agree, "goal_rate": agree / n if n else None, "goal_ci": [lo, hi], "fatal_agree": fatal_agree,
+            "fatal_rate": fatal_agree / n if n else None, "table": {"yes_yes": cell(True, True), "yes_no": cell(True, False), "no_yes": cell(False, True), "no_no": cell(False, False)},
+            "by_arm": {a: {"n": sum(1 for c in g if c["arm"] == a), "auto_goal": sum(1 for c in g if c["arm"] == a and c["auto"]["goal_hit"])} for a in ("A", "B")}}
+
+
+def grade_calls(tid: str, yes: bool = False, budget: float = GRADE_BUDGET_INR, client=None) -> dict:
+    """After the result is released, Sarvam's chat model reads each finished call's transcript with the same tagger the project uses for the
+    real VANI recordings (canary/sarvam_pipe.py, data/evaluator_prompt.md) and the tag is compared with the listener's signal. It never changes
+    the verdict (the signals decide). Paid (about Rs 0.2 a call): without yes=True it only returns the estimate; it stops before the budget."""
+    with LOCK:
+        t = _load(tid)
+        if t["state"] != "released":
+            raise LiveError("calls are graded after the result is released, so the grades cannot sway the listeners")
+        plan = grade_plan_of(t)
+        if not yes or not plan["to_grade"]:
+            return {**plan, "test": public(t)}
+        from . import sarvam_pipe as sp
+        if client is None and not sp.load_key():
+            raise LiveError("no Sarvam model key: put SARVAM_API_KEY in .env (the dashboard.sarvam.ai key), then press again")
+        pipe = sp.Pipe(client=client)
+        spent, error = {"inr": 0.0}, None
+
+        def led(kind, inr, **info):
+            spent["inr"] += inr
+            sp._add_spend(kind, inr, source="live_call_grading", test=tid, **info)
+        graded = 0
+        for c in [c for c in t["calls"] if c["status"] == "done" and c.get("transcript") and not c.get("auto")]:
+            if spent["inr"] + GRADE_EST_INR > budget:
+                break
+            text = "\n".join(f"{'VANI' if m['role'] == 'bot' else 'Buyer'}: {m['content']}" for m in c["transcript"])
+            try:
+                tag = pipe.tag_text(text, idx=c["id"], ledger=led)
+            except Exception as e:                      # keep what was graded; say why it stopped
+                error = f"Sarvam stopped answering after {graded} call(s): {str(e)[:160]}"
+                break
+            c["auto"] = {"label": tag["label"], "goal_hit": tag["label"] == GRADE_GOAL, "fatal": tag["fatal"] != "none", "fatal_kind": tag["fatal"],
+                         "overall_call": tag["overall_call"], "evidence": tag["evidence"], "valid": tag["valid"]}
+            graded += 1
+        summ = grade_summary(t)
+        t["grading"] = {**grade_plan_of(t), "done": True, "graded_now": graded, "spent_inr": round(spent["inr"], 2), "summary": summ, "error": error}
+        _log(t, "calls_graded", {"by": "Sarvam chat model (" + sp.LLM_MODEL + ")", "graded": graded, "spent_inr": round(spent["inr"], 2),
+                                 "agreement": {k: summ[k] for k in ("n", "goal_agree", "fatal_agree")}})
+        _save(t)
+        return {**t["grading"], "test": public(t)}
 
 
 def abandon(tid: str, reason: str) -> dict:

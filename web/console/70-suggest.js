@@ -15,7 +15,7 @@ function historyIdeas() {
 /** "Create experiment": the wizard opens with the FULL suggested prompt B (the live prompt A with the suggestion applied). */
 function createFrom(c) {
   const B = c.e && c.e.prompt_b ? c.e.prompt_b : c.variant ? fullPromptB(c.variant) : null;
-  startWizard({ name: c.title, change: c.hypothesis, why: c.caveat || "", effect: c.expected, promptB: B, size: !c.expected_pp ? "medium" : c.expected_pp <= 2 ? "small" : c.expected_pp <= 5 ? "medium" : "large" });
+  startWizard({ name: c.title, change: c.hypothesis, why: c.caveat || "", effect: c.expected, promptB: B, primary: c.metric || REF_METRIC, size: !c.expected_pp ? "medium" : c.expected_pp <= 2 ? "small" : c.expected_pp <= 5 ? "medium" : "large" });
 }
 ROUTES.suggest = (el) => {
   const base = C.suggestions.filter(c => !c.from_history), hi = historyIdeas(), all = [...base, ...hi], sources = [...new Set(all.map(c => c.source))];

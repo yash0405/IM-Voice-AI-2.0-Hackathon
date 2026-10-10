@@ -25,7 +25,7 @@ await click('#w-next');
 
 /* Step 2: full prompt only */
 ok((await txt('#w-main h2')) === '2. Prompt B', 'Step 2 title');
-ok((await txt('#w-main .sub')).startsWith('Paste or edit the full prompt for variant B. Prompt A is the current live prompt.'), 'Step 2 helper text');
+ok((await txt('#w-main .sub')).startsWith('Edit the full prompt B below; the diff and the variable check update as you type.'), 'Step 2 helper text');
 const s2 = await p.evaluate(() => ({ toggle: !!document.querySelector('[data-mode]'), radios: document.querySelectorAll('input[name=w-var]').length, words: /patch|lint-derived|contradictions in the prompt/i.test(document.querySelector('#w-main').innerText),
   rows: +document.querySelector('#w-b').getAttribute('rows'), mono: getComputedStyle(document.querySelector('#w-b')).fontFamily, resize: getComputedStyle(document.querySelector('#w-b')).resize, same: document.querySelector('#w-b').value.length > 1000 }));
 ok(!s2.toggle && !s2.radios && !s2.words, 'Step 2: no patch toggle, no patch cards, no patch/lint wording', s2);
@@ -85,11 +85,12 @@ ok(!(await txt('#w-glance')).includes('Set audience'), 'At a glance: shows estim
 
 /* Step 4: goals */
 const s4 = await p.evaluate(() => ({ prim: document.querySelector('#w-primary').value, ph: document.querySelector('#w-primary option[value=""]').textContent, guards: [...document.querySelectorAll('[data-mcard^="guardrail"]')].map(c => c.innerText), banner: /Suggested from your hypothesis|Use the suggestion/.test(document.querySelector('#w-main').innerText), secs: [...document.querySelectorAll('.goal-sec h3')].map(h => h.textContent) }));
-ok(s4.prim === '' && s4.ph === 'Choose the main goal', 'Step 4: primary goal starts empty with the placeholder', s4);
+ok(s4.prim === 'buylead_created' && s4.ph === 'Choose the main goal', 'Step 4: primary goal is pre-filled with BuyLead created (the placeholder is still there)', s4);
 ok(s4.guards.length === 1 && /Call duration/.test(s4.guards[0]) && /must not rise by more than 10%/.test(s4.guards[0]), 'Step 4: one pre-added guardrail, call duration +10%', s4.guards);
 ok(!s4.banner, 'Step 4: the "Suggested from your hypothesis" banner is gone');
 ok(JSON.stringify(s4.secs) === JSON.stringify(['Primary goal', 'Guardrails', 'Secondary metrics']), 'Step 4: three sections in order', s4.secs);
 await shot('06_step4_defaults');
+await p.select('#w-primary', ''); await sleep(300);
 await click('#w-next'); ok((await txt('#w-main h2')) === '4. Goals', 'Step 4: Next is refused without a primary goal');
 // custom primary: Busy share of unanswered calls (rate) -> saved to the metric list
 await p.select('#w-primary', '__custom'); await sleep(300);
@@ -198,8 +199,9 @@ await click('#w-next');
 
 /* Step 6: review */
 const r6 = await p.evaluate(() => document.querySelector('#w-main').innerText);
-ok(/Leads where HL Type is UA or PNSM AND Legal Status is Proprietorship/.test(r6) && r6.includes('100% of counted leads matched this rule'), 'Review: the audience in words with the 100% line');
-ok(r6.includes('BuyLead created') && r6.includes('Early hang-ups') && /must not rise by more than 3 points/.test(r6) && r6.includes('Busy share of unanswered calls') && r6.includes('For insight only'), 'Review: primary, guardrails with formula and limit, secondary');
+const r6h = await p.$eval('#w-main', e => e.innerHTML);
+ok(/Leads where HL Type is UA or PNSM AND Legal Status is Proprietorship/.test(r6) && /leads a day/.test(r6) && r6h.includes('counts only those that match the rule'), 'Review: the audience in words, leads a day, and the counting rule one hover away');
+ok(r6.includes('BuyLead created') && r6.includes('Early hang-ups') && /must not rise by more than 3 points/.test(r6) && r6.includes('Busy share of unanswered calls') && r6h.includes('For insight only'), 'Review: primary, guardrails with formula and limit, secondary');
 ok(!/patch/i.test(r6) && r6.includes('What changed in prompt B') && !!(await p.$('#w-main .diff2')), 'Review: prompt B diff shown, no "patch" wording');
 const chk = await p.$$eval('#w-checks .check', c => c.map(x => x.className + ' ' + x.innerText));
 ok(chk.length === 6 && chk.every(c => c.includes(' ok')), 'Review: every pre-launch check passes', chk);

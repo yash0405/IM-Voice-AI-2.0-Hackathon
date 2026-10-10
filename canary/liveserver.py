@@ -253,6 +253,8 @@ class H(console_server.H):
                 if act == "signal":
                     return self._json(livecall.signal(tid, cid, body))
                 return self._json(livecall.void_call(tid, cid, str(body.get("reason", ""))))
+            if (m := re.fullmatch(r"/api/live/test/(lt-[0-9a-f-]+)/grade", p)):
+                return self._json(livecall.grade_calls(m.group(1), yes=body.get("yes") is True))
             if (m := re.fullmatch(r"/api/live/test/(lt-[0-9a-f-]+)/abandon", p)):
                 return self._json(livecall.abandon(m.group(1), str(body.get("reason", ""))))
             self._send(404, "text/plain", b"not found")

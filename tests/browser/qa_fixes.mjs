@@ -44,7 +44,7 @@ await p.evaluate(() => { const s = document.querySelector('#w-share'); s.value =
 ok(await p.evaluate(() => [...document.querySelectorAll('.toast')].some(t => t.textContent.includes('whole percent from 5 to 50'))), 'Share: 51% is refused with a message');
 
 // 13a, 13b: Settings
-await p.goto(url + '#/settings'); await sleep(500); const st = await p.evaluate(() => document.querySelector('#page').innerText);
+await p.goto(url + '#/settings'); await sleep(500); await p.evaluate(() => document.querySelectorAll('details').forEach(d => { d.open = true; })); await sleep(200); const st = await p.evaluate(() => document.querySelector('#page').innerText);
 ok(st.includes('BuyLead created') && !/Call disposition[^\n]*any number/.test(st) && !st.includes('fatal_flag') && st.includes('Fatal flag'), 'Settings: disposition values listed; no raw column name');
 
 if (live) {        // 6: Live shows the same connected leads a day as the page

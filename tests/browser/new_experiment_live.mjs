@@ -11,7 +11,8 @@ const canon = x => JSON.stringify(x, (k, v) => v && typeof v === 'object' && !Ar
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (c, name, info) => { if (c) { pass++; console.log('ok   ' + name); } else { fail++; console.log('FAIL ' + name + (info !== undefined ? '  ' + JSON.stringify(info).slice(0, 500) : '')); } };
 const shot = n => p.screenshot({ path: `${out}/${n}.png`, fullPage: true });
-const body = () => p.evaluate(() => document.querySelector('#page').innerText);
+// what the page shows, with its folded sections opened and its hover notes (ⓘ) included: details are one click or one hover away
+const body = () => p.evaluate(() => { document.querySelectorAll('#page details').forEach(d => { d.open = true; }); return document.querySelector('#page').innerText + '\n' + [...document.querySelectorAll('#page .info')].map(i => i.title).join('\n'); });
 await p.goto(url + '#/overview', { waitUntil: 'load' }); await p.evaluate(() => localStorage.clear()); await p.reload({ waitUntil: 'load' }); await sleep(800);
 
 const C1 = { key: 'custom_meeting_or_callback', name: 'Meeting or callback', type: 'rate', direction: 'higher', group: 'Custom', num: { unit: 'leads', where: [{ col: 'disposition', op: 'in', values: ['Meeting Fixed', 'Callback Fixed'] }] }, den: { unit: 'leads', where: [{ col: 'connected', op: 'is', values: ['1'] }] } };
