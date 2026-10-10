@@ -33,7 +33,7 @@ ok(["Overview", "New Experiment", "All experiments", "Suggest A/B Tests", "Promp
 ok(/Autopilot on/.test(await text()) && /Rolls back if B slips/.test(await text()), "the autopilot strip says what it does");
 ok((await p.$$(".rcard")).length === 6, "six running tests");
 ok(await p.$$eval(".rcard", cs => cs.every(c => c.querySelectorAll(".ab-bar i.grey").length === 2)), "A and B are grey until the engine decides");
-ok(!!(await p.$("#aa-chart canvas")), "the A vs A proof is a chart (Chart.js)");
+ok(!(await p.$("#aa-chart")) && !/Live prompt|Scorecard|Traffic split today|Recent decisions|Top suggestion|Why the verdicts/.test(await text()), "Overview ends after Running tests: no Live prompt, Scorecard, A vs A proof, traffic split, recent decisions or top suggestion");
 ok((await text()).split(/\s+/).length < 450, `Overview is short (${(await text()).split(/\s+/).length} words; it was 815)`);
 
 console.log("Play: the autopilot runs every test to its end");

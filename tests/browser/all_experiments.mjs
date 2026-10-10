@@ -22,6 +22,7 @@ ok(nav.some(x => /^All experiments\d+$/.test(x)) && !nav.some(x => /Live Experim
 ok(await p.$eval('#nav a[href="#/experiments"] .count', x => x.textContent) === "6", "badge = 6 running tests");
 ok((await p.$$(".tiles .tile")).length === 3 && !/Waiting for approval/.test(await text()), "Overview: three tiles, no approval tile");
 ok(!(await p.$("[data-adv]")), "no Advance 1 day on the running cards");
+ok(await p.$$eval("main h2", hs => hs.map(h => h.textContent.trim()).join("|")) === "Running tests" && !(await p.$("main .lp, main #aa-chart, main .sugg1, main .stack")), "Overview: nothing below Running tests (no Live prompt, Scorecard, A vs A, traffic split, decisions, suggestion)");
 ok(await p.$$eval(".rcard a", as => as.every(a => !a.getAttribute("href").startsWith("#/live/"))), "cards link to #/experiments/<id>");
 await p.click("#clk-next"); await wait(400);
 ok(await p.evaluate(() => [...document.querySelectorAll(".toast")].some(t => /^Day advanced for 6 running tests\./.test(t.textContent))), "Next day toast: Day advanced for 6 running tests.");
