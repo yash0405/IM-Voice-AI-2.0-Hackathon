@@ -240,6 +240,45 @@ class FileCatalog(unittest.TestCase):
         self.assertAlmostEqual(r["record"]["config"]["baseline"], round(fc.evaluate(d)["value"], 6), delta=1e-6)
 
 
+class HLBucketColumn(unittest.TestCase):
+    """A file with the HL type (redis_bucket) gets an "HL bucket" column from the project's one rule (catalog.derive: the PM's table)."""
+    TYPES = ["PUA", "PIM", "UA", "NUR", "OLP", "PAM", "SCHD", "OLPR", "PNCHF", "PANF", "NVGT", "PUT", "ENQR", "PNSM", ""]
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.rows = [{"fk_lead_id": f"{i}.0", "call_start_time": (BASE + timedelta(hours=i)).strftime("%d/%m/%y %H:%M"), "redis_bucket": self.TYPES[i % len(self.TYPES)],
+                      "lead_call_status": "Answered"} for i in range(150)]
+        write(self.dir, "hl.csv", ["fk_lead_id", "call_start_time", "redis_bucket", "lead_call_status"], self.rows)
+        self.old = os.environ.get("CANARY_RESOURCES")
+        os.environ["CANARY_RESOURCES"] = str(self.dir)
+
+    def tearDown(self):
+        if self.old is None:
+            os.environ.pop("CANARY_RESOURCES", None)
+        else:
+            os.environ["CANARY_RESOURCES"] = self.old
+        self.tmp.cleanup()
+
+    def test_column_follows_the_project_rule(self):
+        from canary import catalog
+        cols = {c["column"]: c for c in fc.catalog()["columns"]}
+        self.assertEqual(cols["redis_bucket"]["label"], "HL type")
+        hb = cols["hl_bucket"]
+        self.assertEqual((hb["type"], hb["values"], hb["derived_from"], hb["label"]), ("category", ["Rest", "Top 3"], "redis_bucket", "HL bucket (Top 3 / Rest)"))
+        for b in ("Top 3", "Rest"):
+            got = fc.evaluate({"source": "file", "file": "hl.csv", "type": "rate", "count": "calls", "name": "x", "num": [C("hl_bucket", "is", b)], "den": []})
+            want = sum(1 for r in self.rows if r["redis_bucket"] and catalog.derive("hl_bucket", r["redis_bucket"]) == b)
+            self.assertEqual(got["num"], want, b)
+
+    def test_the_pm_table(self):
+        top = fc.evaluate({"source": "file", "file": "hl.csv", "type": "rate", "count": "calls", "name": "x", "num": [C("hl_bucket", "is", "Top 3")], "den": []})
+        pm_top3 = {"SCHD", "OLP", "OLPR", "PAM", "PNCHF", "PANF", "PUT", "NVGT"}     # the PM's "Data type passed" table, Oct 10, 2026
+        self.assertEqual(top["num"], sum(1 for r in self.rows if r["redis_bucket"] in pm_top3))
+        for t in ("PUA", "PIM", "UA", "NUR"):                                           # the most common types are Rest
+            self.assertEqual(fc.evaluate({"source": "file", "file": "hl.csv", "type": "rate", "count": "calls", "name": "x", "num": [C("redis_bucket", "is", t), C("hl_bucket", "is", "Top 3")], "den": []})["num"], 0, t)
+
+
 REAL = Path(fc.__file__).resolve().parent.parent.parent / "Resources" / "dtl table data.csv"
 
 
@@ -259,6 +298,10 @@ class RealFile(unittest.TestCase):
             t = {c["column"]: c["type"] for c in fc.catalog()["columns"] if c["file"] == F2}
             self.assertEqual(t["client_number"], "id")
             self.assertEqual(t["lead_call_duration"], "number")
+            self.assertEqual(t["hl_bucket"], "category")
+            top = fc.evaluate({"source": "file", "file": F2, "type": "rate", "count": "calls", "name": "x", "num": [C("hl_bucket", "is", "Top 3")], "den": []})
+            pm = fc.evaluate({"source": "file", "file": F2, "type": "rate", "count": "calls", "name": "x", "num": [C("redis_bucket", "in", ["SCHD", "OLP", "OLPR", "PAM", "PNCHF", "PANF", "PUT", "NVGT"])], "den": []})
+            self.assertEqual(top["num"], pm["num"])                                    # Top 3 is exactly the PM table's eight types
         finally:
             if old is not None:
                 os.environ["CANARY_RESOURCES"] = old

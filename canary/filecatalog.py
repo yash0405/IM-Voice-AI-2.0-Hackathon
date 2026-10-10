@@ -21,6 +21,8 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import catalog as factors                  # the factor catalog (HL Type -> HL Bucket); this module has its own catalog()
+
 try:                                                     # optional: .xlsx files need it
     import openpyxl  # type: ignore
 except Exception:                                        # pragma: no cover - depends on the machine
@@ -50,7 +52,15 @@ def folder() -> Path:
 
 # ---------------------------------------------------------------------------- reading and type inference
 
+# Columns whose meaning the data team named (the Redash "Voice Bot - Dashboard" calls redis_bucket the HL Type), and columns derived from them.
+LABELS = {"redis_bucket": "HL type", "hl_bucket": "HL bucket (Top 3 / Rest)"}
+# HL bucket comes from the HL type through factors.derive (canary/catalog.py), the project's one rule (the PM's "Data type passed" table); never a copy of it here.
+DERIVED = {"hl_bucket": "redis_bucket"}
+
+
 def label(name: str) -> str:
+    if name in LABELS:
+        return LABELS[name]
     s = re.sub(r"[_\s]+", " ", str(name)).strip()
     return (s[:1].upper() + s[1:]) if s else str(name)
 
@@ -183,6 +193,11 @@ def _load(p: Path) -> dict:
         vals = [r[h] for r in rows]
         empties[h] = sum(1 for v in vals if v == "")
         cols[h] = _infer(h, vals)
+    for d, base in DERIVED.items():                      # e.g. HL bucket from the HL type, by the project's rule
+        if base in cols and d not in cols:
+            for r in rows:
+                r[d] = factors.derive(d, r[base]) if r[base] else ""
+            cols[d] = {**_infer(d, [r[d] for r in rows]), "derived_from": base}
     keys = _keys([h for h in header if h], empties)
     linkable = bool(keys["lead"] or keys["call"])
     dates = [h for h in cols if cols[h]["type"] == "date"]
@@ -243,6 +258,8 @@ def catalog(path=None) -> dict:
         fl.append(f)
         for c, m in i["columns"].items():
             e = {"file": name, "column": c, "label": label(c), "type": m["type"]}
+            if m.get("derived_from"):
+                e["derived_from"] = m["derived_from"]
             if m["type"] == "category":
                 e["values"] = list(m["values"])
             if m.get("unit"):
