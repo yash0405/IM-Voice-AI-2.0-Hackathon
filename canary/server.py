@@ -26,8 +26,8 @@ _lock = threading.Lock()
 # Hosted mode (public internet, e.g. Render): only the engine screens are served. The Label Lab, call audio, transcripts, the
 # Sarvam spend ledger and the proof lab stay off, and a password is required. Set by serve(hosted=True) or CANARY_HOSTED=1.
 HOSTED = {"on": False, "password": None}
-HOSTED_GET = ("/", "/index.html", "/console.css", "/console.js", "/api/console", "/api/samples")
-HOSTED_POST = ("/api/wizard", "/api/decide", "/api/inspect")
+HOSTED_GET = ("/", "/index.html", "/console.css", "/console.js", "/api/console", "/api/samples", "/api/filecatalog")
+HOSTED_POST = ("/api/wizard", "/api/decide", "/api/inspect", "/api/filecatalog/preview")
 HOSTED_MAX_BODY = 4_000_000                         # the free instance has 512 MB of memory
 _heavy = threading.BoundedSemaphore(2)              # at most two simulations/file decisions at once; the rest get a polite 503
 
@@ -402,6 +402,9 @@ class H(BaseHTTPRequestHandler):
                 self.send_response(200); self.send_header("Content-Type", "application/vnd.sqlite3")
                 self.send_header("Content-Disposition", 'attachment; filename="canary_history.db"')
                 self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            elif u.path == "/api/filecatalog":                    # column names, types and category values of the data files: no rows
+                from . import filecatalog
+                self._json(filecatalog.catalog())
             elif u.path == "/api/samples":
                 from . import samples
                 self._json({k: {"title": v["title"], "note": v["note"], "lpd": v["lpd"], "days": v["days"]} for k, v in samples.SAMPLES.items()})
@@ -453,6 +456,14 @@ class H(BaseHTTPRequestHandler):
                 self._json(run_decide(body))
             elif self.path == "/api/wizard":
                 self._json(run_wizard(body))
+            elif self.path == "/api/filecatalog/preview":           # aggregates only (num, den, value, window): never rows
+                from . import filecatalog
+                self._json(filecatalog.preview(body.get("def")))
+            elif self.path == "/api/filecatalog/rescan":
+                if not self._local_only():                          # re-reads files on this computer: its own console only
+                    return
+                from . import filecatalog
+                self._json(filecatalog.rescan())
             elif self.path == "/api/inspect":
                 from . import decide
                 try:

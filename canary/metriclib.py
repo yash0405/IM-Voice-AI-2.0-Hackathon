@@ -100,6 +100,8 @@ def _check_conds(conds, label: str, columns: dict, need_one: bool) -> list:
 def validate(m: dict, columns: list | None = None, check_data: bool = True) -> dict:
     """Checks a metric definition and returns its cleaned form. Only columns from the data; the denominator must be above 0 on the last
     30 days; a rate must lie between 0 and 100%. Raises ValueError with a plain message."""
+    if isinstance(m, dict) and m.get("source") == "file":
+        return validate_file(m, check_data)
     cols = {c["name"]: c for c in (columns or history.COLUMNS)}
     if not isinstance(m, dict):
         raise ValueError("a metric definition is an object")
@@ -140,13 +142,66 @@ def validate(m: dict, columns: list | None = None, check_data: bool = True) -> d
     return out
 
 
+# ---------------------------------------------------------------------------- metrics over a data file (canary/filecatalog.py)
+
+# file column -> the simulator's column (history.py). A file metric runs in a test only when every column it uses is here.
+FILE_SIM = {"lead_call_duration": "call_duration", "lead_call_status": "call_status"}
+FILE_SIM_VALUES = {"lead_call_status": {"NotAnswered": [s for s in history.STATUSES if s != "Answered"]}}
+
+
+def _sim_conds(conds: list, name: str) -> list:
+    from .filecatalog import label
+    out = []
+    for c in conds:
+        col = c["col"]
+        if col not in FILE_SIM:
+            raise ValueError(f"{name}: {label(col)} is in the data file but not in the test simulator yet (only "
+                             f"{' and '.join(label(k).lower() for k in FILE_SIM)}); preview it, but it cannot run in a test yet")
+        vals = c.get("values") if c.get("values") is not None else [c.get("value")]
+        if c["op"] in ("is", "is_not", "in"):
+            vm = FILE_SIM_VALUES.get(col, {})
+            vals = [x for v in vals for x in vm.get(v, [v])]
+            op = "is_not" if c["op"] == "is_not" else ("is" if len(vals) == 1 else "in")
+        else:
+            op = c["op"]
+        out.append({"col": FILE_SIM[col], "op": op, "values": vals})
+    return out
+
+
+def validate_file(m: dict, check_data: bool = True) -> dict:
+    """A custom metric over a data file: checked by filecatalog (columns, operators, denominator above 0, a rate within 0-100% on the
+    file's last 30 days). Returned in this module's format on the simulator's columns, with the file definition kept in `file_def`
+    (its baseline comes from the file: see evaluate)."""
+    from . import filecatalog
+    d, errs = filecatalog.clean(m)
+    if not errs and check_data:
+        errs = filecatalog.validate(m)
+    if errs:
+        raise ValueError("; ".join(errs))
+    if d["type"] == "sum":
+        raise ValueError(f"{d['name']}: a sum can be previewed but not used in a test yet (use a rate or an average)")
+    key = str(m.get("key") or "custom_" + re.sub(r"[^a-z0-9]+", "_", d["name"].lower()).strip("_"))[:60]
+    out = {"key": key, "name": d["name"], "type": d["type"], "direction": d["direction"], "source": "file", "file": d["file"], "file_def": d}
+    if d["type"] == "rate":
+        out["num"] = {"unit": d["count"], "where": _sim_conds(d["num"], d["name"])}
+        out["den"] = {"unit": d["count"], "where": _sim_conds(d["den"], d["name"])}
+    else:
+        if d["col"] not in FILE_SIM:
+            _sim_conds([{"col": d["col"], "op": "=", "value": 0}], d["name"])     # raises the plain message
+        out.update(col=FILE_SIM[d["col"]], unit=d["count"], where=_sim_conds(d["where"], d["name"]))
+    return out
+
+
 # ---------------------------------------------------------------------------- counting
 
 def cond_ok(c: dict, row: dict) -> bool:
     v = row.get(c["col"])
     if c["op"] == "is_not":
         return v not in c["values"]
-    return v in c["values"]
+    if c["op"] in OPS:
+        return v in c["values"]
+    from .filecatalog import cond_match                   # number comparisons (file metrics only)
+    return cond_match(c, v, "number")
 
 
 def _match(where: list, row: dict) -> bool:
@@ -205,7 +260,12 @@ class Acc:
 
 def evaluate(m: dict, segment=None, leads=None) -> dict:
     """The metric on the last 30 days (optionally for one audience): numerator, denominator, value, and the spread of one unit
-    (sqrt(p(1-p)) for a rate, the standard deviation of a call or lead for an average)."""
+    (sqrt(p(1-p)) for a rate, the standard deviation of a call or lead for an average). A file metric is computed on its file's
+    last 30 days (all traffic: the file has no audience factors)."""
+    if m.get("source") == "file" and isinstance(m.get("file_def"), dict):
+        from . import filecatalog
+        ev = filecatalog.evaluate(m["file_def"])
+        return {"num": ev["num"], "den": ev["den"], "value": ev["value"], "sd": ev["sd"], "leads": ev["leads"], "window": ev["window"]}
     from . import catalog
     acc = Acc()
     unit_vals = []

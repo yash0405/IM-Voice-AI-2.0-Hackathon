@@ -17,6 +17,7 @@ const glance = () => p.evaluate(() => Object.fromEntries([...document.querySelec
 
 await p.goto(url + '#/overview', { waitUntil: 'load' }); await p.evaluate(() => localStorage.clear());
 await p.goto(url + '#/new'); await p.reload({ waitUntil: 'load' }); await sleep(400);
+await p.evaluate(() => { C.file_catalog = { files: [], columns: [] }; });      // the builder without data files (the fallback); file_metrics.mjs covers the files' columns
 
 /* Step 1 (unchanged) */
 ok((await txt('#w-glance')).includes('Set audience and traffic to see estimates.'), 'At a glance: hidden until the audience is set');

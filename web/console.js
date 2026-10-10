@@ -330,18 +330,20 @@ const allEvents = () => EXPS().flatMap(eventsFor).concat((DYN.libLog || []).map(
 const nowTs = e => { const v = view(e); return (v.cur && v.cur.time) || e.record.config.start; };
 
 /* ------------------------------------------------------------------ routing and shell */
-const NAV = [["overview", "Overview"], ["new", "New Experiment"], ["live", "Live Experiments"], ["history", "History"], ["suggest", "Suggest A/B Tests"], ["library", "Prompt Library"], ["log", "Decision Log"], ["settings", "Settings"]];
+const NAV = [["overview", "Overview"], ["new", "New Experiment"], ["experiments", "All experiments"], ["suggest", "Suggest A/B Tests"], ["library", "Prompt Library"], ["log", "Decision Log"], ["settings", "Settings"]];
 const ROUTES = {};
 let CUR = { name: "overview", arg: null };
 function route() {
-  const h = (location.hash || "#/overview").replace(/^#\/?/, "").split("/");
-  const name = ROUTES[h[0]] ? h[0] : "overview"; CUR = { name, arg: h[1] ? decodeURIComponent(h[1]) : null };
+  const raw = (location.hash || "#/overview").replace(/^#\/?/, ""), qi = raw.indexOf("?"), h = (qi < 0 ? raw : raw.slice(0, qi)).split("/");
+  if (h[0] === "live") { location.replace(h[1] ? "#/experiments/" + h[1] : "#/experiments?status=running"); return; }      // the old Live Experiments and History pages
+  if (h[0] === "history") { location.replace("#/experiments?status=finished"); return; }
+  const name = ROUTES[h[0]] ? h[0] : "overview"; CUR = { name, arg: h[1] ? decodeURIComponent(h[1]) : null, query: new URLSearchParams(qi < 0 ? "" : raw.slice(qi + 1)) };
   render();
 }
 const go = (name, arg) => { location.hash = "#/" + name + (arg ? "/" + encodeURIComponent(arg) : ""); };
 function render() {
-  const run = EXPS().filter(e => view(e).running || view(e).kind === "HOLD_FOR_APPROVAL" && !view(e).d.approval).length;
-  $("#nav").innerHTML = NAV.map(([k, n]) => `<a href="#/${k}" ${CUR.name === k || (k === "history" && CUR.name === "report") ? 'aria-current="page"' : ""}><span>${n}</span>${k === "live" ? `<span class="count" title="Tests running or waiting for a person">${run}</span>` : ""}</a>`).join("");
+  const run = EXPS().filter(e => view(e).running).length;
+  $("#nav").innerHTML = NAV.map(([k, n]) => `<a href="#/${k}" ${CUR.name === k || (k === "experiments" && CUR.name === "report") ? 'aria-current="page"' : ""}><span>${n}</span>${k === "experiments" ? `<span class="count" title="Running tests">${run}</span>` : ""}</a>`).join("");
   const fn = ROUTES[CUR.name]; $("#page").innerHTML = ""; fn($("#page"), CUR.arg);
   scrollTo(0, 0); document.title = `Picky - ${(NAV.find(n => n[0] === CUR.name) || ["", "Report"])[1]}`;
 }
@@ -491,19 +493,22 @@ const sideWords = (side, all) => side.where && side.where.length ? `${side.unit 
 /** The formula in plain words: "Calls where Call status is Answered ÷ All calls attempted". */
 function metricWords(m) {
   if (!m) return "";
+  if (m.source === "file") return fcWords(m);
   if (m.type === "average") return `Average ${colLabel(m.col).toLowerCase()} over ${m.unit === "leads" ? "leads (first matching call)" : "calls"}${m.where && m.where.length ? " where " + m.where.map(condWords).join(" and ") : ""}`;
   return `${sideWords(m.num)} ÷ ${sideWords(m.den)}`;
 }
-const metricUnit = m => m && m.type === "average" ? ((HIST().col[m.col] || {}).unit || "") : "%";
+const metricUnit = m => m && m.source === "file" ? (m.type === "rate" ? "%" : ((fcCol(m.file, m.col) || {}).unit || "")) : m && m.type === "average" ? ((HIST().col[m.col] || {}).unit || "") : "%";
+const numType = m => m && (m.type === "average" || m.type === "sum");          // shown in its own unit, not as a percentage
 /** A value of the metric as people read it: 45.1% for a rate, 69.9 s for an average. */
-const fmtMetric = (v, m, d = 1) => v == null || isNaN(v) ? "-" : m && m.type === "average" ? `${(+v).toFixed(d)}${metricUnit(m) ? " " + metricUnit(m) : ""}` : `${(v * 100).toFixed(d)}%`;
+const fmtMetric = (v, m, d = 1) => v == null || isNaN(v) ? "-" : numType(m) ? `${(+v).toFixed(d)}${metricUnit(m) ? " " + metricUnit(m) : ""}` : `${(v * 100).toFixed(d)}%`;
 /** A difference of the metric: +5.0 pp for a rate (the dashboard's unit), −3.2 s for an average. `fmtPts` says "pts", as the New Experiment page does. */
-const fmtDelta = (v, m, d = 1, word = "pp") => { if (v == null || isNaN(v)) return "-"; const avg = m && m.type === "average", t = Math.abs(avg ? v : v * 100).toFixed(d); return (+t === 0 ? "" : v >= 0 ? "+" : "−") + t + (avg ? (metricUnit(m) ? " " + metricUnit(m) : "") : " " + word); };
+const fmtDelta = (v, m, d = 1, word = "pp") => { if (v == null || isNaN(v)) return "-"; const avg = numType(m), t = Math.abs(avg ? v : v * 100).toFixed(d); return (+t === 0 ? "" : v >= 0 ? "+" : "−") + t + (avg ? (metricUnit(m) ? " " + metricUnit(m) : "") : " " + word); };
 const fmtPts = (v, m, d = 1) => fmtDelta(v, m, d, "pts");
 
 /** The metric on the last 30 days for an audience: numerator, denominator, value, the spread of one unit (sqrt(p(1-p)) or the SD), leads. */
 const _evalCache = new Map();
 function metricEval(m, seg) {
+  if (m.source === "file") { const b = m.base || {}; return { num: b.num, den: b.den, value: b.value == null ? null : b.value, sd: b.sd == null ? null : b.sd, leads: b.den || 0 }; }   // measured on the file when it was saved
   const key = JSON.stringify([m.type, m.num, m.den, m.col, m.unit, m.where, segList(seg)]); if (_evalCache.has(key)) return _evalCache.get(key);
   const H = HIST(), idx = segLeads(seg);
   let sn = 0, sd = 0, vs = 0, vq = 0, vk = 0;
@@ -524,14 +529,16 @@ function metricEval(m, seg) {
 }
 /** Today's value for an audience; an audience with fewer than 200 connected leads in the 30 days uses the all-traffic value instead. */
 function baselineFor(m, seg) {
+  if (m.source === "file") return { ...metricEval(m, null), fallback: false, note: `measured on ${m.file}, all traffic` };
   const vol = audienceVolume(seg), few = segList(seg).length > 0 && vol.connected < 200, ev = metricEval(m, few ? null : seg);
   return { ...ev, fallback: few, note: few ? "Too little history for this audience; using overall rate." : "" };
 }
 /** Checks a metric definition: columns from the data only, at most 3 conditions a side, a denominator above 0, a rate within 0 to 100%. */
 function metricCheck(m) {
+  if (m && m.source === "file") return fcCheck(m);
   const errs = [], mc = METRIC_CAT(), H = HIST(), max = mc.max_conditions || 3;
   if (!m || !String(m.name || "").trim()) errs.push("Give the metric a name.");
-  else if (allMetrics().some(x => x.key === (m.key || metricKey(m.name)) && x.name.trim().toLowerCase() !== String(m.name).trim().toLowerCase())) errs.push(`This name is too close to the existing metric "${allMetrics().find(x => x.key === (m.key || metricKey(m.name))).name}": choose another name.`);
+  else if (!m._edit && allMetrics().some(x => x.key === (m.key || metricKey(m.name)) && x.name.trim().toLowerCase() !== String(m.name).trim().toLowerCase())) errs.push(`This name is too close to the existing metric "${allMetrics().find(x => x.key === (m.key || metricKey(m.name))).name}": choose another name.`);
   else if (String(m.name).length > 60) errs.push("The name is too long (60 characters at most).");
   else if (allMetrics().some(x => x.key !== m.key && x.name.trim().toLowerCase() === String(m.name).trim().toLowerCase())) errs.push("A metric with this name already exists.");
   const conds = (list, label, needOne) => {
@@ -568,7 +575,7 @@ const metricKey = name => "custom_" + String(name || "").toLowerCase().replace(/
 /** The test's metric list, in the order the engine reads it: the primary, the guardrails, then the secondary metrics. */
 function testMetrics(w) {
   const out = []; const ex = w.localMetrics || [];
-  if (w.primary) out.push({ role: "primary", key: w.primary, m: metricByKey(w.primary, ex), direction: (metricByKey(w.primary, ex) || {}).direction });
+  if (w.primary) { const pm = metricByKey(w.primary, ex); out.push({ role: "primary", key: w.primary, m: pm, direction: (pm && !pm.custom && w.primaryDir) || (pm || {}).direction }); }     // w.primaryDir: a per-test direction for a built-in primary
   for (const g of w.guards || []) out.push({ role: "guardrail", key: g.key, m: metricByKey(g.key, ex), direction: g.direction, limit: g.limit });
   for (const s of w.secondary || []) out.push({ role: "secondary", key: s.key, m: metricByKey(s.key, ex), direction: s.direction });
   return out.filter(x => x.m);                                                  // a metric removed from Settings since the draft was saved drops out
@@ -777,17 +784,17 @@ const pending = () => EXPS().filter(e => !isPast(e)).some(e => { const v = view(
 let PLAYER = null;
 /** Redraw the current screen without jumping to the top. */
 function refresh() { const y = scrollY; render(); scrollTo(0, y); }
-function tick() {
-  const notes = nextDay();
-  if (notes.length) toast(notes.join(" · "), 4500);
+function tick(lead = "") {
+  const notes = nextDay(), msg = [lead, ...notes].filter(Boolean);
+  if (msg.length) toast(msg.join(" · "), 4500);
   if (!pending()) { clearInterval(PLAYER); PLAYER = null; toast("Every test has settled.", 3500); }
   refresh();
 }
 function togglePlay() { if (PLAYER) { clearInterval(PLAYER); PLAYER = null; refresh(); return; } if (!pending()) { toast("Nothing left to play: every test has settled."); return; } PLAYER = setInterval(tick, 1200); tick(); }
-/** The demo clock's two buttons (they appear in the page header of Overview and Live Experiments). */
+/** The demo clock's two buttons (they appear in the page header of Overview and All experiments). */
 const clockButtons = () => `<button class="btn" id="clk-next" ${pending() ? "" : "disabled"} title="Every running test plays its next day; held wins and holdback weeks move on too (demo)">Next day</button><button class="btn" id="clk-play" ${pending() || PLAYER ? "" : "disabled"} title="Play day after day until every test has settled (demo)">${PLAYER ? "❚❚ Pause" : "▶ Play"}</button>`;
 function bindClock(el) {
-  const n = $("#clk-next", el); if (n) n.onclick = () => { if (PLAYER) { clearInterval(PLAYER); PLAYER = null; } tick(); };
+  const n = $("#clk-next", el); if (n) n.onclick = () => { if (PLAYER) { clearInterval(PLAYER); PLAYER = null; } const k = EXPS().filter(e => !isPast(e) && view(e).running).length; tick(`Day advanced for ${k} running test${k === 1 ? "" : "s"}.`); };
   const p = $("#clk-play", el); if (p) p.onclick = togglePlay;
 }
 /** One line that says what the autopilot does, with its two switches one click away (Settings). */
@@ -846,7 +853,7 @@ function trafficRow(e) { const c = e.record.config, s = segShare(c.segment); ret
 function trafficMap(list) {
   if (!list.length) return `<div class="empty">No test is running, so all traffic hears today's prompt.</div>`;
   const bar = r => { const seg = (cls, w, label) => `<span class="tm ${cls}" style="flex:${Math.max(w, 0.0001)}" title="${esc(label)}: ${pct(w, 1)}">${w >= 0.11 ? `${esc(label)} ${pct(w, 0)}` : ""}</span>`;
-    return `<div class="tmrow"><div class="tmname"><a href="#/live/${encodeURIComponent(r.e.id)}">${esc(r.name)}</a> ${segChips(r.seg)}</div><div class="tmap" role="img" aria-label="${esc(r.name)}: ${pct(r.out, 0)} outside the test, ${pct(r.a, 0)} A, ${pct(r.b, 0)} B">${seg("out", r.out, "outside")}${seg("a", r.a, "A")}${seg("b", r.b, "B")}</div></div>`; };
+    return `<div class="tmrow"><div class="tmname"><a href="#/experiments/${encodeURIComponent(r.e.id)}">${esc(r.name)}</a> ${segChips(r.seg)}</div><div class="tmap" role="img" aria-label="${esc(r.name)}: ${pct(r.out, 0)} outside the test, ${pct(r.a, 0)} A, ${pct(r.b, 0)} B">${seg("out", r.out, "outside")}${seg("a", r.a, "A")}${seg("b", r.b, "B")}</div></div>`; };
   const main = list.filter(r => r.e.world === "main"), clash = main.flatMap((x, i) => main.slice(i + 1).filter(y => segsOverlap(x.seg || {}, y.seg || {})).map(y => [x, y]));
   return `<div class="legend" style="margin-bottom:8px"><span><i class="sw out"></i>outside the test (today's prompt)</span><span><i class="sw a"></i>A inside the test</span><span><i class="sw b"></i>B inside the test</span></div>${list.map(bar).join("")}
     ${clash.length ? `<div class="banner neg" style="margin-top:12px"><div><b>Overlap.</b> ${clash.map(([x, y]) => `${esc(x.name)} and ${esc(y.name)}`).join("; ")} include some of the same leads, so their results interfere. Finish one first.</div></div>` : `<p class="note" style="margin-top:8px">Each test replays the same history on its own, so each bar shows how that test splits its own traffic. Launches from New Experiment are checked for overlap: two tests may not include the same leads at once.</p>`}`;
@@ -860,23 +867,23 @@ function abBars(v) {
   return `<div class="ab" title="${v.decided ? `${goalName(c)}: the engine's final numbers` : `${goalName(c)} so far. Grey until the engine decides: do not act on early numbers.`}">${bar("A")}${bar("B")}</div>`;
 }
 function runningCard(e) {
-  const v = view(e), c = v.config, link = `#/live/${encodeURIComponent(e.id)}`, held = v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval;
+  const v = view(e), c = v.config, link = `#/experiments/${encodeURIComponent(e.id)}`, held = v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval;
   return `<div class="card rcard"><div class="rc-top"><a href="${link}">${esc(c.name)}</a>${statusPill(v)}</div>
     ${segRules(c.segment).length ? `<div>${segChips(c.segment)}</div>` : ""}
     <div><div class="rc-day"><span>Day <b>${v.day}</b> of ${v.win}</span><span class="note">${v.scheduled ? "scheduled" : held ? "waiting for a yes" : `final call on day ${v.win}`}</span></div><div class="bar"><i style="width:${Math.min(100, v.day / v.win * 100)}%"></i></div></div>
     ${abBars(v)}
-    <div class="actions">${held ? `<a class="btn sm primary" href="${link}">Decide</a>` : `<a class="btn sm" href="${link}">Open</a>`}${v.running ? `<button class="btn sm" data-adv="${esc(e.id)}">Advance 1 day</button>` : ""}${v.scheduled ? `<a class="btn sm primary" href="${link}">Scheduled</a>` : ""}</div></div>`;
+    <div class="actions">${held ? `<a class="btn sm primary" href="${link}">Decide</a>` : `<a class="btn sm" href="${link}">Open</a>`}${v.scheduled ? `<a class="btn sm primary" href="${link}">Scheduled</a>` : ""}</div></div>`;
 }
 
 function attention() {
-  const items = [], L = (e, txt) => `<a href="#/live/${encodeURIComponent(e.id)}">${esc(e.record.config.name)}</a> ${txt}`;
+  const items = [], L = (e, txt) => `<a href="#/experiments/${encodeURIComponent(e.id)}">${esc(e.record.config.name)}</a> ${txt}`;
   EXPS().filter(isDemoWorld).forEach(e => { const v = view(e);
     if (v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval) items.push(["Approval pending", "warn", L(e, `won on the goal but needs a yes.${canAutoKeepA(e) ? ` If nobody answers within ${heldDays()} days, the autopilot keeps A.` : ""}`)]);
     else if (["STOP_HARM", "STOP_GUARDRAIL"].includes(v.kind)) items.push(["Harm alert", "neg", L(e, "was stopped: " + (v.kind === "STOP_HARM" ? "B was clearly worse." : "a guardrail was broken.") + " Its leads are back on A.")]);
     else if (v.kind === "HALT_SRM") items.push(["Split alert", "neg", L(e, "was halted: the split or the log is broken, so nothing can be trusted.")]);
     else if (v.running && v.day >= v.win - 1 && v.day < v.win) items.push(["Ending soon", "run", L(e, `reaches its final call on day ${v.win}.`)]);
     else if (v.running && v.cur && v.cur.z <= -1.96) items.push(["Watch", "warn", L(e, "looks worse so far. It stops only if it crosses the strict daily harm bar.")]);
-    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, `fell clearly below the held-back A after the promotion. Roll it back from Live Experiments (${(e.record.tails || {}).auto_rollback ? "the autopilot's rollback is off" : "a person approved this win, so a person rolls it back"}).`)]);
+    if (v.holdback && v.holdback.rows.some(r => r.alert)) items.push(["Holdback alert", "neg", L(e, `fell clearly below the held-back A after the promotion. Roll it back from its page (${(e.record.tails || {}).auto_rollback ? "the autopilot's rollback is off" : "a person approved this win, so a person rolls it back"}).`)]);
     else if (v.holdback && !v.holdback.done) items.push(["Holdback", "run", L(e, `is promoted; ${pct(v.holdback.all.share, 0)} of leads stay on A: day ${v.holdback.day} of ${v.holdback.all.days}.`)]);
   });
   DYN.drafts.forEach(d => items.push(["Draft", "plain", `<a href="#/new" data-open-draft="${esc(d.id)}">${esc(d.name)}</a> was saved but not launched.`]));
@@ -897,12 +904,12 @@ ROUTES.overview = (el) => {
   const sugg = (C.suggestions || []).filter(c => !c.disabled && !c.from_history && c.expected_pp).sort((a, b) => (!!b.variant - !!a.variant) || priority(b).score - priority(a).score)[0];   // an idea with a ready prompt edit starts in one click
   const scoreN = t.win + t.stop + t.inc + t.halted + t.held;
   el.innerHTML = head("Overview", "What is running, what needs you, and what Picky decided.", `${clockButtons()}<a class="btn" href="#/import">Import results</a><a class="btn primary" href="#/new">New experiment</a>`) + autopilotStrip() +
-    `<div class="grid g4 tiles">${tile("Running tests", t.running, "live now")}${tile("Waiting for approval", t.held, t.held ? "needs a yes" : "nothing waiting", t.held ? "warn" : "")}${tile("Harm alerts", t.alerts, "stopped or halted", t.alerts ? "neg" : "")}${tile("Completed this month", t.month, "in this demo")}</div>
+    `<div class="grid g3 tiles">${tile("Running tests", t.running, "live now")}${tile("Harm alerts", t.alerts, "stopped or halted", t.alerts ? "neg" : "")}${tile("Completed this month", t.month, "in this demo")}</div>
     ${att.length ? `<div class="card attn"><h2>Needs attention</h2><div class="attn-list">${att.map(([k, c, txt]) => `<div class="attn-row"><span>${pill(k, c)}</span><span>${txt}</span></div>`).join("")}</div></div>` : ""}
     <h2 class="sec-title">Running tests</h2>
     ${live.length ? `<div class="grid g3">${live.map(runningCard).join("")}</div>` : `<div class="empty">No tests are running. <a href="#/new">Start a new experiment</a> or pick an idea from <a href="#/suggest">Suggest A/B Tests</a>.</div>`}
     <div class="grid g2" style="margin-top:16px">
-      <div class="card"><div class="card-k">Live prompt</div><div class="lp"><span class="ver">${esc(prod.live.id)}</span><div><b>${esc(prod.live.name)}</b><div class="note">${prod.live.time ? "since " + esc(fdate(prod.live.time)) : "as received"}${prod.live.expId ? ` · from <a href="#/report/${encodeURIComponent(prod.live.expId)}">${esc(prod.live.from)}</a>` : ""} ${info("Fingerprint " + prod.live.hash)}</div></div></div>
+      <div class="card"><div class="card-k">Live prompt</div><div class="lp"><span class="ver">${esc(prod.live.id)}</span><div><b>${esc(prod.live.name)}</b><div class="note">${prod.live.time ? "since " + esc(fdate(prod.live.time)) : "as received"}${prod.live.expId ? ` · from <a href="#/experiments/${encodeURIComponent(prod.live.expId)}">${esc(prod.live.from)}</a>` : ""} ${info("Fingerprint " + prod.live.hash)}</div></div></div>
         ${impact ? `<div class="impact"><span class="impact-v" style="color:${impact.rel > 0 ? "#167a70" : "var(--navy)"}">${sgn(impact.rel * 100, 1)}%</span><span>${esc(impact.goal)}${impact.lower ? " (lower is better)" : ""}<br><span class="note">at least ${sgn(impact.low * 100, 0)}% at the low end of the range ${info("Simulated, with a known injected effect; winners' lifts tend to run high. Gains of different tests are not added: each test compared its B with the base prompt.")}</span></span></div>` : `<p class="note" style="margin-top:12px">Business impact appears here once a winner is promoted.</p>`}
         <div class="actions" style="margin-top:12px"><a class="btn sm" href="#/library">Prompt Library</a></div></div>
       <div class="card"><div class="card-k">Scorecard <span class="note">${scoreN} decided tests (${nPast} are history samples)</span></div>${scoreBar(t)}<p class="note" style="margin-top:8px">Only tests played in this demo change the live prompt.</p></div></div>
@@ -913,7 +920,6 @@ ROUTES.overview = (el) => {
       <div>${fold("Traffic split today", trafficMap(mapList), `${mapList.length} running`)}${fold("Recent decisions", ev.length ? `<div class="ledger">${ev.map(x => `<div class="e"><span class="note">${esc(fdt(x.ts))}</span><span><b>${esc(x.type)}</b> · ${esc(x.exp)}<br><span class="muted">${esc(x.text.length > 140 ? x.text.slice(0, 137) + "..." : x.text)}</span></span></div>`).join("")}</div><div class="actions" style="margin-top:8px"><a class="btn sm" href="#/log">Open Decision Log</a></div>` : `<p class="note">No decisions yet in this demo. Press Next day or Play.</p>`, ev.length ? `${ev.length} latest` : "")}</div>
       ${sugg ? `<div class="card sugg1"><div class="card-k">Top suggestion</div><p><b>${esc(sugg.title)}</b></p><p class="note">${esc(sugg.hypothesis.length > 150 ? sugg.hypothesis.slice(0, 147) + "..." : sugg.hypothesis)}</p><div class="actions" style="margin-top:8px"><button class="btn primary sm" id="top-create">Create experiment</button><a class="btn sm" href="#/suggest">All ideas</a></div></div>` : ""}</div>`;
   bindClock(el);
-  $$("[data-adv]", el).forEach(b => b.onclick = () => { const e = byId(b.dataset.adv); if (advance(e)) refresh(); });
   $$("[data-open-draft]", el).forEach(a => a.onclick = () => { const d = DYN.drafts.find(x => x.id === a.dataset.openDraft); if (d) WZ = { ...wzDefaults(), ...JSON.parse(JSON.stringify(d.w)) }; });
   const tc = $("#top-create"); if (tc) tc.onclick = () => createFrom(sugg);
   if (pr) aaChart($("#aa-chart"), pr.final_look, pr.naive);
@@ -946,7 +952,7 @@ function aaResult(o) {
     ${row("Wrongly promoted (a false winner)", o.promote, "about 2.5%")}${row("Logged as a loss (nothing ships)", o.loss, "about 2.5%")}${row("Looks different either way", o.promote + o.loss, "about 5%: the BRD's figure")}${row("Stopped early by the daily harm check", o.early, `at most ${((o.days - 1) * 0.1).toFixed(1)}% over ${o.days - 1} daily checks (0.1% each)`)}${row("A plain p < 0.05 check every day would crown a winner", o.naive, "the peeking trap we avoid")}</tbody></table></div><p class="note" style="margin-top:4px">Seed ${o.seed}. Different seeds give slightly different numbers: that is chance, and the 95% ranges show how much.</p>`;
 }
 
-/* Live Experiments: results up to yesterday, day by day, then the engine's call. Follows the spec's "Live Experiment page" table. */
+/* A test's page (#/experiments/<id>): results up to yesterday, day by day, then the engine's call. Follows the spec's "Live Experiment page" table. */
 
 const DECISION_ROWS = [
   { k: ["PROMOTE"], goal: "B significantly better", guard: "OK", dec: "Promote B to 100%" },
@@ -957,6 +963,8 @@ const DECISION_ROWS = [
   { k: ["STOP_GUARDRAIL"], goal: "Any", guard: "Clearly broken", dec: "Stop B" },
   { k: ["HALT_SRM"], goal: "Test itself is broken", guard: "-", dec: "Halt: fix the split or the log, rerun" }];
 
+/** The top of a test's page: back to the list, and the page's actions (the demo clock, Skip to the end). */
+const backHead = acts => `<div class="page-head"><div><a class="backlink" href="#/experiments">← All experiments</a></div><div class="actions">${acts}</div></div>`;
 function logAction(e, type, text) { const d = dyn(e); d.console = d.console || []; d.console.push({ ts: nowTs(e), type, text }); }
 
 function guardTile(item) {
@@ -1025,15 +1033,10 @@ function dayStrip(v) {
     <div class="dstrip-legend"><span><i class="pos"></i>no harm</span><span><i class="warn"></i>looks worse</span><span><i class="neg"></i>clearly worse: stopped</span><span><i class="fut"></i>to come</span><span>⚑ ${c.rule_set === "final_look" ? "final call" : "last day"} on day ${v.win}</span></div>`;
 }
 
-ROUTES.live = (el, arg) => {
-  const exps = EXPS(), vs = exps.map(e => [e, view(e)]);
-  const order = [...vs.filter(([e, v]) => v.running || v.scheduled), ...vs.filter(([e, v]) => v.d.paused && !v.ended), ...vs.filter(([e, v]) => v.kind === "HOLD_FOR_APPROVAL" && !v.d.approval), ...vs.filter(([e, v]) => v.ended)];
-  const uniq = [...new Map(order.map(x => [x[0].id, x])).values()];
-  const pick = arg ? byId(arg) : (uniq[0] || [])[0];
-  if (!pick) { el.innerHTML = head("Live Experiments", "Results up to yesterday, and the day-by-day decision.") + `<div class="empty">Nothing here yet. <a href="#/new">Start a new experiment</a>.</div>`; return; }
+function expDetail(el, arg) {
+  const pick = byId(arg);
+  if (!pick) { el.innerHTML = backHead("") + `<div class="empty">That test was not found. <a href="#/experiments">See all experiments</a>.</div>`; return; }
   const v = view(pick), c = v.config, rec = pick.record, cur = v.cur, d = v.d;
-  const groups = [["Running", uniq.filter(([e, x]) => x.running || x.scheduled || x.d.paused && !x.ended)], ["Waiting for a person", uniq.filter(([e, x]) => x.kind === "HOLD_FOR_APPROVAL" && !x.d.approval)], ["Finished", uniq.filter(([e, x]) => x.ended && !(x.kind === "HOLD_FOR_APPROVAL" && !x.d.approval))]];
-  const sel = `<select id="live-pick" aria-label="Choose an experiment">${groups.map(([g, list]) => list.length ? `<optgroup label="${g}">${list.map(([e, x]) => `<option value="${esc(e.id)}" ${e.id === pick.id ? "selected" : ""}>${esc(e.record.config.name)} — ${esc(x.status[0])}</option>`).join("")}</optgroup>` : "").join("")}</select>`;
   const canApprove = v.kind === "HOLD_FOR_APPROVAL" && !d.approval, canRoll = v.kind === "PROMOTE" && !d.rolledBack && v.decided;
   const segBits = rec.result.segment_check ? ` · ${pct(rec.result.segment_check.share_of_traffic, 0)} of traffic ${info(segMatchLine(rec))}` : "";
   const meta = `${v.scheduled ? `Scheduled for ${fdate(pick.sched_date || c.start)}` : v.ended ? `${KIND_LABEL[v.kind] || v.kind} on day ${v.ld}` : d.paused ? `Paused on day ${v.day}` : `Day ${v.day} of ${v.win}`} · ${pct(c.share_b, 0)} to B · ${esc(segRules(c.segment).length ? segDescribe(c.segment) : "all leads")}${segBits} · config v${c.version || 1} ${info(`Locked config ${rec.config_hash}; started ${fdate(c.start)}; ${c.rule_set === "final_look" ? "one winner call at the end, strict daily harm check" : "early promote and early stop"}`)}`;
@@ -1050,8 +1053,8 @@ ROUTES.live = (el, arg) => {
       : v.kind === "HOLD_FOR_APPROVAL" && canAutoKeepA(pick) ? ` If nobody answers within ${heldDays()} days (${Math.max(0, heldDays() - (d.waited || 0))} left), the autopilot keeps A.` : "";
     banner = `<div class="banner ${cls}" role="status"><div><b>${esc(KIND_LABEL[v.kind] || v.kind)}.</b> ${esc(v.kind === "STOPPED_MANUAL" ? "A person stopped the test." : v.res.reason)}${extra}</div></div>`;
   } else banner = `<div class="banner" role="status"><div><b>Too early to call.</b> ${c.rule_set === "final_look" ? `Winner call on day ${v.win}; a clearly worse B is stopped on any day.` : `The engine decides on the day the evidence crosses a line, by day ${v.win}.`} Do not act on early numbers.</div></div>`;
-  const pageActs = `${clockButtons()}${v.running ? `<button class="btn" id="a-adv">Advance this test 1 day</button><button class="btn" id="a-end">Skip to the end</button>` : v.ended ? `<a class="btn primary" href="#/report/${encodeURIComponent(pick.id)}">View final report</a>` : ""}`;
-  if (!cur) { el.innerHTML = head("Live Experiments", "Results up to yesterday, and the day-by-day decision.", pageActs) + `<div class="filters"><div class="field grow"><label for="live-pick">Experiment</label>${sel}</div></div>` + replayNote + hdr + (v.scheduled ? `<div class="banner"><div><b>Scheduled.</b> The setup is locked (version ${c.version || 1}). Nothing runs until ${esc(fdate(pick.sched_date || c.start))}. In this demo press Start now to play it.</div></div>` : banner) + `<div class="empty">${v.scheduled ? "No results yet: the test has not started." : 'No results yet. Press "Next day".'}</div>`; bindClock(el); wireLive(el, pick); return; }
+  const pageActs = `${clockButtons()}${v.running ? `<button class="btn" id="a-end">Skip to the end</button>` : ""}`;
+  if (!cur) { el.innerHTML = backHead(pageActs) + replayNote + hdr + (v.scheduled ? `<div class="banner"><div><b>Scheduled.</b> The setup is locked (version ${c.version || 1}). Nothing runs until ${esc(fdate(pick.sched_date || c.start))}. In this demo press Start now to play it.</div></div>` : banner) + `<div class="empty">${v.scheduled ? "No results yet: the test has not started." : 'No results yet. Press "Next day".'}</div>`; bindClock(el); wireLive(el, pick); return; }
   const ciA = armCI(cur, "A", c), ciB = armCI(cur, "B", c), goal = goalName(c), sec = secondaryList(v), lr = liftRange(cur, c), gl = guardList(v);
   const liftCol = !v.decided || fmtD(cur.diff, c) === fmtD(0, c) ? "var(--off)" : isBetter(cur.diff, c) ? "#167a70" : "#b23b3b";
   const tiles = `<div class="grid g4" style="margin-bottom:16px">
@@ -1067,8 +1070,7 @@ ROUTES.live = (el, arg) => {
   const evs = eventsFor(pick).sort((a, b) => a.ts < b.ts ? -1 : 1);
   const ledger = `<div class="card" id="record"><div class="sec-row"><div><h2>Decision record</h2><div class="sub">${evs.length} events with time, reason and numbers; hash-chained, so an edited entry is detected.</div></div><button class="btn sm" id="a-verify">Verify record in this browser</button></div><div id="verify-out" class="note" style="margin-top:8px"></div>
     ${fold("Show the events", `<div class="ledger">${evs.map(x => `<div class="e"><span class="note">${esc(fdt(x.ts))}</span><span><b>${esc(x.type)}</b>${x.hash ? ` <span class="mono muted">${esc(x.hash)}</span>` : ""}<br><span class="muted">${esc(x.text)}</span></span></div>`).join("")}</div>`)}</div>`;
-  el.innerHTML = head("Live Experiments", "Results up to yesterday, and the day-by-day decision.", pageActs) +
-    `<div class="filters"><div class="field grow"><label for="live-pick">Experiment</label>${sel}</div></div>` + replayNote + hdr + banner +
+  el.innerHTML = backHead(pageActs) + replayNote + hdr + (v.ended ? finalReportCard(pick, v, banner) : banner) +
     `<div class="card" style="margin-bottom:16px"><div class="sec-row"><h2>Day by day</h2><span class="note">${v.ended ? `decided on day ${v.ld}` : `${nf(needed)} more leads needed for the planned lift`} ${info(`Leads needed: ${nf(needN)} (the ${v.win}-day window holds ${nf(rec.design.n_max)}); ${nf(cur.n)} so far. Planned to detect ${c.metrics ? `${fmtD(c.primary_direction === "lower" ? -c.mde : c.mde, c)} from ${fmtP(c.baseline, c)}` : `a ${+(c.mde * 100).toFixed(1)}-point lift from ${pct(c.baseline, 0)}`} with at least ${pct(c.power, 0)} chance.`)}</span></div>${dayStrip(v)}</div>` + tiles +
     `<div class="card" style="margin-bottom:16px"><div class="sec-row"><div><h2 title="Cumulative goal rate for A and B by day. Shaded bands are 95% ranges.">Daily trend</h2><div class="sub">${esc(goal)}${c.metrics ? "" : " rate"}, A against B, with shaded 95% ranges</div></div><button class="btn sm" id="a-csv">Export CSV</button></div>
       <div class="legend"><span><i style="border-color:var(--a)"></i>A (today's prompt)</span><span><i style="border-color:var(--b)"></i>B (new prompt)</span><span><i class="band" style="background:var(--ink-2)"></i>95% range</span></div><div id="trend"></div></div>
@@ -1081,17 +1083,16 @@ ROUTES.live = (el, arg) => {
   const draw = () => trendChart($("#trend"), v.rows, v.win, { finalDay: fd, c });
   draw(); window.__redraw = draw;
   bindClock(el); wireLive(el, pick);
-};
-window.addEventListener("resize", () => { if (CUR.name === "live" && window.__redraw) window.__redraw(); });
+}
+window.addEventListener("resize", () => { if (CUR.name === "experiments" && CUR.arg && window.__redraw) window.__redraw(); });
 
 function wireLive(el, e) {
   const v = view(e), d = dyn(e), $1 = s => $(s, el);
-  const pickEl = $1("#live-pick"); if (pickEl) pickEl.onchange = () => go("live", pickEl.value);
+  const cl = $1("#a-clone"); if (cl) cl.onclick = () => cloneOf(e);
   const a = (id, fn) => { const b = $1(id); if (b) b.onclick = fn; };
   a("#a-start", () => { d.started = true; logAction(e, "Started", `Started on the scheduled date (a console action: in this demo a person pressed Start now).`); saveDyn(); route(); });
   const playHold = (all) => { const H = (view(e).holdback || {}).all; if (!H) return; do { const r = holdStep(e); if (!r.played) break; if (r.msg) toast(r.msg); } while (all && !dyn(e).rolledBack && (d.hold || 0) < H.days && !H.rows[d.hold - 1].alert); saveDyn(); refresh(); };
   a("#a-hold", () => playHold(false)); a("#a-hold-all", () => playHold(true));
-  a("#a-adv", () => { advance(e); route(); });
   a("#a-end", () => { d.day = view(e).ld; saveDyn(); toast(`${e.record.config.name}: ${KIND_LABEL[view(e).kind] || view(e).kind}`); route(); });
   a("#a-pause", () => { d.paused = !d.paused; logAction(e, d.paused ? "Paused" : "Resumed", `${d.paused ? "Paused" : "Resumed"} by a person on day ${v.day} (a console action; the engine is not involved).`); saveDyn(); route(); });
   a("#a-stop", () => { if (!confirm("Stop this test now? B's leads go back to A and the test ends.")) return; d.manualStop = true; logAction(e, "Stopped", `Stopped by a person on day ${v.day}. B's leads go back to A (a console action).`); saveDyn(); route(); });
@@ -1101,6 +1102,153 @@ function wireLive(el, e) {
   a("#a-csv", () => download(`${e.id}_daily.csv`, primaryDef(v.config).type === "average" ? toCsv(["day", "leads_A", "counted_A", "leads_B", "counted_B", "mean_A", "mean_B", "lift_" + (metricUnit(primaryDef(v.config)) || "units"), "z", "stop_line"], v.rows.map(({ day, row }) => [day, row.nA, row.dA, row.nB, row.dB, row.rateA.toFixed(3), row.rateB.toFixed(3), row.diff.toFixed(3), row.z.toFixed(3), (-row.harm).toFixed(3)]))
     : toCsv(["day", "leads_A", "goal_A", "leads_B", "goal_B", "rate_A", "rate_B", "lift_pp", "z", "stop_line"], v.rows.map(({ day, row }) => [day, row.nA, row.xA, row.nB, row.xB, row.rateA.toFixed(4), row.rateB.toFixed(4), (row.diff * 100).toFixed(2), row.z.toFixed(3), (-row.harm).toFixed(3)]))));
   a("#a-verify", async () => { const ents = e.record.ledger.concat(tailOf(e.record, d)); let ok; try { ok = await chainOk(ents); } catch (err) { $1("#verify-out").textContent = String(err.message || err); return; } $1("#verify-out").innerHTML = ok ? `<span style="color:#167a70;font-weight:600">✓ Chain intact</span>: ${ents.length} entries re-hashed just now, head <span class="mono">${esc(ents[ents.length - 1].hash.slice(0, 12))}</span>.` : `<span style="color:#b23b3b;font-weight:600">✕ Record BROKEN</span>: an entry was changed.`; });
+}
+
+/* All experiments: one list for running, draft and finished tests (it replaces Live Experiments and History). Filters and sort live in the URL
+   (#/experiments?status=running&q=...), so a filtered list can be shared or bookmarked. A row opens the test's page (#/experiments/<id>). */
+
+const EXP_ST = [["running", "Running", "run"], ["paused", "Paused", "plain"], ["draft", "Draft", "plain"], ["scheduled", "Scheduled", "plain"], ["promoted", "Promoted", "pos"],
+  ["stopped_worse", "Stopped: B worse", "neg"], ["stopped_guard", "Stopped: guardrail", "neg"], ["stopped_person", "Stopped by a person", "neg"], ["inconclusive", "Inconclusive", "plain"],
+  ["held", "Held for approval", "warn"], ["rejected", "Rejected", "plain"], ["halted", "Halted", "warn"], ["rolled_back", "Rolled back", "warn"]];
+const ST_LABEL = Object.fromEntries(EXP_ST.map(x => [x[0], x[1]])), ST_CLASS = Object.fromEntries(EXP_ST.map(x => [x[0], x[2]]));
+const FINISHED = ["promoted", "stopped_worse", "stopped_guard", "stopped_person", "inconclusive", "rejected", "halted", "rolled_back"];
+const STOPPED = ["stopped_worse", "stopped_guard", "stopped_person"];
+/** Status chips above the table: the three kinds of stop count as one chip. */
+const ST_CHIPS = [["Running", ["running"]], ["Paused", ["paused"]], ["Draft", ["draft"]], ["Scheduled", ["scheduled"]], ["Held for approval", ["held"]], ["Promoted", ["promoted"]], ["Stopped", STOPPED], ["Inconclusive", ["inconclusive"]], ["Rejected", ["rejected"]], ["Rolled back", ["rolled_back"]], ["Halted", ["halted"]]];
+const ST_RANK = { running: 0, paused: 1, draft: 2, scheduled: 3, held: 4 };
+const EXP_PAGE = 20;
+
+function expStatus(v) {
+  if (v.scheduled) return "scheduled";
+  if (v.d.paused && !v.ended) return "paused";
+  if (v.kind === "HOLD_FOR_APPROVAL") return "held";
+  if (!v.ended) return "running";
+  return { PROMOTE: "promoted", ROLLED_BACK: "rolled_back", STOP_HARM: "stopped_worse", LOSS: "stopped_worse", STOP_GUARDRAIL: "stopped_guard", STOPPED_MANUAL: "stopped_person", INCONCLUSIVE: "inconclusive", REJECTED: "rejected", HALT_SRM: "halted" }[v.kind] || "inconclusive";
+}
+const srcOf = e => e.kind === "files" ? "file" : isPast(e) ? "sim" : "here";
+const SRC_LABEL = { here: "Played here", sim: "Simulated", file: "From file" };
+const addDays = (iso, n) => { const d = new Date(iso); d.setDate(d.getDate() + n); return d.toISOString(); };
+
+/** One row per test and per saved draft, with everything the table, the filters, the sort and the CSV need. */
+function expRows() {
+  const rows = EXPS().map(e => {
+    const v = view(e), c = v.config, cur = v.cur, st = expStatus(v), lr = cur ? liftRange(cur, c) : null, g = guardOverall(v);
+    const end = v.ended ? ((v.res && v.res.time) || addDays(c.start, v.ld - 1)) : null;
+    return { id: e.id, e, v, st, name: c.name, start: c.start, end, days: v.ended ? v.ld : v.win, seg: segRules(c.segment).length > 0, aud: segRules(c.segment).length ? segDescribe(c.segment) : "All traffic",
+      metricKey: c.primary_goal || primaryDef(c).key, metric: goalName(c), a: cur ? cur.rateA : null, b: cur ? cur.rateB : null, lift: cur ? cur.diff : null, lo: lr ? lr.lo : null, hi: lr ? lr.hi : null,
+      guard: !cur || !guardList(v).length ? "—" : g.cls === "pos" ? "Pass" : g.cls === "neg" ? "Fail" : "—", src: srcOf(e) };
+  });
+  (DYN.drafts || []).forEach(d => { const w = d.w || {}, seg = segFromRows(w.segRows || []).seg, m = w.primary ? metricByKey(w.primary, w.localMetrics) : null;
+    rows.push({ id: d.id, draft: d, st: "draft", name: d.name || w.name || "Untitled draft", start: d.saved || null, end: null, days: null, seg: segRules(seg).length > 0, aud: segRules(seg).length ? segDescribe(seg) : "All traffic",
+      metricKey: w.primary || "", metric: m ? m.name : "—", a: null, b: null, lift: null, lo: null, hi: null, guard: "—", src: "here" }); });
+  return rows;
+}
+
+/** The list's state, read from and written to the URL. */
+function expState() {
+  const q = CUR.query || new URLSearchParams(), list = k => (q.get(k) || "").split(",").filter(Boolean);
+  let status = list("status"); if (status.includes("finished")) status = [...new Set([...status.filter(x => x !== "finished"), ...FINISHED])];
+  if (status.includes("stopped")) status = [...new Set([...status.filter(x => x !== "stopped"), ...STOPPED])];
+  return { q: q.get("q") || "", status, from: q.get("from") || "", to: q.get("to") || "", metric: q.get("metric") || "", aud: q.get("aud") || "", src: q.get("src") || "", sort: q.get("sort") || "", dir: +(q.get("dir") || -1), page: Math.max(0, +(q.get("page") || 1) - 1), open: q.get("open") || "" };
+}
+function expHref(s) {
+  const p = new URLSearchParams();
+  if (s.q) p.set("q", s.q); if (s.status.length) p.set("status", s.status.join(",")); if (s.from) p.set("from", s.from); if (s.to) p.set("to", s.to);
+  if (s.metric) p.set("metric", s.metric); if (s.aud) p.set("aud", s.aud); if (s.src) p.set("src", s.src); if (s.sort) { p.set("sort", s.sort); p.set("dir", s.dir); } if (s.page) p.set("page", s.page + 1);
+  const t = p.toString(); return "#/experiments" + (t ? "?" + t : "");
+}
+const expGo = s => { location.hash = expHref(s); };
+
+function expFilter(rows, s, skipStatus) {
+  const q = s.q.trim().toLowerCase();
+  return rows.filter(r => {
+    if (q && !(r.name + " " + ((r.e && r.e.hypothesis) || "")).toLowerCase().includes(q)) return false;
+    if (!skipStatus && s.status.length && !s.status.includes(r.st)) return false;
+    const day = (r.start || "").slice(0, 10);
+    if (s.from && (!day || day < s.from)) return false; if (s.to && (!day || day > s.to)) return false;
+    if (s.metric && r.metricKey !== s.metric) return false;
+    if (s.aud === "all" && r.seg) return false; if (s.aud === "seg" && !r.seg) return false;
+    if (s.src && r.src !== s.src) return false;
+    return true;
+  });
+}
+const EXP_SORT = { status: r => (ST_RANK[r.st] ?? 5) * 100 + EXP_ST.findIndex(x => x[0] === r.st), name: r => r.name.toLowerCase(), progress: r => r.start || "", aud: r => r.aud, metric: r => r.metric, ab: r => r.b ?? -1e9, lift: r => r.lift ?? -1e9, guard: r => r.guard };
+function expSort(rows, s) {
+  if (!s.sort) return rows.sort((x, y) => { const a = ST_RANK[x.st] ?? 5, b = ST_RANK[y.st] ?? 5; if (a !== b) return a - b; const ex = x.end || x.start || "", ey = y.end || y.start || ""; return ex < ey ? 1 : ex > ey ? -1 : 0; });
+  const k = EXP_SORT[s.sort] || EXP_SORT.name;
+  return rows.sort((x, y) => { const a = k(x), b = k(y); return (a < b ? -1 : a > b ? 1 : 0) * s.dir; });
+}
+
+function progressCell(r) {
+  if (r.draft) return `<span class="note">Not launched</span>`;
+  const v = r.v;
+  if (r.st === "scheduled") return `Starts ${fdate(r.e.sched_date || r.start)}`;
+  if (["running", "paused", "held"].includes(r.st)) return `<div class="rc-day"><span>${r.st === "paused" ? "Paused on day" : "Day"} <b>${v.day}</b> of ${v.win}</span></div><div class="bar thin"><i style="width:${Math.min(100, v.day / v.win * 100)}%"></i></div>${r.st === "held" ? `<div class="note">waiting for a yes</div>` : ""}`;
+  return `<span style="white-space:nowrap">${fdate(r.start)} – ${fdate(r.end)}</span><div class="note">${r.days} day${r.days === 1 ? "" : "s"}</div>`;
+}
+function liftCell(r) {
+  if (r.lift == null) return "—";
+  const c = r.v.config;
+  return `<b>${fmtD(r.lift, c)}</b><div class="note">${c.metrics ? rangeD(r.lo, r.hi, c) : `${sgn(r.lo * 100, 1)} to ${sgn(r.hi * 100, 1)} pp`}</div>`;
+}
+
+ROUTES.experiments = (el, arg) => {
+  if (arg) {
+    const d = (DYN.drafts || []).find(x => x.id === arg);
+    if (d) { WZ = { ...wzDefaults(), ...JSON.parse(JSON.stringify(d.w)) }; location.replace("#/new"); return; }
+    return expDetail(el, arg);
+  }
+  const s = expState(), all = expRows(), base = expFilter(all, s, true), rows = expSort(base.filter(r => !s.status.length || s.status.includes(r.st)), s);
+  const pages = Math.max(1, Math.ceil(rows.length / EXP_PAGE)), page = Math.min(s.page, pages - 1), shown = rows.slice(page * EXP_PAGE, page * EXP_PAGE + EXP_PAGE);
+  const chips = ST_CHIPS.map(([label, keys]) => [label, keys, base.filter(r => keys.includes(r.st)).length]).filter(x => x[2] > 0);
+  const chipOn = keys => s.status.length && keys.every(k => s.status.includes(k)) && s.status.every(k => keys.includes(k));
+  const metrics = [...new Map(all.filter(r => r.metricKey).map(r => [r.metricKey, r.metric])).entries()];
+  const any = s.q || s.status.length || s.from || s.to || s.metric || s.aud || s.src;
+  const th = (k, label, cls = "") => `<th class="${cls}" aria-sort="${s.sort === k ? (s.dir > 0 ? "ascending" : "descending") : "none"}"><button data-esort="${k}">${label}${s.sort === k ? (s.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`;
+  const sel = (id, label, cur, opts) => `<div class="field"><label for="${id}">${label}</label><select id="${id}">${opts.map(([k, n]) => `<option value="${esc(k)}" ${cur === k ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`;
+  const stSummary = s.status.length ? (s.status.length <= 2 ? s.status.map(k => ST_LABEL[k]).join(", ") : `${s.status.length} statuses`) : "All statuses";
+  el.innerHTML = head("All experiments", "Running, draft and finished tests in one list. Open a row for its day-by-day view.", `${clockButtons()}<button class="btn" id="x-csv">Export CSV</button><a class="btn primary" href="#/new">New experiment</a>`) +
+    `<div class="filters xfilters"><div class="field grow"><label for="x-q">Search</label><input type="search" id="x-q" value="${esc(s.q)}" placeholder="Search by name"></div>
+      <div class="field"><label>Status</label><details class="ms" id="x-st" ${s.open === "status" ? "open" : ""}><summary><span>${esc(stSummary)}</span></summary><div class="ms-pop">${EXP_ST.map(([k, n]) => `<label class="chk"><input type="checkbox" data-xst="${k}" ${s.status.includes(k) ? "checked" : ""}> ${esc(n)}</label>`).join("")}</div></details></div>
+      <div class="field"><label>Date range</label><details class="ms" id="x-dt" ${s.open === "date" ? "open" : ""}><summary><span>${s.from || s.to ? `${s.from ? fdate(s.from) : "Any"} – ${s.to ? fdate(s.to) : "Any"}` : "Any date"}</span></summary><div class="ms-pop"><label class="note">Started from<input type="date" id="x-from" value="${esc(s.from)}"></label><label class="note">to<input type="date" id="x-to" value="${esc(s.to)}"></label></div></details></div>
+      ${sel("x-met", "Primary metric", s.metric, [["", "All metrics"], ...metrics])}${sel("x-aud", "Audience", s.aud, [["", "Any audience"], ["all", "All traffic"], ["seg", "Segmented"]])}${sel("x-src", "Source", s.src, [["", "Any source"], ["here", "Played here"], ["sim", "Simulated"], ["file", "From file"]])}
+      <div class="field"><label>&nbsp;</label><button class="btn" id="x-clear" ${any ? "" : "disabled"}>Clear filters</button></div></div>
+    <div class="st-chips">${chips.map(([label, keys, n], i) => `<button class="st-chip ${chipOn(keys) ? "on" : ""}" data-xchip="${i}">${esc(label)} <b>${n}</b></button>`).join("")}</div>
+    ${shown.length ? `<div class="tbl-wrap"><table class="xtable"><thead><tr>${th("status", "Status")}${th("name", "Test name")}${th("progress", "Progress")}${th("aud", "Audience")}${th("metric", "Primary metric")}${th("ab", "A vs B", "num")}${th("lift", "Lift (range)", "num")}${th("guard", "Guardrails")}<th>Actions</th></tr></thead><tbody>
+      ${shown.map(r => `<tr class="click" data-xrow="${esc(r.id)}"><td>${pill(ST_LABEL[r.st], ST_CLASS[r.st])}</td><td><b><a href="#/experiments/${encodeURIComponent(r.id)}">${esc(r.name)}</a></b> <span class="tag">${esc(SRC_LABEL[r.src])}</span></td>
+        <td>${progressCell(r)}</td><td>${r.draft || !r.seg ? esc(r.aud) : segChips(r.v.config.segment)}</td><td>${esc(r.metric)}</td>
+        <td class="num" style="white-space:nowrap">${r.a == null ? "—" : `${fmtP(r.a, r.v.config)} → ${fmtP(r.b, r.v.config)}`}</td><td class="num">${liftCell(r)}</td>
+        <td>${r.guard === "Pass" ? pill("Pass", "pos") : r.guard === "Fail" ? pill("Fail", "neg") : `<span class="note">—</span>`}</td>
+        <td>${r.draft ? `<a class="btn sm" href="#/experiments/${encodeURIComponent(r.id)}">Open</a>` : `<button class="btn sm" data-xclone="${esc(r.id)}">Clone</button>`}</td></tr>`).join("")}</tbody></table></div>
+      <div class="pager"><span>${rows.length} test${rows.length === 1 ? "" : "s"}${any ? " match" : ""}</span><span><button class="btn sm" id="x-prev" ${page ? "" : "disabled"}>Previous</button> Page ${page + 1} of ${pages} <button class="btn sm" id="x-next" ${page < pages - 1 ? "" : "disabled"}>Next</button></span></div>`
+      : `<div class="empty">No test matches. <button class="link" id="x-clear2">Clear the filters</button>.</div>`}`;
+  const set = (patch, keepOpen) => expGo({ ...s, page: 0, open: keepOpen || "", ...patch });
+  bindClock(el);
+  $("#x-q").oninput = ev => { clearTimeout(window.__xq); window.__xq = setTimeout(() => { set({ q: ev.target.value }); setTimeout(() => { const n = $("#x-q"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 0); }, 300); };
+  $$("[data-xst]", el).forEach(b => b.onchange = () => { const k = b.dataset.xst; set({ status: b.checked ? [...s.status, k] : s.status.filter(x => x !== k) }, "status"); });
+  const fr = $("#x-from"), to = $("#x-to"); fr.onchange = () => set({ from: fr.value }, "date"); to.onchange = () => set({ to: to.value }, "date");
+  $("#x-met").onchange = ev => set({ metric: ev.target.value }); $("#x-aud").onchange = ev => set({ aud: ev.target.value }); $("#x-src").onchange = ev => set({ src: ev.target.value });
+  const clear = () => expGo({ q: "", status: [], from: "", to: "", metric: "", aud: "", src: "", sort: s.sort, dir: s.dir, page: 0 });
+  $("#x-clear").onclick = clear; const c2 = $("#x-clear2"); if (c2) c2.onclick = clear;
+  $$("[data-xchip]", el).forEach(b => b.onclick = () => { const keys = chips[+b.dataset.xchip][1]; set({ status: chipOn(keys) ? [] : keys.slice() }); });
+  $$("[data-esort]", el).forEach(b => b.onclick = () => { const k = b.dataset.esort; expGo({ ...s, sort: k, dir: s.sort === k ? -s.dir : (k === "name" || k === "status" ? 1 : -1), page: 0 }); });
+  $$("[data-xclone]", el).forEach(b => b.onclick = ev => { ev.stopPropagation(); cloneOf(byId(b.dataset.xclone)); });
+  $$("tr[data-xrow]", el).forEach(r => r.onclick = ev => { if (!ev.target.closest("a,button")) go("experiments", r.dataset.xrow); });
+  const pv = $("#x-prev"), nx = $("#x-next"); if (pv) pv.onclick = () => expGo({ ...s, page: page - 1 }); if (nx) nx.onclick = () => expGo({ ...s, page: page + 1 });
+  $("#x-csv").onclick = () => download("picky_experiments.csv", toCsv(["status", "name", "source", "start", "end", "days", "audience", "primary_metric", "a", "b", "lift", "range_low", "range_high", "guardrails"],
+    rows.map(r => { const avg = r.v && primaryDef(r.v.config).type === "average", val = x => x == null ? "" : avg ? (+x).toFixed(3) : (x * 100).toFixed(2);
+      return [ST_LABEL[r.st], r.name, SRC_LABEL[r.src], (r.start || "").slice(0, 10), (r.end || "").slice(0, 10), r.days == null ? "" : r.days, r.aud, r.metric, val(r.a), val(r.b), val(r.lift), val(r.lo), val(r.hi), r.guard]; })));
+};
+
+/** A finished test's page opens with its final report: the decision, the numbers and the plain-English summary. */
+function finalReportCard(e, v, decision) {
+  const c = v.config, cur = v.cur, lr = liftRange(cur, c), avg = primaryDef(c).type === "average";
+  return `<div class="card final-rep" id="final-report" style="margin-bottom:16px"><div class="sec-row"><h2>Final report</h2><div class="actions"><button class="btn" id="a-clone">Clone</button><a class="btn" href="#/report/${encodeURIComponent(e.id)}">Print view</a></div></div>
+    <div style="margin-top:8px">${decision}</div><p style="margin-top:8px">${esc(plainSummary(e))} <span class="note">${fdate(c.start)} · ${v.ld} day${v.ld === 1 ? "" : "s"}</span></p>
+    <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th></th><th class="num">Leads</th><th class="num">${avg ? "Average" : "Rate"}</th><th class="num">95% range</th></tr></thead><tbody>
+      <tr><td><span class="dot a"></span>A: today's prompt</td><td class="num">${nf(cur.nA)}</td><td class="num">${fmtP(cur.rateA, c)}</td><td class="num">${(([lo, hi]) => `${fmtP(lo, c)} to ${fmtP(hi, c)}`)(armCI(cur, "A", c))}</td></tr>
+      <tr><td><span class="dot b"></span>B: new prompt</td><td class="num">${nf(cur.nB)}</td><td class="num">${fmtP(cur.rateB, c)}</td><td class="num">${(([lo, hi]) => `${fmtP(lo, c)} to ${fmtP(hi, c)}`)(armCI(cur, "B", c))}</td></tr>
+      <tr><td><b>Lift of B over A</b></td><td></td><td class="num"><b>${fmtD(cur.diff, c)}</b></td><td class="num">${rangeD(lr.lo, lr.hi, c)}${lr.interim ? " (interim)" : ""}</td></tr></tbody></table></div></div>`;
 }
 
 /* New Experiment: six steps on one page with the "At a glance" panel on the right: Hypothesis, Prompt B, Audience, Goals, Duration, Review.
@@ -1130,7 +1278,7 @@ function liveA() { const P = productionState(), L = P.live; return { id: L.id, n
 const wzB = w => w.promptB == null ? liveA().text : w.promptB;
 const wzSeg = w => segFromRows(w.segRows).seg;
 const REF_METRIC = "buylead_created";                                         // shown until a primary goal is chosen
-const wzPrimary = w => w.primary ? metricByKey(w.primary, w.localMetrics) : null;
+const wzPrimary = w => { const m = w.primary ? metricByKey(w.primary, w.localMetrics) : null; return m && w.primaryDir && !m.custom ? { ...m, direction: w.primaryDir } : m; };     // a built-in primary can take a per-test direction (w.primaryDir)
 const wzRef = w => wzPrimary(w) || metricByKey(REF_METRIC);
 
 /* ---- the plan: one call of durationPlan with this test's state (Step 5 and "At a glance" both read this) */
@@ -1215,12 +1363,14 @@ function condRows(cm, side, list) {
       <button class="x" data-cdel="${side}:${i}" aria-label="Remove this condition" title="Remove">×</button></div>`; }).join("")}
     ${list.length < max ? `<button class="btn sm" data-cadd="${side}">+ Add condition</button>` : `<span class="note">At most ${max} conditions (joined with AND).</span>`}`;
 }
-const newCm = () => ({ name: "", type: "rate", num: { unit: "calls", where: [{ col: "", op: "is", values: [] }] }, den: { unit: "calls", where: [] }, denAll: true, col: "call_duration", unit: "calls", where: [], direction: "higher", save: true });
+const newCm = () => hasFileCols() ? newFcm() : ({ name: "", type: "rate", num: { unit: "calls", where: [{ col: "", op: "is", values: [] }] }, den: { unit: "calls", where: [] }, denAll: true, col: "call_duration", unit: "calls", where: [], direction: "higher", save: true });
 function cmDef(cm) {
-  const base = { key: cm.key || metricKey(cm.name), name: String(cm.name || "").trim(), type: cm.type, direction: cm.direction };
+  if (cm.src === "file") return { ...fcDef(cm), ...(cm.key ? { _edit: true } : {}) };                 // a metric on the data files' columns (45-filecols.js)
+  const base = { key: cm.key || metricKey(cm.name), name: String(cm.name || "").trim(), type: cm.type, direction: cm.direction, ...(cm.key ? { _edit: true } : {}) };
   return cm.type === "rate" ? { ...base, num: { unit: cm.num.unit, where: cm.num.where }, den: cm.denAll ? { unit: "calls", where: [] } : { unit: cm.den.unit, where: cm.den.where } } : { ...base, col: cm.col, unit: cm.unit, where: cm.where };
 }
 function cmBuilder(w, cm, forPrimary) {
+  if (cm.src === "file") return fcBuilder(w, cm, forPrimary);
   const numCols = HIST().cols.filter(c => c.type === "number"), def = cmDef(cm), chk = metricCheck(def), seg = wzSeg(w);
   let prev = "";
   if (chk.ok) { const ev = baselineFor(def, seg); prev = def.type === "rate" ? `Formula: ${esc(metricWords(def))} · Last 30 days: ${nf(ev.num)} ÷ ${nf(ev.den)} = <b>${fmtMetric(ev.value, def)}</b>` : `Formula: ${esc(metricWords(def))} · Last 30 days: <b>${fmtMetric(ev.value, def)}</b> over ${nf(ev.den)} ${def.unit}`; if (ev.fallback) prev += ` <span class="note">(${esc(ev.note)})</span>`; }
@@ -1260,8 +1410,11 @@ function goalsStep(w) {
     <section class="goal-sec"><h3>Primary goal</h3><p class="note">Exactly one: the result the test is judged on.</p>
       <select id="w-primary" aria-label="Primary goal" style="max-width:420px"><option value="" ${prim ? "" : "selected"} disabled>Choose the main goal</option>${outcomes.map(opt).join("")}${customs.length ? `<optgroup label="Custom metrics">${customs.map(opt).join("")}</optgroup>` : ""}<option value="__custom" ${w.ui.primCustom ? "selected" : ""}>+ Custom metric</option></select>
       ${lost ? `<p class="note" style="color:#b23b3b;margin-top:8px">The primary goal chosen earlier was removed from Settings > Metrics. Choose another.</p>` : ""}
-      ${w.ui.primCustom ? `<div class="card" style="background:var(--bg-2);margin-top:12px">${cmBuilder(w, w.cm || (w.cm = newCm()), true)}<div class="actions" style="margin-top:12px"><button class="btn primary" id="w-cmsavep">Save metric</button><button class="btn" id="w-cmcancel">Cancel</button></div></div>`
-        : prim ? `<div class="goal-card primary" style="margin-top:12px;max-width:520px"><span class="role">Primary</span><div class="mcard-name"><b>${esc(prim.name)}</b> <span class="arrow">${prim.direction === "lower" ? "↓" : "↑"}</span></div><div class="def">${esc(metricWords(prim))}</div><div class="meta">${prim.direction === "lower" ? "lower" : "higher"} is better · today ${fmtMetric(pb.value, prim)} for this audience (last 30 days)</div></div>` : ""}</section>
+      ${w.ui.primCustom ? `<div class="card" style="background:var(--bg-2);margin-top:12px">${cmBuilder(w, w.cm || (w.cm = newCm()), true)}${w.ui.primAsk ? `<div class="banner warn" id="w-cmask" style="margin:12px 0 0"><div><b>Update the saved metric too, or only this test?</b> "${esc(w.cm.name)}" is in the metric list (Settings > Metrics).<div class="actions" style="margin-top:8px"><button class="btn primary" id="w-cmupd">Update saved metric</button><button class="btn" id="w-cmonly">Only this test</button></div></div></div>` : `<div class="actions" style="margin-top:12px"><button class="btn primary" id="w-cmsavep">${w.ui.primEditKey ? "Save changes" : "Save metric"}</button><button class="btn" id="w-cmcancel">Cancel</button></div>`}</div>`
+        : prim ? `<div class="goal-card primary" id="w-primcard" style="margin-top:12px;max-width:520px"><span class="role">Primary</span>
+          <div class="mcard-tools"><details class="kebab"><summary aria-label="More actions for ${esc(prim.name)}" title="More">⋯</summary><div class="menu"><button data-pedit="1">Edit</button><button data-pchange="1">Change goal</button></div></details></div>
+          <div class="mcard-name"><b>${esc(prim.name)}</b> <span class="arrow" title="${prim.direction === "lower" ? "lower is better" : "higher is better"}">${prim.direction === "lower" ? "↓" : "↑"}</span></div><div class="def">${esc(metricWords(prim))}</div><div class="meta">${prim.direction === "lower" ? "lower" : "higher"} is better${w.primaryDir && !prim.custom ? " (this test)" : ""} · today ${fmtMetric(pb.value, prim)} for this audience (last 30 days)</div>
+          ${w.ui.primDirEdit && !prim.custom ? `<div class="field" style="margin-top:8px"><label>Better direction for this test</label><div class="seg wz-fit" role="group" aria-label="Better direction for this test"><button data-pdir="higher" aria-pressed="${prim.direction !== "lower"}">↑ Higher is better</button><button data-pdir="lower" aria-pressed="${prim.direction === "lower"}">↓ Lower is better</button></div><div class="actions" style="margin-top:8px"><button class="btn sm" id="w-pdirdone">Done</button></div></div>` : ""}</div>` : ""}</section>
     <section class="goal-sec"><h3>Guardrails</h3><p class="note">Metrics that must not get worse; they can stop or hold a test.</p><div class="goal-row">${w.guards.map((g, i) => metricCard(w, "guardrail", i)).join("") || `<div class="note">No guardrails.</div>`}</div></section>
     <section class="goal-sec"><h3>Secondary metrics</h3><p class="note">Tracked and reported only; they never affect the decision.</p><div class="goal-row">${w.secondary.map((g, i) => metricCard(w, "secondary", i)).join("") || `<div class="note">None yet.</div>`}</div></section>
     <div class="actions" style="margin-top:16px"><button class="btn" id="w-addm" ${roleFull(w, "guardrail") && roleFull(w, "secondary") ? "disabled title=\"Max reached — more metrics mean more false alarms.\"" : ""}>+ Add metric</button><span class="note">Up to ${METRIC_CAT().limits.guardrails} guardrails and ${METRIC_CAT().limits.secondary} secondary metrics.</span></div>
@@ -1341,17 +1494,18 @@ function wzBody(w) {
   if (s === 5) {
     const P = wzPlan(w), m = P.m, cust = w.lenMode === "custom", avg = m.type === "average";
     const dIn = cust ? (avg ? +P.d.toFixed(1) : +(P.d * 100).toFixed(1)) : null;
-    return `<h2>5. Duration</h2><p class="sub">Worked out for you from the last 30 days of data. Nothing needs typing.</p>
-      <div class="form-grid" style="margin-top:16px">${F("Test length", `<select id="w-len"><option value="rec" ${cust ? "" : "selected"}>Recommended: ${P.tooBig ? "over 28" : P.rec} days</option><option value="custom" ${cust ? "selected" : ""}>Custom length</option></select>`)}
-        ${cust ? "" : F("Share of traffic to B", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">${w.shareAuto && w.shareWhy ? `<div class="note" style="margin-top:4px">Set to ${pct(w.share, 0)} for you: ${esc(w.shareWhy)}. Change it if you like.</div>` : ""}`, "whole percent, 5 to 50%")}</div>
+    const Fh = (label, inner, help) => `<div class="field"><label>${label}</label>${inner}${help ? `<div class="note wz-help">${help}</div>` : ""}</div>`;     // label (one line), control, helper text below
+    return `<div class="wz-dur"><h2>5. Duration</h2><p class="sub">Worked out for you from the last 30 days of data. Nothing needs typing.</p>
+      <div class="form-grid wz-dgrid" style="margin-top:16px">${Fh("Test length", `<select id="w-len"><option value="rec" ${cust ? "" : "selected"}>Recommended: ${P.tooBig ? "over 28" : P.rec} days</option><option value="custom" ${cust ? "selected" : ""}>Custom length</option></select>`, cust ? "Set the numbers below." : "Whole weeks, 7 to 28 days.")}
+        ${cust ? "" : Fh("Share of traffic to B", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">`, `Whole percent, 5 to 50%.${w.shareAuto && w.shareWhy ? ` Set to ${pct(w.share, 0)} for you: ${esc(w.shareWhy)}. Change it if you like.` : ""}`)}</div>
       ${P.tooBig ? "" : `<div class="flow" aria-hidden="true"><span><b>${nf(P.lpd)}</b> leads a day</span><span><b>${pct(w.share, 0)}</b> to B ≈ <b>${nf(P.lpd * w.share)}</b> a day</span><span>B needs <b>${nf(P.nB)}</b> leads</span><span><b>${P.days}</b> days</span></div>`}
       <div class="${P.tooBig ? "banner neg" : "plan-note"}" style="margin-top:12px" id="w-planwords"><div>${planWords(w, P)}${P.tooBig ? `<div style="margin-top:6px"><b>${esc(P.tooBigMsg)}</b></div>` : ""}${P.base.fallback ? `<div class="note" style="margin-top:6px">${esc(P.base.note)}</div>` : ""}${w.primary ? "" : `<div class="note" style="margin-top:6px">No primary goal yet: using ${esc(m.name)} until you choose one in step 4.</div>`}</div></div>
-      ${cust ? "" : `<div class="field" style="margin-top:16px"><label>Improvement worth catching</label><div class="seg" role="group" aria-label="Improvement worth catching">${["small", "medium", "large"].map(z => `<button data-size="${z}" aria-pressed="${w.size === z}">${z[0].toUpperCase() + z.slice(1)} (${esc(sizeLabel(z, { ...m, direction: P.dir }))})</button>`).join("")}</div></div>`}
-      ${cust ? `<div class="card" style="background:var(--bg-2);margin-top:16px"><h3>Custom length</h3><div class="form-grid" style="margin-top:8px">
-          ${F("Leads per day", `<input type="number" id="w-clpd" min="1" step="1" value="${Math.round(P.lpd)}">`, w.customLpdTouched ? "edited by you" : "from data; edit for planned changes")}
-          ${F("B share (%)", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">`, "whole percent, 5 to 50%")}
-          ${F("Test days", `<select id="w-cdays">${[7, 14, 21, 28].map(d => `<option value="${d}" ${P.days === d ? "selected" : ""}>${d} days${d === P.rec && !P.tooBig ? " (recommended)" : ""}</option>`).join("")}</select>`, "whole weeks")}
-          ${F(`Improvement worth catching (${avg ? metricUnit(m) || "units" : "pts"})`, `<input type="number" id="w-cd" min="0.1" step="${avg ? 0.5 : 0.5}" value="${dIn}">`)}</div>
+      ${cust ? "" : `<div class="field" style="margin-top:16px"><label>Improvement worth catching</label><div class="seg wz-fit" role="group" aria-label="Improvement worth catching">${["small", "medium", "large"].map(z => `<button data-size="${z}" aria-pressed="${w.size === z}">${z[0].toUpperCase() + z.slice(1)} (${esc(sizeLabel(z, { ...m, direction: P.dir }))})</button>`).join("")}</div></div>`}
+      ${cust ? `<div class="card" style="background:var(--bg-2);margin-top:16px"><h3>Custom length</h3><div class="form-grid wz-dgrid" style="margin-top:8px">
+          ${Fh("Leads per day", `<input type="number" id="w-clpd" min="1" step="1" value="${Math.round(P.lpd)}">`, w.customLpdTouched ? "Edited by you." : "From data; edit for planned changes.")}
+          ${Fh("B share (%)", `<input type="number" id="w-share" min="5" max="50" step="1" value="${Math.round(w.share * 100)}">`, "Whole percent, 5 to 50%.")}
+          ${Fh("Test days", `<select id="w-cdays">${[7, 14, 21, 28].map(d => `<option value="${d}" ${P.days === d ? "selected" : ""}>${d} days${d === P.rec && !P.tooBig ? " (recommended)" : ""}</option>`).join("")}</select>`, "Whole weeks.")}
+          ${Fh(`Improvement worth catching (${avg ? metricUnit(m) || "units" : "pts"})`, `<input type="number" id="w-cd" min="0.1" step="${avg ? 0.5 : 0.5}" value="${dIn}">`, "")}</div>
         <p style="margin-top:12px" id="w-reverse">With ${P.days} days you can spot an improvement of <b>${fmtPts(P.smallest, m).replace(/^[+−]/, "")}</b> or more.</p>
         ${P.shorter ? `<div class="banner warn" style="margin:8px 0 0"><div>Shorter than recommended — the result may be inconclusive.</div></div>` : ""}</div>` : ""}
       ${P.minLate ? `<div class="banner warn" style="margin-top:12px"><div>B would have fewer than ${nf(w.minLeads)} leads by day ${P.days}, so no decision could be made (decisions start on day ${P.minDay > 60 ? "60+" : P.minDay}). Raise B's share or lengthen the test.</div></div>` : ""}
@@ -1363,18 +1517,19 @@ function wzBody(w) {
         ${F("Approval mode", `<select id="w-appr"><option value="auto" ${w.approval === "auto" ? "selected" : ""}>Automatic: a win is promoted</option><option value="manual" ${w.approval === "manual" ? "selected" : ""}>Manual: a person approves every win</option></select>`, "both paths are logged")}
         ${F("How leads are dealt", `<select id="w-assign"><option value="stratified" ${w.assignment === "stratified" ? "selected" : ""}>Stratified blocks (the BRD's router)</option><option value="balanced" ${w.assignment === "balanced" ? "selected" : ""} ${P.seg.length ? "disabled" : ""}>Balanced blocks, no groups</option><option value="hash" ${w.assignment === "hash" ? "selected" : ""} ${P.seg.length ? "disabled" : ""}>Pure hash (no stored state)</option></select>`, P.seg.length ? "an audience needs stratified" : "")}</div>
         <div style="display:grid;gap:8px;margin-top:12px"><label class="radio"><input type="radio" name="w-rule" value="final_look" ${w.rule === "final_look" ? "checked" : ""}><div><b>One winner call at the end, plus a strict daily harm check</b><span>The BRD's rule: one test at ${pct(w.confidence, 0)} on the last day. Every day a ${pct(w.harm, 1)} bar catches a clearly worse B.</span></div></label>
-          <label class="radio"><input type="radio" name="w-rule" value="sequential" ${w.rule === "sequential" ? "checked" : ""}><div><b>Early promote and early stop (sequential)</b><span>May promote or stop on any day using boundaries built for repeated looks. ${RULE_FACTS()} Needs about 6% more data.</span></div></label></div></details>`;
+          <label class="radio"><input type="radio" name="w-rule" value="sequential" ${w.rule === "sequential" ? "checked" : ""}><div><b>Early promote and early stop (sequential)</b><span>May promote or stop on any day using boundaries built for repeated looks. ${RULE_FACTS()} Needs about 6% more data.</span></div></label></div></details></div>`;
   }
   const P = wzPlan(w), ps = promptState(w), chk = checklist(w), prim = wzPrimary(w), tm = testMetrics(w), st = diffStats(diffRows(ps.A.text, ps.B)), usesHang = tm.some(x => x.key === "early_hangup");
+  const ed = (n, what) => `<button class="link wz-edit" data-goto="${n}" aria-label="Edit ${what} (step ${n})">Edit</button>`;
   const mLine = x => x.m ? `<div><b>${esc(x.m.name)}</b> ${x.direction === "lower" ? "↓" : "↑"} <span class="muted">${esc(metricWords(x.m))}</span>${x.role === "guardrail" ? ` · <b>${esc(limitWords(x.limit, x.m, x.direction))}</b>` : ""}</div>` : "";
   return `<h2>6. Review and launch</h2><p class="sub">Launch locks the setup with a version ID. Save Test keeps an editable draft.</p>
-    <dl class="kv" style="margin-top:16px"><dt>Name</dt><dd><b>${esc(w.name || "-")}</b></dd>
-      <dt>Prompt B</dt><dd>A full prompt: ${st.added} line${st.added === 1 ? "" : "s"} added, ${st.removed} removed against ${esc(ps.A.id)} (the live prompt). ${ps.vc.ok ? "All template variables kept." : "Template variables need fixing."}</dd>
-      <dt>Audience</dt><dd>${esc(segDescribe(P.seg))} · about ${nf(P.vol.perDay)} leads a day ${info("The router checks every lead before the call and counts only those that match the rule.")}</dd>
-      <dt>Primary goal</dt><dd>${prim ? mLine(tm[0]) + `<div class="note">today ${fmtMetric(P.base.value, prim)} · improvement to catch ${fmtPts(P.dir === "lower" ? -P.d : P.d, prim)}</div>` : "Not chosen"}</dd>
-      <dt>Guardrails</dt><dd>${tm.filter(x => x.role === "guardrail").map(mLine).join("") || "None"}</dd>
-      <dt>Secondary</dt><dd>${tm.filter(x => x.role === "secondary").map(mLine).join("") || "None"} ${info("For insight only: never used for the decision.")}</dd>
-      <dt>Duration</dt><dd>${P.days} days${P.custom ? " (custom)" : " (recommended)"}, ${pct(w.share, 0)} to B, ${pct(w.confidence, 0)} confidence, decisions from ${nf(w.minLeads)} leads per arm, ${w.rule === "final_look" ? `one winner call at the end + daily ${pct(w.harm, 1)} harm check` : "early promote and early stop"}, approval ${w.approval}</dd></dl>
+    <dl class="kv wz-review" style="margin-top:16px"><dt>Name ${ed(1, "name")}</dt><dd><b>${esc(w.name || "-")}</b></dd>
+      <dt>Prompt B ${ed(2, "prompt B")}</dt><dd>A full prompt: ${st.added} line${st.added === 1 ? "" : "s"} added, ${st.removed} removed against ${esc(ps.A.id)} (the live prompt). ${ps.vc.ok ? "All template variables kept." : "Template variables need fixing."}</dd>
+      <dt>Audience ${ed(3, "audience")}</dt><dd>${esc(segDescribe(P.seg))} · about ${nf(P.vol.perDay)} leads a day ${info("The router checks every lead before the call and counts only those that match the rule.")}</dd>
+      <dt>Primary goal ${ed(4, "primary goal")}</dt><dd>${prim ? mLine(tm[0]) + `<div class="note">today ${fmtMetric(P.base.value, prim)} · improvement to catch ${fmtPts(P.dir === "lower" ? -P.d : P.d, prim)}</div>` : "Not chosen"}</dd>
+      <dt>Guardrails ${ed(4, "guardrails")}</dt><dd>${tm.filter(x => x.role === "guardrail").map(mLine).join("") || "None"}</dd>
+      <dt>Secondary ${ed(4, "secondary metrics")}</dt><dd>${tm.filter(x => x.role === "secondary").map(mLine).join("") || "None"} ${info("For insight only: never used for the decision.")}</dd>
+      <dt>Duration ${ed(5, "duration")}</dt><dd>${P.days} days${P.custom ? " (custom)" : " (recommended)"}, ${pct(w.share, 0)} to B, ${pct(w.confidence, 0)} confidence, decisions from ${nf(w.minLeads)} leads per arm, ${w.rule === "final_look" ? `one winner call at the end + daily ${pct(w.harm, 1)} harm check` : "early promote and early stop"}, approval ${w.approval}</dd></dl>
     ${fold("What changed in prompt B", diffBlock(ps.A.text, ps.B), `${st.added} added, ${st.removed} removed`)}
     ${fold("Show the full prompt B", `<textarea readonly class="prompt-box" rows="14" aria-label="Prompt B (read-only)">${esc(ps.B)}</textarea>`)}
     <h3 style="margin:24px 0 8px">Pre-launch checklist ${chk.every(x => x.ok) ? pill(`all ${chk.length} pass`, "pos") : pill(`${chk.filter(x => !x.ok).length} to fix`, "neg")}</h3><div class="checkgrid" id="w-checks">${chk.map(x => `<div class="check ${x.ok ? "ok" : "bad"}" title="${esc(x.why)}"><span class="ico">${x.ok ? "✓" : "✕"}</span><span>${x.ok ? esc(x.label) : `<b>${esc(x.label)}</b>: ${esc(x.why)} <button class="link" data-goto="${x.step}">Fix in step ${x.step}</button>`}</span></div>`).join("")}</div>
@@ -1430,6 +1585,7 @@ function bindWizard(el, w) {
     save();
   };
   const redraw = () => { sync(); wzRedraw(); };
+  const fcEl = $1("#w-cm[data-fc]"); if (fcEl) { ["click", "change", "input"].forEach(t => fcEl.addEventListener(t, ev => fcEvent(ev, w, redraw))); fcFillPreview(w.cm); }
   const goStep = t => { sync(); for (let s = w.step; s < t; s++) { const m = wzValid(w, s); if (m) { toast(m); return; } if (s === 3) w.audienceSet = true; if (s === 4 && !w.shareTouched) { const sg = suggestShare(w); w.share = sg.share; w.shareWhy = sg.why; w.shareAuto = true; } } w.step = t; w.panel = null; save(); route(); };
   $$("[data-step]", el).forEach(b => b.onclick = () => { const t = +b.dataset.step; if (t <= w.step) { sync(); w.step = t; w.panel = null; save(); route(); } else goStep(t); });
   $$("[data-goto]", el).forEach(b => b.onclick = () => { sync(); w.step = +b.dataset.goto; save(); route(); });
@@ -1461,9 +1617,29 @@ function bindWizard(el, w) {
   $$("[data-msq]", el).forEach(q => q.oninput = () => { w.ui.msq = w.ui.msq || {}; w.ui.msq[q.dataset.msq] = q.value; const box = q.closest(".ms-pop"); $$(".ms-list .ms-opt", box).forEach(o => o.hidden = !!q.value && !o.textContent.toLowerCase().includes(q.value.toLowerCase())); });
 
   /* step 4: the primary goal, metric cards, the add-metric panel, the custom-metric builder */
-  const pr = $1("#w-primary"); if (pr) pr.onchange = () => { sync(); if (pr.value === "__custom") { w.ui.primCustom = true; w.cm = newCm(); } else { w.ui.primCustom = false; w.primary = pr.value || null; } redraw(); };
-  const cms = $1("#w-cmsavep"); if (cms) cms.onclick = () => { sync(); const def = cmDef(w.cm), chk = metricCheck(def); if (!chk.ok) { toast(chk.errors[0]); return; } const keep = { ...def, group: "Custom" }; DYN.settings.customMetrics = [...customMetrics().filter(x => x.key !== keep.key), keep]; w.primary = keep.key; w.ui.primCustom = false; w.cm = null; toast(`Saved "${keep.name}" to the metric list and set it as the primary goal.`); redraw(); };
-  const cmc = $1("#w-cmcancel"); if (cmc) cmc.onclick = () => { w.ui.primCustom = false; w.cm = null; redraw(); };
+  const pr = $1("#w-primary"); if (pr) pr.onchange = () => { sync(); w.ui.primAsk = false; w.ui.primEditKey = null; w.ui.primDirEdit = false; if (pr.value === "__custom") { w.ui.primCustom = true; w.cm = newCm(); } else { w.ui.primCustom = false; if (w.primary !== pr.value) w.primaryDir = null; w.primary = pr.value || null; } redraw(); };
+  /* save the primary custom metric: a new one goes to the metric list; an edited one keeps its key (and asks first when it is in the list) */
+  // twinOk: a per-test copy may count the same thing as the saved metric it came from
+  const primDef = twinOk => { if (w.cm && w.cm.type === "sum") { toast("A sum grows with the number of leads each prompt gets, so it cannot decide a test. Use it as a secondary metric."); return null; } const def = cmDef(w.cm), tw = twinOk && metricByKey(twinOk), errs = metricCheck(def).errors.filter(e => !(tw && e === `This counts the same thing as "${tw.name}": use that metric instead.`)), dup = allMetrics(w.localMetrics).find(x => x.key !== def.key && x.name.trim().toLowerCase() === def.name.toLowerCase()); if (errs.length || dup) { toast(errs.length ? errs[0] : "A metric with this name already exists."); return null; } const keep = { ...def, group: "Custom" }; delete keep._edit; return keep; };
+  const primDone = (keep, msg) => { w.primary = keep.key; w.primaryDir = null; w.ui.primCustom = false; w.ui.primAsk = false; w.ui.primEditKey = null; w.cm = null; toast(msg); redraw(); };
+  const toList = keep => { DYN.settings.customMetrics = [...customMetrics().filter(x => x.key !== keep.key), keep]; };
+  const cms = $1("#w-cmsavep"); if (cms) cms.onclick = () => { sync(); const keep = primDef(); if (!keep) return; const ek = w.ui.primEditKey;
+    if (ek && (w.localMetrics || []).some(x => x.key === ek)) { w.localMetrics = w.localMetrics.map(x => x.key === ek ? keep : x); primDone(keep, `Saved "${keep.name}" for this test.`); return; }
+    if (ek && customMetrics().some(x => x.key === ek)) { w.ui.primAsk = true; redraw(); return; }
+    toList(keep); primDone(keep, `Saved "${keep.name}" to the metric list and set it as the primary goal.`); };
+  const cmu = $1("#w-cmupd"); if (cmu) cmu.onclick = () => { sync(); const keep = primDef(); if (!keep) return; toList(keep); primDone(keep, `Updated "${keep.name}" in the metric list and in this test.`); };
+  const cmo = $1("#w-cmonly"); if (cmo) cmo.onclick = () => { sync(); if (!/\(this test\)$/.test(w.cm.name)) w.cm.name = String(w.cm.name).trim().slice(0, 48) + " (this test)"; const orig = w.ui.primEditKey; w.cm.key = metricKey(w.cm.name) + "_" + Date.now().toString(36); const keep = primDef(orig); if (!keep) return; w.localMetrics = [...(w.localMetrics || []), keep]; primDone(keep, `Saved "${keep.name}" for this test only; the saved metric is unchanged.`); };
+  const cmc = $1("#w-cmcancel"); if (cmc) cmc.onclick = () => { w.ui.primCustom = false; w.ui.primAsk = false; w.ui.primEditKey = null; w.cm = null; redraw(); };
+  /* the primary card's ⋯ menu: Edit (custom: reopen the builder pre-filled; built-in: a direction for this test) and Change goal */
+  const pe = $("[data-pedit]", el); if (pe) pe.onclick = ev => { ev.stopPropagation(); sync(); const m = wzPrimary(w); if (!m) return;
+    if (m.custom) { const wh = x => JSON.parse(JSON.stringify(x || [])); w.cm = m.source === "file" ? { ...newFcm(), key: m.key, name: m.name, type: m.type, count: m.count || "calls", direction: m.direction || "higher", dirTouched: true, file: m.file || "", col: m.col || "", num: wh(m.num), den: wh(m.den), denAll: !(m.den || []).length, where: wh(m.where) } : m.type === "rate" ? { ...newCm(), key: m.key, name: m.name, type: "rate", direction: m.direction || "higher", dirTouched: true, num: { unit: (m.num || {}).unit || "calls", where: wh((m.num || {}).where) }, den: { unit: (m.den || {}).unit || "calls", where: wh((m.den || {}).where) }, denAll: !m.den || (m.den.unit === "calls" && !(m.den.where || []).length) }
+        : { ...newCm(), key: m.key, name: m.name, type: "average", direction: m.direction || "lower", dirTouched: true, col: m.col, unit: m.unit, where: wh(m.where) };
+      w.ui.primCustom = true; w.ui.primEditKey = m.key; w.ui.primAsk = false; }
+    else w.ui.primDirEdit = true;
+    redraw(); };
+  const pchg = $("[data-pchange]", el); if (pchg) pchg.onclick = ev => { ev.stopPropagation(); const d = pchg.closest("details"); if (d) d.open = false; const s = $1("#w-primary"); if (s) { s.focus(); s.scrollIntoView({ block: "center" }); } };
+  $$("[data-pdir]", el).forEach(b => b.onclick = () => { sync(); const m = metricByKey(w.primary, w.localMetrics); w.primaryDir = m && (m.direction || "higher") === b.dataset.pdir ? null : b.dataset.pdir; redraw(); });
+  const pdd = $1("#w-pdirdone"); if (pdd) pdd.onclick = () => { w.ui.primDirEdit = false; redraw(); };
   const openPanel = (role, edit, idx) => { sync(); const list = role === "guardrail" ? w.guards : w.secondary, item = edit ? list[idx] : null, m = item && metricByKey(item.key, w.localMetrics);
     w.panel = { role: edit ? role : (roleFull(w, "guardrail") ? "secondary" : "guardrail"), origRole: role, idx, edit: !!edit, tab: "list", key: item ? item.key : null, direction: item ? item.direction : "lower", limit: item && item.limit ? item.limit.value : 10, kind: item && item.limit ? item.limit.kind : "rel", q: "" }; w.cm = null; if (m && !m.direction) w.panel.direction = "higher"; save(); wzRedraw(); setTimeout(() => { const p = $("#w-panel"); if (p) p.scrollIntoView({ block: "nearest" }); }, 0); };
   const am = $1("#w-addm"); if (am) am.onclick = () => openPanel("guardrail", false);
@@ -1477,7 +1653,7 @@ function bindWizard(el, w) {
   const ps = $1("#w-psearch"); if (ps) ps.oninput = () => { w.panel.q = ps.value; clearTimeout(window.__pq); window.__pq = setTimeout(wzRedraw, 200); };
   const pc = () => { w.panel = null; w.cm = null; redraw(); }; const px = $1("#w-pclose"); if (px) px.onclick = pc; const pcc = $1("#w-pcancel"); if (pcc) pcc.onclick = pc;
   const pa = $1("#w-padd"); if (pa) pa.onclick = () => { sync(); const p = w.panel; let key = p.key;
-    if (p.tab === "custom") { const def = cmDef(w.cm), chk = metricCheck(def); if (!chk.ok) { p.err = chk.errors[0]; redraw(); return; } const keep = { ...def, group: "Custom" }; if (w.cm.save) DYN.settings.customMetrics = [...customMetrics().filter(x => x.key !== keep.key), keep]; else w.localMetrics = [...(w.localMetrics || []).filter(x => x.key !== keep.key), keep]; key = keep.key; p.direction = def.direction; }
+    if (p.tab === "custom") { const def = cmDef(w.cm), chk = metricCheck(def); if (!chk.ok) { p.err = chk.errors[0]; redraw(); return; } if (def.type === "sum" && p.role !== "secondary") { p.err = "A sum grows with the number of leads each prompt gets, so it can only be a secondary metric."; redraw(); return; } const keep = { ...def, group: "Custom" }; delete keep._edit; if (w.cm.save) DYN.settings.customMetrics = [...customMetrics().filter(x => x.key !== keep.key), keep]; else w.localMetrics = [...(w.localMetrics || []).filter(x => x.key !== keep.key), keep]; key = keep.key; p.direction = def.direction; }
     if (!key) { p.err = "Choose a metric from the list."; redraw(); return; }
     if (p.role === "guardrail" && !(p.limit > 0)) { p.err = "A guardrail needs a limit above 0."; redraw(); return; }
     if (!p.edit && usedKeys(w).includes(key)) { p.err = "Already added."; redraw(); return; }
@@ -1497,7 +1673,7 @@ function bindWizard(el, w) {
   $$("[data-ccol]", el).forEach(s => s.onchange = () => { sync(); const [side, i] = s.dataset.ccol.split(":"), c = cmSide(side)[+i]; c.col = s.value; c.values = []; redraw(); });
   $$("[data-cop]", el).forEach(s => s.onchange = () => { sync(); const [side, i] = s.dataset.cop.split(":"), c = cmSide(side)[+i]; c.op = s.value; if (c.op === "is" && c.values.length > 1) c.values = c.values.slice(0, 1); redraw(); });
   $$("[data-cval]", el).forEach(s => s.onchange = () => { sync(); const [side, i] = s.dataset.cval.split(":"); cmSide(side)[+i].values = s.value ? [s.value] : []; redraw(); });
-  const cn = $1("#w-cmname"); if (cn) { let t; cn.oninput = () => { w.cm.name = cn.value; clearTimeout(t); t = setTimeout(() => { const prev = $1("#w-cmprev"); if (prev) { const chk = metricCheck(cmDef(w.cm)); prev.className = "cm-prev " + (chk.ok ? "" : "bad"); if (!chk.ok) prev.innerHTML = chk.errors.map(esc).join("<br>"); else wzRedraw(); } }, 300); }; }
+  const cn = $1("#w-cmname"); if (cn) { let t; cn.oninput = () => { w.cm.name = cn.value; clearTimeout(t); t = setTimeout(() => { const prev = $1("#w-cmprev"); if (prev && w.cm.src === "file") { fcFillPreview(w.cm); return; } if (prev) { const chk = metricCheck(cmDef(w.cm)); prev.className = "cm-prev " + (chk.ok ? "" : "bad"); if (!chk.ok) prev.innerHTML = chk.errors.map(esc).join("<br>"); else wzRedraw(); } }, 300); }; }
 
   /* step 5: duration */
   const ln = $1("#w-len"); if (ln) ln.onchange = () => { sync(); w.lenMode = ln.value; if (w.lenMode === "custom") { const P = wzPlan({ ...w, lenMode: "rec" }); w.customDays = P.rec; w.customLpdTouched = false; w.customDTouched = false; } redraw(); };
@@ -1542,22 +1718,164 @@ function bindWizard(el, w) {
 }
 document.addEventListener("click", ev => { $$("details.ms[open],details.kebab[open]").forEach(d => { if (!d.contains(ev.target)) { d.open = false; if (WZ && WZ.ui && WZ.ui.openMs === d.dataset.ms) WZ.ui.openMs = null; } }); });
 
-/* History: every finished test with its frozen report. Report: the one-page final report for a test. */
+/* The custom metric builder on the real columns of the data files in the resources folder (canary/filecatalog.py scans them; the bundle carries
+   only column names, types and category values, never rows). The preview is measured on the file by the local server, so the file stays on this
+   machine; the saved definition (file, column, operator, value) is what the engine, the test page and the reports read. */
 
-const HFILT = DYN.ui.hist || { q: "", dec: "all", metric: "all", seg: "all", sort: "start", dir: -1, page: 0 };
-const PAGE = 8;
-function guardWord(v) { const g = guardOverall(v); return [g.short, g.cls]; }
-const DEC_GROUP = { PROMOTE: "promoted", ROLLED_BACK: "promoted", STOP_HARM: "stopped", LOSS: "stopped", STOP_GUARDRAIL: "stopped", STOPPED_MANUAL: "stopped", INCONCLUSIVE: "inconclusive", REJECTED: "inconclusive", HOLD_FOR_APPROVAL: "held", HALT_SRM: "halted" };
-function histRows() {
-  return EXPS().map(e => ({ e, v: view(e) })).filter(({ v }) => v.ended).filter(({ e, v }) => {
-    const q = HFILT.q.trim().toLowerCase();
-    if (q && !(e.record.config.name + " " + (e.hypothesis || "") + " " + (dyn(e).learning || "") + " " + (e.preset || "")).toLowerCase().includes(q)) return false;
-    if (HFILT.dec !== "all" && DEC_GROUP[v.kind] !== HFILT.dec) return false;
-    if (HFILT.metric !== "all" && e.record.config.primary_goal !== HFILT.metric) return false;
-    if (HFILT.seg !== "all" && segDescribe(e.record.config.segment) !== HFILT.seg) return false;
-    return true;
-  });
+const FCAT = () => (C && C.file_catalog) || { files: [], columns: [] };
+const hasFileCols = () => FCAT().columns.some(c => c.linkable !== false && ["number", "category", "date", "text"].includes(c.type));
+const FC_OPS = {
+  number: [["=", "="], ["!=", "≠"], [">", ">"], [">=", "≥"], ["<", "<"], ["<=", "≤"], ["between", "between"]],
+  category: [["is", "is"], ["is_not", "is not"], ["in", "is one of"]],
+  date: [["before", "before"], ["after", "after"], ["between", "between"]],
+  text: [["contains", "contains"], ["not_contains", "does not contain"]] };
+const fcCol = (file, col) => FCAT().columns.find(c => c.file === file && c.column === col) || null;
+const fcLabel = c => (fcCol(c.file, c.col) || { label: c.col }).label;
+const fcOpWord = op => (Object.values(FC_OPS).flat().find(x => x[0] === op) || [op, op])[1];
+const fcCondWords = c => { const v = c.values || []; return `${fcLabel(c)} ${fcOpWord(c.op)} ${c.op === "between" ? `${v[0]} and ${v[1]}` : c.op === "in" ? v.join(", ") : c.value != null && c.value !== "" ? c.value : v[0] || ""}`; };
+/** The formula in plain words, the same way the built-in metrics read. */
+function fcWords(m) {
+  const unit = m.count === "leads" ? "Leads" : "Calls", side = (list, all) => list && list.length ? `${unit} where ${list.map(fcCondWords).join(" and ")}` : all;
+  if (m.type === "rate") return `${side(m.num, unit)} ÷ ${side(m.den, `All ${unit.toLowerCase()}`)}`;
+  return `${m.type === "sum" ? "Total" : "Average"} ${fcLabel({ file: m.file, col: m.col }).toLowerCase()} over ${unit.toLowerCase()}${m.where && m.where.length ? " where " + m.where.map(fcCondWords).join(" and ") : ""}`;
 }
+const newFcm = () => ({ src: "file", name: "", type: "rate", count: "calls", num: [{ file: "", col: "", op: "", value: "", values: [] }], den: [], denAll: true, file: "", col: "", where: [], direction: "higher", save: true });
+/** The saved definition. It carries the baseline measured on the file, so Duration and At a glance work without the server. */
+function fcDef(cm) {
+  const cond = c => ({ file: c.file, col: c.col, op: c.op, value: c.value, values: (c.values || []).slice() }), first = [...cm.num, ...cm.where, { file: cm.file }].find(c => c.file) || {};
+  const d = { source: "file", key: cm.key || metricKey(cm.name), name: String(cm.name || "").trim(), type: cm.type, count: cm.count, unit: cm.count, direction: cm.direction, file: cm.type === "rate" ? first.file : cm.file };
+  if (cm.type === "rate") { d.num = cm.num.map(cond); d.den = cm.denAll ? [] : cm.den.map(cond); } else { d.col = cm.col; d.where = cm.where.map(cond); }
+  const pv = fcPrevCached(d); if (pv && pv.ok) d.base = { value: pv.value, sd: pv.sd, num: pv.num, den: pv.den, window: pv.window };
+  return d;
+}
+/** Checks that need no data: columns from the catalog, operators that fit the column's type, values filled in. */
+function fcCheckShape(m) {
+  const errs = [];
+  const conds = (list, label, needOne) => {
+    if (needOne && !(list || []).length) errs.push(`${label}: add at least one condition.`);
+    for (const c of list || []) {
+      const col = fcCol(c.file, c.col); if (!col) { errs.push(`${label}: choose a column.`); continue; }
+      if (col.linkable === false) errs.push(`${label}: ${col.label} can't be linked to calls.`);
+      if (!(FC_OPS[col.type] || []).some(o => o[0] === c.op)) { errs.push(`${label}: choose a comparison that fits ${col.label} (${col.type}).`); continue; }
+      const vals = c.op === "between" || c.op === "in" ? c.values || [] : [c.value];
+      if (!vals.length || vals.some(v => v == null || String(v).trim() === "") || (c.op === "between" && vals.length < 2)) errs.push(`${label}: fill in the value for ${col.label}.`);
+      else if (col.type === "number" && vals.some(v => isNaN(+v))) errs.push(`${label}: ${col.label} needs a number.`);
+      else if (col.type === "category" && vals.some(v => !(col.values || []).includes(String(v)))) errs.push(`${label}: a value is not in ${col.label}.`);
+    }
+  };
+  const files = new Set([...(m.num || []), ...(m.den || []), ...(m.where || []), m.type === "rate" ? {} : { file: m.file }].map(c => c.file).filter(Boolean));
+  if (files.size > 1) errs.push("Use columns from one file in a metric.");
+  if (!String(m.name || "").trim()) errs.push("Give the metric a name.");
+  else if (allMetrics().some(x => x.key !== m.key && x.name.trim().toLowerCase() === m.name.trim().toLowerCase())) errs.push("A metric with this name already exists.");
+  if (m.type === "rate") { conds(m.num, "Numerator", true); conds(m.den, "Denominator", false); }
+  else { const col = fcCol(m.file, m.col); if (!col) errs.push(`Choose a number column to ${m.type === "sum" ? "add up" : "average"}.`); else if (col.type !== "number") errs.push(`${col.label} is not a number column.`); conds(m.where, "Condition", false); }
+  return [...new Set(errs)];
+}
+/* ---- the preview, measured on the file by the local server (aggregates only) */
+const _fcPrev = new Map();
+const fcPrevKey = d => JSON.stringify([d.type, d.count, d.num, d.den, d.file, d.col, d.where]);
+const fcPrevCached = d => _fcPrev.get(fcPrevKey(d)) || null;
+async function fcMeasure(d) {
+  const k = fcPrevKey(d); if (_fcPrev.has(k)) return _fcPrev.get(k);
+  let out;
+  try { const r = await fetch("/api/filecatalog/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ def: { ...d, name: d.name || "Preview" } }) }); out = await r.json(); }
+  catch (err) { out = { ok: false, errors: ["Could not reach the local server."] }; }
+  if (out && (out.ok || (out.errors || []).length)) _fcPrev.set(k, out);
+  return out;
+}
+/** Every check, for Save: the shape here, then the measured ones (denominator above 0, a rate within 0 to 100%). */
+function fcCheck(m) {
+  const errs = fcCheckShape(m); if (errs.length) return { ok: false, errors: errs };
+  if (!LIVE) return { ok: false, errors: ["Measuring a metric on the file needs the local server (./start.sh): the file stays on this machine."] };
+  const pv = fcPrevCached(m); if (!pv) return { ok: false, errors: ["Measuring on the file..."] };
+  if (!pv.ok) return { ok: false, errors: pv.errors || ["The metric could not be measured."] };
+  if (!(pv.den > 0)) return { ok: false, errors: ["The denominator is 0 in the last 30 days: nothing would be counted."] };
+  if (m.type === "rate" && (pv.value < 0 || pv.value > 1)) return { ok: false, errors: [`This rate comes to ${(pv.value * 100).toFixed(0)}%: a rate must lie between 0 and 100%. Make the numerator count a part of the denominator.`] };
+  return { ok: true, errors: [], ev: pv };
+}
+const fcFmt = (v, m) => v == null || isNaN(v) ? "-" : m.type === "rate" ? `${(v * 100).toFixed(1)}%` : `${(+v).toLocaleString("en-US", { maximumFractionDigits: 1 })}${(fcCol(m.file, m.col) || {}).unit ? " " + fcCol(m.file, m.col).unit : ""}`;
+function fcPrevHtml(d, pv) {
+  const win = pv.window ? `${fdate(pv.window.from)} to ${fdate(pv.window.to)}` : "last 30 days";
+  return d.type === "rate" ? `Last 30 days (${win}), all traffic in ${esc(d.file)}: ${nf(pv.num)} ÷ ${nf(pv.den)} = <b>${fcFmt(pv.value, d)}</b>`
+    : `Last 30 days (${win}), all traffic in ${esc(d.file)}: ${d.type === "sum" ? "total" : "average"} <b>${fcFmt(pv.value, d)}</b> over ${nf(pv.den)} ${d.count}`;
+}
+/** Fills the preview box once the server answers; the builder itself never waits. */
+async function fcFillPreview(cm) {
+  const box = $("#w-cmprev"); if (!box) return;
+  const d = fcDef(cm), shape = fcCheckShape({ ...d, name: d.name || "x" });
+  if (shape.length) { box.className = "cm-prev bad"; box.innerHTML = shape.map(esc).join("<br>"); return; }
+  if (!LIVE) { box.className = "cm-prev"; box.innerHTML = `Formula: ${esc(fcWords(d))}<br><span class="note">The preview is measured on the file by the local server (./start.sh), so the file stays on this machine.</span>`; return; }
+  box.className = "cm-prev"; box.innerHTML = `Formula: ${esc(fcWords(d))} · measuring on the file...`;
+  const pv = await fcMeasure(d), now = $("#w-cmprev"); if (!now || fcPrevKey(fcDef(cm)) !== fcPrevKey(d)) return;
+  const chk = fcCheck({ ...fcDef(cm), name: d.name || "x" });
+  now.className = "cm-prev " + (chk.ok ? "" : "bad"); now.innerHTML = chk.ok ? `Formula: ${esc(fcWords(d))} · ${fcPrevHtml(d, pv)}` : chk.errors.map(esc).join("<br>");
+}
+
+/* ---- the builder */
+const TTAG = t => `<span class="ttag t-${esc(t)}">${esc(t)}</span>`;
+function fcColPick(id, cur, onlyNumber) {
+  const files = FCAT().files, curCol = cur && cur.col ? fcCol(cur.file, cur.col) : null, open = WZ && WZ.ui.fcOpen === id;
+  const usable = c => !["empty"].includes(c.type) && (!onlyNumber || c.type === "number");
+  return `<details class="ms colpick" data-fcpick="${esc(id)}" ${open ? "open" : ""}><summary><span>${curCol ? `${esc(curCol.label)} ${TTAG(curCol.type)}` : onlyNumber ? "Number column" : "Column"}</span></summary><div class="ms-pop">
+    <input type="search" class="ms-q" data-fcq="${esc(id)}" placeholder="Search columns" aria-label="Search columns">
+    ${files.map(f => { const cols = FCAT().columns.filter(c => c.file === f.file && usable(c)); if (!cols.length) return "";
+      return `<div class="cp-file"><div class="mgroup-h">${esc(f.file)}${f.linkable === false ? ` <span class="note">(can't be linked to calls)</span>` : ""}</div>${cols.map(c => { const off = c.linkable === false || c.type === "id";
+        return `<button type="button" class="cp-col" data-fccol="${esc(id)}" data-file="${esc(c.file)}" data-col="${esc(c.column)}" ${off ? "disabled" : ""} title="${esc(c.linkable === false ? "Can't be linked to calls" : c.type === "id" ? "An ID: it links files, it is not counted" : c.column)}"><span>${esc(c.label)}</span>${TTAG(c.type)}</button>`; }).join("")}</div>`; }).join("")}</div></details>`;
+}
+function fcValue(id, c) {
+  const col = fcCol(c.file, c.col); if (!col || !c.op) return `<span class="note">${col ? "Choose a comparison" : "Choose a column"}</span>`;
+  const v = c.values || [];
+  if (col.type === "number") return c.op === "between" ? `<input type="number" data-fcv="${id}:0" value="${esc(v[0] ?? "")}" aria-label="From" style="width:90px"> and <input type="number" data-fcv="${id}:1" value="${esc(v[1] ?? "")}" aria-label="To" style="width:90px">` : `<input type="number" data-fcv="${id}" value="${esc(c.value ?? "")}" aria-label="Value" style="width:110px">`;
+  if (col.type === "date") return c.op === "between" ? `<input type="date" data-fcv="${id}:0" value="${esc(v[0] || "")}" aria-label="From"> and <input type="date" data-fcv="${id}:1" value="${esc(v[1] || "")}" aria-label="To">` : `<input type="date" data-fcv="${id}" value="${esc(c.value || "")}" aria-label="Date">`;
+  if (col.type === "text") return `<input type="text" data-fcv="${id}" value="${esc(c.value || "")}" placeholder="text" aria-label="Text">`;
+  if (c.op === "in") { const open = WZ && WZ.ui.fcOpen === "in:" + id;
+    return `<details class="ms" data-fcin-box="${id}" ${open ? "open" : ""}><summary><span>${v.length ? esc(v.length <= 3 ? v.join(", ") : `${v.length} of ${col.values.length} selected`) : "Choose values"}</span></summary><div class="ms-pop">${col.values.map(x => `<label class="chk"><input type="checkbox" data-fcin="${id}" value="${esc(x)}" ${v.includes(x) ? "checked" : ""}> ${esc(x)}</label>`).join("")}</div></details>`; }
+  return `<select data-fcv="${id}" aria-label="Value"><option value="">Value</option>${col.values.map(x => `<option ${c.value === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>`;
+}
+function fcConds(side, list) {
+  return `${list.map((c, i) => { const id = `${side}:${i}`, col = fcCol(c.file, c.col);
+    return `<div class="cond-row">${fcColPick(id, c)}<select data-fcop="${id}" aria-label="Comparison" ${col ? "" : "disabled"}><option value="">Comparison</option>${(FC_OPS[col ? col.type : ""] || []).map(([k, n]) => `<option value="${k}" ${c.op === k ? "selected" : ""}>${n}</option>`).join("")}</select>
+      ${fcValue(id, c)}<button class="x" data-fcdel="${id}" aria-label="Remove this condition" title="Remove">×</button></div>`; }).join("")}
+    ${list.length < 3 ? `<button class="btn sm" data-fcadd="${side}">+ Add condition</button>` : `<span class="note">At most 3 conditions (joined with AND).</span>`}`;
+}
+function fcBuilder(w, cm, forPrimary) {
+  const unitSel = key => `<select data-fcunit="${key}" aria-label="Count calls or leads"><option value="calls" ${cm.count === "calls" ? "selected" : ""}>calls</option><option value="leads" ${cm.count === "leads" ? "selected" : ""}>leads</option></select>`;
+  const sumNote = cm.type === "sum" && forPrimary ? `<p class="note" style="color:#b23b3b">A sum grows with the number of leads each prompt gets, so it cannot decide a test. Use it as a secondary metric.</p>` : "";
+  return `<div class="cm" id="w-cm" data-fc="1"><div class="form-grid">${F("Metric name", `<input type="text" id="w-cmname" value="${esc(cm.name)}" placeholder="Calls over 3 min %" maxlength="60">`)}
+      <div class="field"><label>Type</label><div class="seg" role="group" aria-label="Type"><button data-fctype="rate" aria-pressed="${cm.type === "rate"}">Rate (%)</button><button data-fctype="average" aria-pressed="${cm.type === "average"}">Average</button><button data-fctype="sum" aria-pressed="${cm.type === "sum"}">Sum</button></div></div></div>
+    <p class="note" style="margin:4px 0 8px">Columns come from the files in the resources folder (${FCAT().files.map(f => esc(f.file)).join(", ")}). ${info("Each file is read and its column types are inferred from the first 1,000 rows. Files are joined to calls by lead or call id. Rescan in Settings > Metrics when a file is added or changed.")}</p>
+    ${cm.type === "rate" ? `<div class="cm-side"><div class="cm-lbl"><b>Numerator:</b> count of ${unitSel("num")} where</div>${fcConds("num", cm.num)}</div>
+      <div class="cm-side"><div class="cm-lbl"><b>Denominator:</b> <label class="chk"><input type="radio" name="w-fcden" value="all" ${cm.denAll ? "checked" : ""}> all ${cm.count}</label> <label class="chk"><input type="radio" name="w-fcden" value="custom" ${cm.denAll ? "" : "checked"}> count of ${cm.count} where</label></div>${cm.denAll ? "" : fcConds("den", cm.den)}</div>`
+    : `<div class="cm-side"><div class="cm-lbl"><b>${cm.type === "sum" ? "Total" : "Average"}</b> of ${fcColPick("col", { file: cm.file, col: cm.col }, true)} over ${unitSel("avg")} where (optional)</div>${fcConds("where", cm.where)}</div>${sumNote}`}
+    <div class="field" style="margin-top:12px"><label>Better direction</label><div class="seg" role="group" aria-label="Better direction"><button data-cmdir="higher" aria-pressed="${cm.direction === "higher"}">↑ Higher is better</button><button data-cmdir="lower" aria-pressed="${cm.direction === "lower"}">↓ Lower is better</button></div></div>
+    ${forPrimary ? "" : `<label class="chk" style="margin-top:12px"><input type="checkbox" id="w-cmsave" ${cm.save ? "checked" : ""}> Save to metric list for future tests</label>`}
+    <div class="cm-prev" id="w-cmprev" aria-live="polite"></div></div>`;
+}
+/** Events of the builder, delegated on the wizard's page; `redraw` redraws the wizard. Returns true when it handled the event. */
+function fcEvent(ev, w, redraw) {
+  const cm = w.cm; if (!cm || cm.src !== "file") return false;
+  const t = ev.target, ds = t.dataset || {}, at = id => { const [side, i] = id.split(":"); return side === "col" ? null : cm[side][+i]; };
+  if (ev.type === "click") {
+    const b = t.closest("[data-fctype],[data-fccol],[data-fcadd],[data-fcdel]"); if (!b) return false; ev.preventDefault();
+    if (b.dataset.fctype) { cm.type = b.dataset.fctype; if (cm.type === "rate" && !cm.num.length) cm.num.push({ file: "", col: "", op: "", value: "", values: [] }); }
+    else if (b.dataset.fccol) { const id = b.dataset.fccol, file = b.dataset.file, col = b.dataset.col; w.ui.fcOpen = null;
+      if (id === "col") { cm.file = file; cm.col = col; } else { const c = at(id), type = (fcCol(file, col) || {}).type; Object.assign(c, { file, col, op: (FC_OPS[type] || [[""]])[0][0], value: "", values: [] }); } }
+    else if (b.dataset.fcadd) cm[b.dataset.fcadd].push({ file: "", col: "", op: "", value: "", values: [] });
+    else if (b.dataset.fcdel) { const [side, i] = b.dataset.fcdel.split(":"); cm[side].splice(+i, 1); }
+    redraw(); return true;
+  }
+  if (ev.type === "input" && ds.fcq != null) { const q = t.value.trim().toLowerCase(); t.closest(".ms-pop").querySelectorAll(".cp-col").forEach(x => { x.hidden = !!q && !x.textContent.toLowerCase().includes(q) && !x.dataset.col.toLowerCase().includes(q); }); return true; }
+  if (ev.type !== "change") return false;
+  if (ds.fcop) { const c = at(ds.fcop); c.op = t.value; c.value = ""; c.values = []; redraw(); return true; }
+  if (ds.fcv) { const [side, i, k] = ds.fcv.split(":"), c = cm[side][+i]; if (k != null) { c.values = c.values || []; c.values[+k] = t.value; } else { c.value = t.value; c.values = [t.value]; } redraw(); return true; }
+  if (ds.fcin) { const c = at(ds.fcin); c.values = [...t.closest(".ms-pop").querySelectorAll("input:checked")].map(x => x.value); w.ui.fcOpen = "in:" + ds.fcin; redraw(); return true; }
+  if (ds.fcunit) { cm.count = t.value; redraw(); return true; }
+  if (t.name === "w-fcden") { cm.denAll = t.value === "all"; if (!cm.denAll && !cm.den.length) cm.den.push({ file: "", col: "", op: "", value: "", values: [] }); redraw(); return true; }
+  return false;
+}
+
+/* The one-page final report of a test (print view), and Clone. The list of tests is All experiments (35-experiments.js). */
+
 /** Prompt A and prompt B of a test in full, where they are known (a results file carries no prompts). */
 function promptsOf(e) {
   if (e.kind === "files") return null;
@@ -1579,44 +1897,14 @@ function cloneOf(e) {
     preset: e.truth && e.truth.effect_rel != null ? (e.truth.effect_rel > 0 ? "win" : e.truth.effect_rel < 0 ? "worse" : "flat") : "win" });
 }
 
-ROUTES.history = (el) => {
-  const all = histRows(), key = { start: x => x.e.record.config.start, lift: x => x.v.cur ? x.v.cur.diff : 0, name: x => x.e.record.config.name, dec: x => x.v.kind };
-  all.sort((a, b) => { const A = key[HFILT.sort](a), B = key[HFILT.sort](b); return (A < B ? -1 : A > B ? 1 : 0) * HFILT.dir; });
-  const pages = Math.max(1, Math.ceil(all.length / PAGE)); HFILT.page = Math.min(HFILT.page, pages - 1);
-  const rows = all.slice(HFILT.page * PAGE, HFILT.page * PAGE + PAGE), metrics = [...new Set(EXPS().map(e => e.record.config.primary_goal))];
-  const th = (k, label, cls = "") => `<th class="${cls}" aria-sort="${HFILT.sort === k ? (HFILT.dir > 0 ? "ascending" : "descending") : "none"}"><button data-sort="${k}">${label}${HFILT.sort === k ? (HFILT.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`;
-  el.innerHTML = head("History", "Every finished test, with its frozen report.", `<button class="btn" id="h-csv">Export CSV</button>`) +
-    `<div class="filters"><div class="field grow"><label for="h-q">Search</label><input type="search" id="h-q" value="${esc(HFILT.q)}" placeholder="Name, change or learning"></div>
-      <div class="field"><label for="h-dec">Decision</label><select id="h-dec">${[["all", "All decisions"], ["promoted", "Promoted"], ["stopped", "Stopped"], ["inconclusive", "Inconclusive"], ["held", "Held for approval"], ["halted", "Halted (broken test)"]].map(([k, n]) => `<option value="${k}" ${HFILT.dec === k ? "selected" : ""}>${n}</option>`).join("")}</select></div>
-      <details class="more-f" ${HFILT.metric !== "all" || HFILT.seg !== "all" ? "open" : ""}><summary>More filters</summary><div class="more-f-body"><div class="field"><label for="h-met">Metric</label><select id="h-met"><option value="all">All metrics</option>${metrics.map(m => `<option value="${esc(m)}" ${HFILT.metric === m ? "selected" : ""}>${esc(goalName(EXPS().find(e => e.record.config.primary_goal === m).record.config))}</option>`).join("")}</select></div>
-      <div class="field"><label for="h-seg">Segment</label><select id="h-seg"><option value="all">All segments</option>${[...new Set(EXPS().map(e => segDescribe(e.record.config.segment)))].map(x => `<option value="${esc(x)}" ${HFILT.seg === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div></div></details></div>
-    ${rows.length ? `<div class="tbl-wrap"><table><thead><tr>${th("name", "Test")}${th("start", "Dates")}${th("lift", "Primary lift (range)", "num")}${th("dec", "Decision")}<th>Guardrail</th>${rows.some(x => dyn(x.e).learning) ? "<th>Learning</th>" : ""}<th></th></tr></thead><tbody>${rows.map(({ e, v }) => { const c = v.config, g = guardWord(v), cur = v.cur, lr = cur && liftRange(cur, c), change = e.kind === "files" ? "Results from " + ((e.record.source && e.record.source.files) || []).join(", ") : ((e.record.variants.B || {}).name) || "";
-      return `<tr class="click" data-rep="${esc(e.id)}"><td title="${esc(change)}"><b><a href="#/report/${encodeURIComponent(e.id)}">${esc(c.name)}</a></b> <span class="tag">${esc(e.kind === "files" ? "file" : "simulated")}</span>${segRules(c.segment).length ? `<div style="margin-top:2px">${segChips(c.segment)}</div>` : ""}</td><td style="white-space:nowrap">${fdate(c.start)}<div class="note">${v.ld} day${v.ld === 1 ? "" : "s"}</div></td>
-        <td class="num">${cur ? `<b>${fmtD(cur.diff, c)}</b><div class="note">${c.metrics ? rangeD(lr.lo, lr.hi, c) : `${sgn(lr.lo * 100, 1)} to ${sgn(lr.hi * 100, 1)}`}${lr.interim ? " (interim)" : ""}</div>` : "-"}</td>
-        <td>${pill(KIND_LABEL[v.kind] || v.kind, KIND_CLASS[v.kind])}</td><td>${pill(g[0], g[1])}</td>${rows.some(x => dyn(x.e).learning) ? `<td class="note" style="max-width:160px">${esc(dyn(e).learning || "")}</td>` : ""}<td><button class="btn sm" data-clone="${esc(e.id)}">Clone</button></td></tr>`; }).join("")}</tbody></table></div>
-      <div class="pager"><span>${all.length} test${all.length === 1 ? "" : "s"}${HFILT.q || HFILT.dec !== "all" || HFILT.metric !== "all" || HFILT.seg !== "all" ? " match" : ""}</span><span><button class="btn sm" id="h-prev" ${HFILT.page ? "" : "disabled"}>Previous</button> Page ${HFILT.page + 1} of ${pages} <button class="btn sm" id="h-next" ${HFILT.page < pages - 1 ? "" : "disabled"}>Next</button></span></div>`
-      : `<div class="empty">No finished tests match. Clear the filters, or advance a running test to its last day.</div>`}`;
-  const save = () => { DYN.ui.hist = HFILT; saveDyn(); };
-  $("#h-q").oninput = ev => { HFILT.q = ev.target.value; HFILT.page = 0; save(); clearTimeout(window.__hq); window.__hq = setTimeout(() => { const pos = ev.target.selectionStart; route(); const n = $("#h-q"); n.focus(); n.setSelectionRange(pos, pos); }, 250); };
-  $("#h-dec").onchange = ev => { HFILT.dec = ev.target.value; HFILT.page = 0; save(); route(); };
-  $("#h-met").onchange = ev => { HFILT.metric = ev.target.value; HFILT.page = 0; save(); route(); };
-  $("#h-seg").onchange = ev => { HFILT.seg = ev.target.value; HFILT.page = 0; save(); route(); };
-  $$("[data-sort]", el).forEach(b => b.onclick = () => { const k = b.dataset.sort; HFILT.dir = HFILT.sort === k ? -HFILT.dir : (k === "name" ? 1 : -1); HFILT.sort = k; save(); route(); });
-  $$("[data-clone]", el).forEach(b => b.onclick = ev => { ev.stopPropagation(); cloneOf(byId(b.dataset.clone)); });
-  $$("tr[data-rep]", el).forEach(r => r.onclick = ev => { if (!ev.target.closest("a,button")) go("report", r.dataset.rep); });
-  const pv = $("#h-prev"), nx = $("#h-next"); if (pv) pv.onclick = () => { HFILT.page--; save(); route(); }; if (nx) nx.onclick = () => { HFILT.page++; save(); route(); };
-  const isAvg = v => primaryDef(v.config).type === "average";          // an average's lift is in its own unit, in the last two columns
-  $("#h-csv").onclick = () => download("canary_history.csv", toCsv(["name", "segment", "start", "days", "source", "change", "lift_pp", "range_low_pp", "range_high_pp", "decision", "guardrail", "learning", "lift_average", "average_unit"], all.map(({ e, v }) => [v.config.name, segDescribe(v.config.segment), v.config.start.slice(0, 10), v.ld, e.kind, (e.record.variants.B || {}).name, v.cur && !isAvg(v) ? (v.cur.diff * 100).toFixed(2) : "", v.cur && !isAvg(v) ? (liftRange(v.cur, v.config).lo * 100).toFixed(2) : "", v.cur && !isAvg(v) ? (liftRange(v.cur, v.config).hi * 100).toFixed(2) : "", KIND_LABEL[v.kind] || v.kind, guardWord(v)[0], dyn(e).learning || "", v.cur && isAvg(v) ? v.cur.diff.toFixed(3) : "", isAvg(v) ? metricUnit(primaryDef(v.config)) : ""])));
-};
-
 ROUTES.report = (el, id) => {
-  const e = byId(id); if (!e) { el.innerHTML = head("Report", "") + `<div class="empty">That test was not found. <a href="#/history">Back to History</a>.</div>`; return; }
+  const e = byId(id); if (!e) { el.innerHTML = head("Report", "") + `<div class="empty">That test was not found. <a href="#/experiments">See all experiments</a>.</div>`; return; }
   const v = view(e), c = v.config, rec = e.record, cur = v.cur;
-  if (!v.ended || !cur) { el.innerHTML = head(c.name, "The final report is written when the test ends.") + `<div class="empty">This test has not ended yet (${esc(v.status[0])}). <a href="#/live/${encodeURIComponent(e.id)}">Open it in Live Experiments</a>.</div>`; return; }
+  if (!v.ended || !cur) { el.innerHTML = head(c.name, "The final report is written when the test ends.") + `<div class="empty">This test has not ended yet (${esc(v.status[0])}). <a href="#/experiments/${encodeURIComponent(e.id)}">Open its page</a>.</div>`; return; }
   const ciA = armCI(cur, "A", c), ciB = armCI(cur, "B", c), lr = liftRange(cur, c), gl = guardList(v), goal = goalName(c), sec = secondaryList(v), pr = promptsOf(e), avg = primaryDef(c).type === "average";
   const ents = rec.ledger.concat(tailOf(rec, v.d));
   const sugg = ["slot options work", "longer intro hurts", "small effect: needs more leads", "call length is the catch", "broken tracking: rerun"];
-  el.innerHTML = head("Final report", "A frozen, one-page record of this test.", `<a class="btn" href="#/history">Back to History</a><button class="btn" id="r-clone">Clone and re-run</button><button class="btn" id="r-csv">Export CSV</button><button class="btn primary" onclick="print()">Print</button>`) +
+  el.innerHTML = head("Final report", "A frozen, one-page record of this test.", `<a class="btn" href="#/experiments/${encodeURIComponent(e.id)}">← Back to the test</a><button class="btn" id="r-clone">Clone and re-run</button><button class="btn" id="r-csv">Export CSV</button><button class="btn primary" onclick="print()">Print</button>`) +
     `<div class="report card"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:20px">${esc(c.name)}</h2>${pill(KIND_LABEL[v.kind] || v.kind, KIND_CLASS[v.kind])}</div>
       <p class="note">${fdate(c.start)} · ${v.ld} day${v.ld === 1 ? "" : "s"} · config v${c.version || 1} ${info("Locked config " + rec.config_hash)} · ${esc(e.kind === "files" ? "results supplied as files" : "simulated results")}</p>
       ${e.hypothesis ? `<p>${esc(e.hypothesis)}</p>` : ""}
@@ -1672,7 +1960,7 @@ ROUTES.library = (el, arg) => {
   const diffHtml = prev ? diffBlock(versionText(prev), selText) : "", diffNote = prev ? `What changed between ${prev.id} (A) and ${sel.id} (B), side by side.` : "";
   el.innerHTML = head("Prompt Library", "Every prompt version, what is live, and one-click rollback.") +
     `<div class="banner"><div><b>Live now: ${esc(P.live.id)}</b> · ${esc(P.live.name)} ${info(`Fingerprint ${P.live.hash}. A production pointer says which version callers hear. Before each call the bot asks the router which prompt this lead gets, then loads that version.`)}</div></div>
-    <div class="tbl-wrap"><table><thead><tr><th>Version</th><th>Name</th><th>From test</th><th>Promoted</th><th>Status</th><th></th></tr></thead><tbody>${vers.map(x => `<tr class="click" data-ver="${esc(x.id)}"><td title="fingerprint ${esc(x.hash)}"><b>${esc(x.id)}</b></td><td>${esc(x.name)}</td><td>${x.expId ? `<a href="#/report/${encodeURIComponent(x.expId)}">${esc(x.from)}</a>` : esc(x.from)}</td><td>${x.time ? esc(fdt(x.time)) + `<div class="note">${esc(x.by)}</div>` : "-"}</td>
+    <div class="tbl-wrap"><table><thead><tr><th>Version</th><th>Name</th><th>From test</th><th>Promoted</th><th>Status</th><th></th></tr></thead><tbody>${vers.map(x => `<tr class="click" data-ver="${esc(x.id)}"><td title="fingerprint ${esc(x.hash)}"><b>${esc(x.id)}</b></td><td>${esc(x.name)}</td><td>${x.expId ? `<a href="#/experiments/${encodeURIComponent(x.expId)}">${esc(x.from)}</a>` : esc(x.from)}</td><td>${x.time ? esc(fdt(x.time)) + `<div class="note">${esc(x.by)}</div>` : "-"}</td>
       <td>${pill(x.status === "live" ? "✓ Live" : x.status === "live for a segment" ? "✓ Live for a segment" : x.status === "rolled back" ? "Rolled back" : "Previous", x.status === "live" ? "pos" : x.status === "live for a segment" ? "run" : x.status === "rolled back" ? "warn" : "plain")}${x.scope ? `<div class="note mono">${esc(x.scope)} only</div>` : ""}</td><td>${(x.status === "live" || x.status === "live for a segment") && x.id !== "v1" ? `<button class="btn sm danger" data-roll="${esc(x.id)}">Rollback</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
     <div class="card" style="margin-top:16px"><h2>${esc(sel.id)} against ${prev ? esc(prev.id) : "nothing (the first version)"}</h2><div class="sub">${!prev ? "This is the prompt as received. Later versions show what they changed." : diffNote}</div><div style="margin-top:12px">${diffHtml}</div>
       <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:500">Show the full prompt ${esc(sel.id)}</summary><textarea readonly class="prompt-box" rows="14" style="margin-top:8px" aria-label="Full prompt ${esc(sel.id)} (read-only)">${esc(selText)}</textarea></details></div>
@@ -1692,7 +1980,7 @@ ROUTES.log = (el) => {
   el.innerHTML = head("Decision Log", `Every event with its time and reason, in a tamper-evident record. ${info("Events from the engine carry the first characters of their hash in the record. Pause, stop and library rollbacks are actions of this console and are labelled as such. Hover a reason for the full text and its hash.")}`, `<button class="btn" id="l-csv">Export CSV</button>`) +
     `<div class="filters"><div class="field grow"><label for="l-q">Search</label><input type="search" id="l-q" value="${esc(LF.q)}" placeholder="Reason, test or event"></div><div class="field"><label for="l-type">Event</label><select id="l-type"><option value="all">All events</option>${EV_TYPES.map(t => `<option ${LF.type === t ? "selected" : ""}>${t}</option>`).join("")}</select></div>
       <div class="field"><label for="l-exp">Test</label><select id="l-exp"><option value="all">All tests</option>${exps.map(e => `<option value="${esc(e.id)}" ${LF.exp === e.id ? "selected" : ""}>${esc(e.record.config.name)}</option>`).join("")}</select></div></div>
-    ${rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Time</th><th>Test</th><th>Event</th><th>Reason</th></tr></thead><tbody>${rows.map(x => `<tr><td style="white-space:nowrap">${esc(fdt(x.ts))}</td><td>${x.id ? `<a href="#/${CUR.name === "log" ? "report" : "report"}/${encodeURIComponent(x.id)}">${esc(x.exp)}</a>` : esc(x.exp)}</td><td>${pill(x.type, { Saved: "plain", Started: "run", "Harm alert": "neg", "Split alert": "warn", Stopped: "neg", Promoted: "pos", Approved: "pos", Rejected: "plain", "Rolled back": "warn", Held: "warn", Inconclusive: "plain", Holdback: "run", Paused: "plain", Resumed: "run" }[x.type])}</td><td class="muted reason" title="${esc(x.text + (x.hash ? " · record " + x.hash : " · console action"))}">${esc(x.text.length > 120 ? x.text.slice(0, 117) + "..." : x.text)}</td></tr>`).join("")}</tbody></table></div>
+    ${rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Time</th><th>Test</th><th>Event</th><th>Reason</th></tr></thead><tbody>${rows.map(x => `<tr><td style="white-space:nowrap">${esc(fdt(x.ts))}</td><td>${x.id ? `<a href="#/experiments/${encodeURIComponent(x.id)}">${esc(x.exp)}</a>` : esc(x.exp)}</td><td>${pill(x.type, { Saved: "plain", Started: "run", "Harm alert": "neg", "Split alert": "warn", Stopped: "neg", Promoted: "pos", Approved: "pos", Rejected: "plain", "Rolled back": "warn", Held: "warn", Inconclusive: "plain", Holdback: "run", Paused: "plain", Resumed: "run" }[x.type])}</td><td class="muted reason" title="${esc(x.text + (x.hash ? " · record " + x.hash : " · console action"))}">${esc(x.text.length > 120 ? x.text.slice(0, 117) + "..." : x.text)}</td></tr>`).join("")}</tbody></table></div>
       <div class="pager"><span>${evs.length} event${evs.length === 1 ? "" : "s"}</span><span><button class="btn sm" id="l-prev" ${LF.page ? "" : "disabled"}>Previous</button> Page ${LF.page + 1} of ${pages} <button class="btn sm" id="l-next" ${LF.page < pages - 1 ? "" : "disabled"}>Next</button></span></div>` : `<div class="empty">No events match.</div>`}
 `;
   const save = () => { DYN.ui.log = LF; saveDyn(); };
@@ -1703,13 +1991,19 @@ ROUTES.log = (el) => {
 };
 
 /* ------------------------------------------------------------------ Settings */
+/** The data files the custom metric builder reads its columns from, and the Rescan button (the local server re-reads the folder). */
+function dataFilesHtml() {
+  const fc = FCAT(), types = f => { const n = {}; fc.columns.filter(c => c.file === f.file).forEach(c => { n[c.type] = (n[c.type] || 0) + 1; }); return Object.entries(n).map(([t, k]) => `${k} ${t}`).join(" · "); };
+  return `<div class="sec-row" style="margin-top:16px"><div><h3>Data files</h3><div class="sub">The columns the custom metric builder offers, read from the files in the resources folder${fc.scanned_at ? `; scanned ${esc(fdt(fc.scanned_at))}` : ""}.</div></div>${LIVE ? `<button class="btn sm" id="s-rescan">Rescan files</button>` : `<span class="note">Rescan needs the local server (./start.sh)</span>`}</div>
+    ${fc.files.length ? `<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>File</th><th class="num">Rows</th><th>Linked to calls by</th><th>Columns by type</th></tr></thead><tbody>${fc.files.map(f => `<tr><td><b>${esc(f.file)}</b></td><td class="num">${f.rows == null ? "-" : nf(f.rows)}</td><td>${f.linkable === false ? pill("Can't be linked to calls", "neg") : esc([f.keys && f.keys.call, f.keys && f.keys.lead].filter(Boolean).join(", "))}</td><td class="note">${esc(types(f))}</td></tr>`).join("")}</tbody></table></div>` : `<p class="note">No data files found${fc.missing ? ` in ${esc(fc.missing)}` : ""}.</p>`}`;
+}
 ROUTES.settings = (el) => {
   const s = SET(), running = EXPS().filter(e => view(e).running);
   const f = (id, label, input, hint) => `<div class="field"><label for="${id}">${label}${hint ? ` <span class="hint">${hint}</span>` : ""}</label>${input}</div>`;
   const mrows = allMetrics();
   el.innerHTML = head("Settings", "What the autopilot may do, and the defaults new tests start from.") + autopilotCard() +
     fold(`Metric list`, `<div class="sub">Every metric a test can use as its primary goal, a guardrail or a secondary metric: the formula in plain words, which way is better, and today's value (last 30 days, all traffic). Custom metrics saved from New Experiment appear here and can be reused.</div>
-      <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Metric</th><th>Group</th><th>Formula</th><th>Direction</th><th class="num">Today</th><th>Note</th><th></th></tr></thead><tbody>${mrows.map(m => `<tr><td><b>${esc(m.name)}</b><div class="mono muted">${esc(m.key)}</div></td><td>${pill(m.group || "Custom", m.group === "Outcome" ? "run" : m.group === "Custom" ? "pos" : "plain")}</td><td style="max-width:320px">${esc(metricWords(m))}</td><td>${m.direction === "lower" ? "↓ lower is better" : "↑ higher is better"}</td><td class="num">${m.available === false ? pill("Not in data yet", "plain") : fmtMetric(metricEval(m, null).value, m)}</td><td class="muted" style="max-width:260px">${esc(m.note || (m.custom ? "Custom metric" : ""))}</td><td>${m.custom ? `<button class="btn sm" data-mrm="${esc(m.key)}">Remove</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`, `${mrows.length} metrics a test can use`, false, "s-metrics") + `
+      <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Metric</th><th>Group</th><th>Formula</th><th>Direction</th><th class="num">Today</th><th>Note</th><th></th></tr></thead><tbody>${mrows.map(m => `<tr><td><b>${esc(m.name)}</b><div class="mono muted">${esc(m.key)}</div></td><td>${pill(m.group || "Custom", m.group === "Outcome" ? "run" : m.group === "Custom" ? "pos" : "plain")}</td><td style="max-width:320px">${esc(metricWords(m))}</td><td>${m.direction === "lower" ? "↓ lower is better" : "↑ higher is better"}</td><td class="num">${m.available === false ? pill("Not in data yet", "plain") : fmtMetric(metricEval(m, null).value, m)}</td><td class="muted" style="max-width:260px">${esc(m.note || (m.custom ? "Custom metric" : ""))}</td><td>${m.custom ? `<button class="btn sm" data-mrm="${esc(m.key)}">Remove</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${dataFilesHtml()}`, `${mrows.length} metrics a test can use`, false, "s-metrics") + `
     ` + fold(`Variable catalog`, `<div class="sub">Every variable the bot can receive, built once from the data and editable here. The router, the segment builder and the balance check all read this one list. Only variables known before the call can pick leads.</div>
       <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Variable</th><th>Meaning</th><th>Type</th><th>Allowed values (synthetic mix)</th><th>Known before the call?</th></tr></thead><tbody>${CAT().variables.map(v => `<tr><td><b>${esc(v.label)}</b><div class="mono muted">${esc(v.name)}</div></td><td>${esc(v.meaning)}</td><td>${esc(v.type)}</td><td>${v.values.length ? v.values.map((x, i) => `<span class="tag">${esc(x)}${v.mix ? " " + Math.round(v.mix[i] * 100) + "%" : ""}</span>`).join(" ") : '<span class="muted">any number</span>'}</td><td>${v.mix ? `<label class="chk"><input type="checkbox" data-pre="${esc(v.name)}" ${(SET().preCallOff || []).includes(v.name) ? "" : "checked"}> ${(SET().preCallOff || []).includes(v.name) ? "No: cannot pick leads" : "Yes: can pick leads"}</label>` : `${pill("No: decided during the call", "plain")}`}</td></tr>`).join("")}</tbody></table></div><p class="note" style="margin-top:8px">${esc(CAT().note)}</p>`, `${CAT().variables.length} variables, and which can pick leads`, false, "s-catalog") + `
     <div class="grid g2"><div class="card"><h2>Defaults for new tests</h2><div class="sub">Used to fill in New Experiment. The four demo tests were set up with these defaults.</div><div class="form-grid" style="margin-top:16px">
@@ -1723,6 +2017,7 @@ ROUTES.settings = (el) => {
   const setAp = () => { DYN.settings = { ...DYN.settings, autopilot: { rollback: $("#ap-roll").checked, held: $("#ap-held").checked } }; saveDyn(); toast("Autopilot updated."); };
   $("#ap-roll").onchange = setAp; $("#ap-held").onchange = setAp;
   $("#s-save").onclick = () => { DYN.settings = { ...DYN.settings, confidence: +$("#s-conf").value, harm_bar: +$("#s-harm").value, min_leads_per_arm: +$("#s-min").value, window_days: +$("#s-days").value, share_b: +$("#s-share").value / 100, duration_margin: +$("#s-dur").value / 100, leads_per_day: +$("#s-lpd").value, approval: $("#s-appr").value, lift_rel: +$("#s-lift").value / 100 }; DYN.settings.mde = Math.round(SET().baseline * DYN.settings.lift_rel * 10000) / 10000; saveDyn(); WZ = null; toast("Defaults saved. New experiments will start from them."); };
+  const rs = $("#s-rescan", el); if (rs) rs.onclick = async () => { rs.disabled = true; rs.textContent = "Scanning..."; try { const r = await fetch("/api/filecatalog/rescan", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); const j = await r.json(); if (!r.ok || !j.columns) throw new Error(j.error || "rescan failed"); C.file_catalog = j; toast(`${j.files.length} file${j.files.length === 1 ? "" : "s"}, ${j.columns.length} columns.`); } catch (err) { toast("Could not rescan: " + (err.message || err)); } refresh(); };
   $$("[data-mrm]", el).forEach(b => b.onclick = () => { DYN.settings = { ...DYN.settings, customMetrics: customMetrics().filter(m => m.key !== b.dataset.mrm) }; saveDyn(); toast("Removed from the metric list. Tests already launched keep their locked copy."); route(); });
   $$("[data-pre]", el).forEach(c => c.onchange = () => { const off = new Set(SET().preCallOff || []); c.checked ? off.delete(c.dataset.pre) : off.add(c.dataset.pre); DYN.settings = { ...DYN.settings, preCallOff: [...off] }; saveDyn(); route(); });
   $("#s-reset").onclick = async () => {
@@ -1825,7 +2120,7 @@ ROUTES.import = (el) => {
     try {
       const r = await fetch("/api/decide", { method: "POST", body: JSON.stringify({ files, opts }) }), j = await r.json(); if (j.error) throw new Error(j.error);
       const id = "files-" + Date.now(); const exp = { id, kind: "files", preset: "Results files", hypothesis: `Results supplied as ${IM.files.map(f => f.name).join(", ")}.`, truth: null, record: j.record, start_day: 9999 };
-      DYN.launched.unshift(exp); DYN.dyn[id] = { day: 9999, paused: false, approval: null, rolledBack: false, manualStop: false, learning: "" }; saveDyn(); toast(`Decision: ${KIND_LABEL[j.record.result.kind] || j.record.result.kind}`); go("report", id);
+      DYN.launched.unshift(exp); DYN.dyn[id] = { day: 9999, paused: false, approval: null, rolledBack: false, manualStop: false, learning: "" }; saveDyn(); toast(`Decision: ${KIND_LABEL[j.record.result.kind] || j.record.result.kind}`); go("experiments", id);
     } catch (e) { err.textContent = String(e.message || e); $("#i-go").disabled = false; $("#i-go").textContent = "Decide"; }
   };
 };
@@ -1848,7 +2143,7 @@ init();
    (canary/livecall.py, canary/livestats.py); this screen only shows them. The Sarvam browser SDK is loaded the first time a call starts. */
 (() => {
   if (!window.CANARY_LIVECALL) return;
-  NAV.splice(3, 0, ["livecall", "Live call test"]);                       // right after Live Experiments
+  NAV.splice(3, 0, ["livecall", "Live call test"]);                       // right after All experiments
 
   const mmss = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
   const lcPts = x => (x >= 0 ? "+" : "−") + Math.abs(Math.round(x * 100)) + " points";

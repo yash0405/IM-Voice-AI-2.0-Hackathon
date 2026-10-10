@@ -114,19 +114,22 @@ const sideWords = (side, all) => side.where && side.where.length ? `${side.unit 
 /** The formula in plain words: "Calls where Call status is Answered ÷ All calls attempted". */
 function metricWords(m) {
   if (!m) return "";
+  if (m.source === "file") return fcWords(m);
   if (m.type === "average") return `Average ${colLabel(m.col).toLowerCase()} over ${m.unit === "leads" ? "leads (first matching call)" : "calls"}${m.where && m.where.length ? " where " + m.where.map(condWords).join(" and ") : ""}`;
   return `${sideWords(m.num)} ÷ ${sideWords(m.den)}`;
 }
-const metricUnit = m => m && m.type === "average" ? ((HIST().col[m.col] || {}).unit || "") : "%";
+const metricUnit = m => m && m.source === "file" ? (m.type === "rate" ? "%" : ((fcCol(m.file, m.col) || {}).unit || "")) : m && m.type === "average" ? ((HIST().col[m.col] || {}).unit || "") : "%";
+const numType = m => m && (m.type === "average" || m.type === "sum");          // shown in its own unit, not as a percentage
 /** A value of the metric as people read it: 45.1% for a rate, 69.9 s for an average. */
-const fmtMetric = (v, m, d = 1) => v == null || isNaN(v) ? "-" : m && m.type === "average" ? `${(+v).toFixed(d)}${metricUnit(m) ? " " + metricUnit(m) : ""}` : `${(v * 100).toFixed(d)}%`;
+const fmtMetric = (v, m, d = 1) => v == null || isNaN(v) ? "-" : numType(m) ? `${(+v).toFixed(d)}${metricUnit(m) ? " " + metricUnit(m) : ""}` : `${(v * 100).toFixed(d)}%`;
 /** A difference of the metric: +5.0 pp for a rate (the dashboard's unit), −3.2 s for an average. `fmtPts` says "pts", as the New Experiment page does. */
-const fmtDelta = (v, m, d = 1, word = "pp") => { if (v == null || isNaN(v)) return "-"; const avg = m && m.type === "average", t = Math.abs(avg ? v : v * 100).toFixed(d); return (+t === 0 ? "" : v >= 0 ? "+" : "−") + t + (avg ? (metricUnit(m) ? " " + metricUnit(m) : "") : " " + word); };
+const fmtDelta = (v, m, d = 1, word = "pp") => { if (v == null || isNaN(v)) return "-"; const avg = numType(m), t = Math.abs(avg ? v : v * 100).toFixed(d); return (+t === 0 ? "" : v >= 0 ? "+" : "−") + t + (avg ? (metricUnit(m) ? " " + metricUnit(m) : "") : " " + word); };
 const fmtPts = (v, m, d = 1) => fmtDelta(v, m, d, "pts");
 
 /** The metric on the last 30 days for an audience: numerator, denominator, value, the spread of one unit (sqrt(p(1-p)) or the SD), leads. */
 const _evalCache = new Map();
 function metricEval(m, seg) {
+  if (m.source === "file") { const b = m.base || {}; return { num: b.num, den: b.den, value: b.value == null ? null : b.value, sd: b.sd == null ? null : b.sd, leads: b.den || 0 }; }   // measured on the file when it was saved
   const key = JSON.stringify([m.type, m.num, m.den, m.col, m.unit, m.where, segList(seg)]); if (_evalCache.has(key)) return _evalCache.get(key);
   const H = HIST(), idx = segLeads(seg);
   let sn = 0, sd = 0, vs = 0, vq = 0, vk = 0;
@@ -147,14 +150,16 @@ function metricEval(m, seg) {
 }
 /** Today's value for an audience; an audience with fewer than 200 connected leads in the 30 days uses the all-traffic value instead. */
 function baselineFor(m, seg) {
+  if (m.source === "file") return { ...metricEval(m, null), fallback: false, note: `measured on ${m.file}, all traffic` };
   const vol = audienceVolume(seg), few = segList(seg).length > 0 && vol.connected < 200, ev = metricEval(m, few ? null : seg);
   return { ...ev, fallback: few, note: few ? "Too little history for this audience; using overall rate." : "" };
 }
 /** Checks a metric definition: columns from the data only, at most 3 conditions a side, a denominator above 0, a rate within 0 to 100%. */
 function metricCheck(m) {
+  if (m && m.source === "file") return fcCheck(m);
   const errs = [], mc = METRIC_CAT(), H = HIST(), max = mc.max_conditions || 3;
   if (!m || !String(m.name || "").trim()) errs.push("Give the metric a name.");
-  else if (allMetrics().some(x => x.key === (m.key || metricKey(m.name)) && x.name.trim().toLowerCase() !== String(m.name).trim().toLowerCase())) errs.push(`This name is too close to the existing metric "${allMetrics().find(x => x.key === (m.key || metricKey(m.name))).name}": choose another name.`);
+  else if (!m._edit && allMetrics().some(x => x.key === (m.key || metricKey(m.name)) && x.name.trim().toLowerCase() !== String(m.name).trim().toLowerCase())) errs.push(`This name is too close to the existing metric "${allMetrics().find(x => x.key === (m.key || metricKey(m.name))).name}": choose another name.`);
   else if (String(m.name).length > 60) errs.push("The name is too long (60 characters at most).");
   else if (allMetrics().some(x => x.key !== m.key && x.name.trim().toLowerCase() === String(m.name).trim().toLowerCase())) errs.push("A metric with this name already exists.");
   const conds = (list, label, needOne) => {
@@ -191,7 +196,7 @@ const metricKey = name => "custom_" + String(name || "").toLowerCase().replace(/
 /** The test's metric list, in the order the engine reads it: the primary, the guardrails, then the secondary metrics. */
 function testMetrics(w) {
   const out = []; const ex = w.localMetrics || [];
-  if (w.primary) out.push({ role: "primary", key: w.primary, m: metricByKey(w.primary, ex), direction: (metricByKey(w.primary, ex) || {}).direction });
+  if (w.primary) { const pm = metricByKey(w.primary, ex); out.push({ role: "primary", key: w.primary, m: pm, direction: (pm && !pm.custom && w.primaryDir) || (pm || {}).direction }); }     // w.primaryDir: a per-test direction for a built-in primary
   for (const g of w.guards || []) out.push({ role: "guardrail", key: g.key, m: metricByKey(g.key, ex), direction: g.direction, limit: g.limit });
   for (const s of w.secondary || []) out.push({ role: "secondary", key: s.key, m: metricByKey(s.key, ex), direction: s.direction });
   return out.filter(x => x.m);                                                  // a metric removed from Settings since the draft was saved drops out

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import catalog, decide, fixloop, history, metriclib, planner, promptlint, samples, variants
+from . import catalog, decide, filecatalog, fixloop, history, metriclib, planner, promptlint, samples, variants
 from .engine import AUTOPILOT, HELD_TIMEOUT_DAYS, Config, run_experiment
 from .evaluator import load_dispositions
 from .scenarios import make, order
@@ -225,7 +225,7 @@ def console_bundle() -> dict:
                               "sooner": round(100 * (1 - ps["median_n_when_promoted"] / pf["median_n_when_promoted"])) if ps.get("median_n_when_promoted") and pf.get("median_n_when_promoted") else None}
         if P.get("split_brd") and proof is not None:
             proof["split_brd"] = P["split_brd"]
-    return {"version": "console-3", "defaults": {**DEFAULTS, "early_hangup_share": early_hangup_share()}, "catalog": catalog.bundle([c["name"] for c in history.COLUMNS]), "history": history.bundle(), "metric_catalog": metriclib.catalog_bundle(), "proof": proof, "demo": demo, "past": past, "library": library(), "suggestions": sg, "metrics": metrics(),
+    return {"version": "console-3", "defaults": {**DEFAULTS, "early_hangup_share": early_hangup_share()}, "catalog": catalog.bundle([c["name"] for c in history.COLUMNS]), "history": history.bundle(), "metric_catalog": metriclib.catalog_bundle(), "file_catalog": filecatalog.catalog(), "proof": proof, "demo": demo, "past": past, "library": library(), "suggestions": sg, "metrics": metrics(),
             "dispositions": load_dispositions(), "plans": planner.grid(), "spec_check": planner.spec_calculator_check(),
             "tools": {"proof": (DATA.parent / "out" / "proof.json").exists()},
             "autopilot": {"by": AUTOPILOT, "held_timeout_days": HELD_TIMEOUT_DAYS}}

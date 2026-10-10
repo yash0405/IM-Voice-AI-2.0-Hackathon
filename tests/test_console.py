@@ -78,7 +78,7 @@ class ConsoleData(unittest.TestCase):
     def test_the_script_is_assembled_from_its_parts(self):
         out = build.assemble_console_js()
         js = out.read_text()
-        for route in ("ROUTES.overview", "ROUTES.live", "ROUTES.new", "ROUTES.history", "ROUTES.suggest", "ROUTES.library", "ROUTES.log", "ROUTES.settings", "ROUTES.import", "ROUTES.report"):
+        for route in ("ROUTES.overview", "ROUTES.experiments", "ROUTES.new", "ROUTES.suggest", "ROUTES.library", "ROUTES.log", "ROUTES.settings", "ROUTES.import", "ROUTES.report"):
             self.assertIn(route, js)
         self.assertEqual(len(re.findall(r"^\"use strict\";", js, re.M)), 1)
 

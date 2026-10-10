@@ -135,11 +135,10 @@ ROUTES.experiments = (el, arg) => {
 };
 
 /** A finished test's page opens with its final report: the decision, the numbers and the plain-English summary. */
-function finalReportCard(e, v) {
+function finalReportCard(e, v, decision) {
   const c = v.config, cur = v.cur, lr = liftRange(cur, c), avg = primaryDef(c).type === "average";
   return `<div class="card final-rep" id="final-report" style="margin-bottom:16px"><div class="sec-row"><h2>Final report</h2><div class="actions"><button class="btn" id="a-clone">Clone</button><a class="btn" href="#/report/${encodeURIComponent(e.id)}">Print view</a></div></div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">${pill(KIND_LABEL[v.kind] || v.kind, KIND_CLASS[v.kind])}<span class="note">${fdate(c.start)} · ${v.ld} day${v.ld === 1 ? "" : "s"}</span></div>
-    <p style="margin-top:8px">${esc(plainSummary(e))}</p>
+    <div style="margin-top:8px">${decision}</div><p style="margin-top:8px">${esc(plainSummary(e))} <span class="note">${fdate(c.start)} · ${v.ld} day${v.ld === 1 ? "" : "s"}</span></p>
     <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th></th><th class="num">Leads</th><th class="num">${avg ? "Average" : "Rate"}</th><th class="num">95% range</th></tr></thead><tbody>
       <tr><td><span class="dot a"></span>A: today's prompt</td><td class="num">${nf(cur.nA)}</td><td class="num">${fmtP(cur.rateA, c)}</td><td class="num">${(([lo, hi]) => `${fmtP(lo, c)} to ${fmtP(hi, c)}`)(armCI(cur, "A", c))}</td></tr>
       <tr><td><span class="dot b"></span>B: new prompt</td><td class="num">${nf(cur.nB)}</td><td class="num">${fmtP(cur.rateB, c)}</td><td class="num">${(([lo, hi]) => `${fmtP(lo, c)} to ${fmtP(hi, c)}`)(armCI(cur, "B", c))}</td></tr>

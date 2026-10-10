@@ -29,7 +29,7 @@ const settle = async () => { await p.click("#clk-play"); for (let i = 0; i < 60;
 console.log("Overview");
 await p.goto(url + "#/overview", { waitUntil: "load" }); await fresh();
 const nav = await p.$$eval("#nav > a", as => as.map(a => a.textContent.trim().replace(/\d+$/, "")));
-ok(["Overview", "New Experiment", "Live Experiments", "History", "Suggest A/B Tests", "Prompt Library", "Decision Log", "Settings"].every(x => nav.includes(x)), `the spec's menu (${nav.join(", ")})`);
+ok(["Overview", "New Experiment", "All experiments", "Suggest A/B Tests", "Prompt Library", "Decision Log", "Settings"].every(x => nav.includes(x)) && !nav.includes("History"), `the menu, with Live Experiments and History merged (${nav.join(", ")})`);
 ok(/Autopilot on/.test(await text()) && /Rolls back if B slips/.test(await text()), "the autopilot strip says what it does");
 ok((await p.$$(".rcard")).length === 6, "six running tests");
 ok(await p.$$eval(".rcard", cs => cs.every(c => c.querySelectorAll(".ab-bar i.grey").length === 2)), "A and B are grey until the engine decides");
@@ -48,11 +48,11 @@ ok(k.demo_fade.kind === "ROLLED_BACK" && k.demo_fade.autoRoll, "win that slips a
 
 console.log("The record");
 for (const id of ["demo_fade", "demo_hold"]) {
-  await open("#/live/" + id); await p.click("#a-verify"); await wait(400);
+  await open("#/experiments/" + id); await p.click("#a-verify"); await wait(400);
   ok(/Chain intact/.test(await p.$eval("#verify-out", x => x.textContent)), `${id}: chain intact with the autopilot's entry`);
 }
-await open("#/live/demo_fade");
-ok(/autopilot rolled B back/.test(await text()), "Live page says the autopilot rolled B back");
+await open("#/experiments/demo_fade");
+ok(/autopilot rolled B back/.test(await text()), "the test's page says the autopilot rolled B back");
 ok(!!(await p.$("#trend canvas")), "the daily trend is a chart (Chart.js)");
 ok((await p.$$(".dstrip .ds")).length >= 7, "the day strip shows every day of the test");
 await open("#/log");
@@ -65,7 +65,7 @@ console.log("A person can still decide; with the rollback off, the alert asks a 
 await fresh();
 for (let i = 0; i < 5; i++) { await p.click("#clk-next"); await wait(300); }
 ok(/Approval pending/.test(await text()), "Needs attention shows the held win");
-await open("#/live/demo_hold"); await p.click("#a-approve"); await wait(300);
+await open("#/experiments/demo_hold"); await p.click("#a-approve"); await wait(300);
 ok((await kinds()).demo_hold.kind === "PROMOTE", "Approve promotes it");
 await fresh();
 await open("#/settings"); await p.click("#ap-roll"); await wait(300);
@@ -82,14 +82,14 @@ ok((await p.$eval("#w-name", e => e.value)).length > 0, "a ready idea fills the 
 for (let s = 1; s < 6; s++) { await p.click("#w-next"); await wait(450); }
 ok(/all 6 pass/.test(await text()) && await p.$eval("#w-launch", e => !e.disabled), "step 6: all six checks pass and Launch is enabled");
 await p.click("#w-launch");
-for (let i = 0; i < 60 && !(await p.evaluate(() => location.hash)).startsWith("#/live/"); i++) await wait(500);
-ok((await p.evaluate(() => location.hash)).startsWith("#/live/"), "Launch opens the new test in Live Experiments");
+for (let i = 0; i < 60 && !(await p.evaluate(() => location.hash)).startsWith("#/experiments/"); i++) await wait(500);
+ok((await p.evaluate(() => location.hash)).startsWith("#/experiments/"), "Launch opens the new test's page");
 
 console.log("Phone width, every screen");
 await p.setViewport({ width: 390, height: 844 });
-for (const h of ["#/overview", "#/live/demo_win", "#/new", "#/settings"]) { await open(h); ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `no sideways scroll at 390 px: ${h}`); }
+for (const h of ["#/overview", "#/experiments", "#/experiments/demo_win", "#/new", "#/settings"]) { await open(h); ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `no sideways scroll at 390 px: ${h}`); }
 await p.setViewport({ width: 1366, height: 900 });
-for (const h of ["#/overview", "#/new", "#/live", "#/history", "#/suggest", "#/library", "#/log", "#/settings", "#/import", "#/report/past_b_wins", "#/report/files_b_wins"]) await open(h);
+for (const h of ["#/overview", "#/new", "#/experiments", "#/experiments/demo_win", "#/live", "#/history", "#/suggest", "#/library", "#/log", "#/settings", "#/import", "#/report/past_b_wins", "#/report/files_b_wins"]) await open(h);
 ok(errors.length === 0, `no page errors (${errors.length}${errors.length ? ": " + errors.slice(0, 3).join(" | ") : ""})`);
 if (LIVE) await fresh();                                           // leave the server's history as it was found: no launched test left running
 await b.close();
