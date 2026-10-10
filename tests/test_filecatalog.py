@@ -273,7 +273,7 @@ class HLBucketColumn(unittest.TestCase):
 
     def test_the_pm_table(self):
         top = fc.evaluate({"source": "file", "file": "hl.csv", "type": "rate", "count": "calls", "name": "x", "num": [C("hl_bucket", "is", "Top 3")], "den": []})
-        pm_top3 = {"SCHD", "OLP", "OLPR", "PAM", "PNCHF", "PANF", "PUT", "NVGT"}     # the PM's "Data type passed" table, Oct 10, 2026
+        pm_top3 = {"SCHD", "OLP", "OLPR", "PAM", "PNCHF", "PANF", "PUT", "NVGT", "TF", "UATF"}     # the PM's table and answer, Oct 10, 2026
         self.assertEqual(top["num"], sum(1 for r in self.rows if r["redis_bucket"] in pm_top3))
         for t in ("PUA", "PIM", "UA", "NUR"):                                           # the most common types are Rest
             self.assertEqual(fc.evaluate({"source": "file", "file": "hl.csv", "type": "rate", "count": "calls", "name": "x", "num": [C("redis_bucket", "is", t), C("hl_bucket", "is", "Top 3")], "den": []})["num"], 0, t)
@@ -300,8 +300,8 @@ class RealFile(unittest.TestCase):
             self.assertEqual(t["lead_call_duration"], "number")
             self.assertEqual(t["hl_bucket"], "category")
             top = fc.evaluate({"source": "file", "file": F2, "type": "rate", "count": "calls", "name": "x", "num": [C("hl_bucket", "is", "Top 3")], "den": []})
-            pm = fc.evaluate({"source": "file", "file": F2, "type": "rate", "count": "calls", "name": "x", "num": [C("redis_bucket", "in", ["SCHD", "OLP", "OLPR", "PAM", "PNCHF", "PANF", "PUT", "NVGT"])], "den": []})
-            self.assertEqual(top["num"], pm["num"])                                    # Top 3 is exactly the PM table's eight types
+            pm = fc.evaluate({"source": "file", "file": F2, "type": "rate", "count": "calls", "name": "x", "num": [C("redis_bucket", "in", ["SCHD", "OLP", "OLPR", "PAM", "PNCHF", "PANF", "PUT", "NVGT", "TF", "UATF"])], "den": []})
+            self.assertEqual(top["num"], pm["num"])                                    # Top 3 is exactly the PM's ten Top 3 types
         finally:
             if old is not None:
                 os.environ["CANARY_RESOURCES"] = old

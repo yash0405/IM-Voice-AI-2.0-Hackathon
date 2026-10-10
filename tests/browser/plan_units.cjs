@@ -94,7 +94,7 @@ ok(JSON.stringify(lib.promptVars("{# say {{ secret }} #} hello {{ buyer_name }}"
 { const r = lib.segFromRows([{ column: "hl_type", values: ["UA"] }, { column: "hl_type", values: ["PNSM"] }]);
   ok(r.errors.some(e => /used twice/.test(e)), "segment: a factor can be used only once", r.errors);
   const r2 = lib.segFromRows([{ column: "", values: [] }]); ok(r2.errors.length === 1, "segment: an empty condition is flagged");
-  const r3 = lib.segFromRows([{ column: "hl_type", values: ["TF"] }, { column: "hl_bucket", values: ["Top 3"] }]); ok(r3.errors.some(e => /contradict/.test(e)), "segment: contradicting conditions are refused", r3.errors); }
+  const r3 = lib.segFromRows([{ column: "hl_type", values: ["ENQR"] }, { column: "hl_bucket", values: ["Top 3"] }]); ok(r3.errors.some(e => /contradict/.test(e)), "segment: contradicting conditions are refused", r3.errors); }
 { const seg = [{ column: "vertical", values: ["Top Cities - Inhouse"] }, { column: "hl_type", values: ["PNSM", "UA"] }, { column: "legal_status", values: ["Proprietorship"] }];
   ok(lib.segDescribe(seg) === "Leads where HL Type is UA or PNSM AND Legal Status is Proprietorship AND Vertical is Top Cities - Inhouse", "plain words: the spec's example, in catalog order", lib.segDescribe(seg));
   ok(lib.segDescribe([]) === "All traffic (neutral test)", "plain words: no rows = all traffic");

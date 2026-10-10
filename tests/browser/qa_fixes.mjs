@@ -33,8 +33,8 @@ await p.click('[data-mcard="guardrail:0"] .kebab summary'); await sleep(150); aw
 await p.click('[data-mcard="secondary:0"] .kebab summary'); await sleep(150); await p.click('[data-mmove="secondary:0"]'); await sleep(250);
 ok(await p.evaluate(() => WZ.guards[0].limit.value === 3 && WZ.guards[0].limit.kind === 'pts'), 'Move: guardrail -> secondary -> guardrail keeps the edited limit');
 
-// 12d: HL Bucket is derived from HL Type: "HL Type UA" and "HL Bucket Rest" share no lead
-ok(await p.evaluate(() => !segsOverlap([{ column: 'hl_type', values: ['UA'] }], [{ column: 'hl_bucket', values: ['Rest'] }]) && segsOverlap([{ column: 'hl_type', values: ['UA'] }], [{ column: 'hl_bucket', values: ['Top 3'] }])), 'Overlap: a derived factor is read through its base factor');
+// 12d: HL Bucket is derived from HL Type (the PM's table: OLP is Top 3, UA is Rest): "HL Type OLP" and "HL Bucket Rest" share no lead
+ok(await p.evaluate(() => !segsOverlap([{ column: 'hl_type', values: ['OLP'] }], [{ column: 'hl_bucket', values: ['Rest'] }]) && segsOverlap([{ column: 'hl_type', values: ['OLP'] }], [{ column: 'hl_bucket', values: ['Top 3'] }]) && !segsOverlap([{ column: 'hl_type', values: ['UA'] }], [{ column: 'hl_bucket', values: ['Top 3'] }])), 'Overlap: a derived factor is read through its base factor');
 
 // 10: the automatic share says why
 await setW({ step: 4 }); await p.evaluate(() => { WZ.shareTouched = false; }); await p.click('#w-next'); await sleep(400);
