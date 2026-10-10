@@ -11,3 +11,5 @@ node tests/browser/console_live.mjs                                          # n
 node tests/browser/store_e2e.mjs "$(command -v python3)"                       # history database: two browsers, a restart, a reset (starts its own server on port 8797, throw-away database)
 ```
 Screenshots go to `/tmp/canary_shots`. The Python tests (`python -m unittest discover -s tests`) do not need any of this.
+
+`live_flow.mjs` tests the "Live call test" screen inside the console (port chosen automatically) against `mock_sarvam.mjs`, a stand-in for Sarvam's voice runtime that follows the SDK source: `npm install puppeteer-core ws; PY=/path/to/python node tests/browser/live_flow.mjs`. Screenshots go to `$SHOTS` (default `/tmp/canary_live_shots`).

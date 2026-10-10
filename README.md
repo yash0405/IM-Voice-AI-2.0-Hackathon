@@ -45,6 +45,8 @@ The live server (`python -m canary serve`) saves every test in one SQLite file, 
 
 Why SQLite and not Postgres: it is built into Python (nothing to install or run), the whole history is one file a judge can open, and our load is a few writes a minute from one server. Postgres is the right choice when several servers write at once, i.e. in production at IndiaMART; the tables are plain SQL, so moving them is a connection change plus a few type tweaks, not a redesign.
 
+**Hear it live :** `./live.sh`. Talk to prompt A and prompt B on real Sarvam voice agents, give a signal after each call, and the result is released only after the number of calls you fix before the test. See `LIVE_CALL_TEST.md`.
+
 ## Commands
 
 | Command | What it does | Spends credits? |

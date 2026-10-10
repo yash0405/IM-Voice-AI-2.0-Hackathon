@@ -25,3 +25,6 @@ venv/
 # the history database the live server writes (canary/store.py); per machine, never committed
 data/history.db
 data/history.db-*
+# live call test: per-test state (calls, transcripts, log) and the saved agent ids
+data/live/
+node_modules
