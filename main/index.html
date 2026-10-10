@@ -27,7 +27,7 @@
   <p><b>Test it, pick it, ship it.</b> A/B testing and auto-rollout for voice agents.</p>
   <div class="bar" id="bar"><i id="fill"></i></div>
   <div id="msg" role="status"></div>
-  <div class="foot">Branch main &middot; e21b054. The first open downloads the engine (about 30 MB, then cached); it runs entirely in your browser.</div>
+  <div class="foot">Branch main &middot; 4dfeed5. The first open downloads the engine (about 30 MB, then cached); it runs entirely in your browser.</div>
 </div>
 <script>
 (() => {                                                                 // own scope: the app declares its own $ and helpers
@@ -72,7 +72,7 @@ function loadScript(src) { return new Promise((ok, bad) => { const s = document.
     document.dispatchEvent(new Event("DOMContentLoaded"));              // the console waits for it to attach its tooltip
     const tag = document.createElement("div");
     tag.style.cssText = "position:fixed;right:8px;bottom:6px;font:11px/1 system-ui,sans-serif;color:#627d98;background:#ffffffd9;padding:3px 6px;border-radius:6px";
-    tag.textContent = "branch main · e21b054"; document.body.appendChild(tag);
+    tag.textContent = "branch main · 4dfeed5"; document.body.appendChild(tag);
   } catch (e) {
     $("bar").style.display = "none"; say("Could not start: " + e.message + ". Reload the page to try again.", true);
   }
